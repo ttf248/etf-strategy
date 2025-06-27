@@ -179,6 +179,10 @@ def find_optimal_drop_percentage(df):
 
 def plot_simulation_results(df, simulation_result):
     """将单次模拟结果可视化"""
+    # 解决matplotlib中文显示问题
+    plt.rcParams['font.sans-serif'] = ['SimHei']  # 指定默认字体
+    plt.rcParams['axes.unicode_minus'] = False  # 解决保存图像是负号'-'显示为方块的问题
+
     history_df = pd.DataFrame(simulation_result['history'])
     history_df.set_index('date', inplace=True)
 
