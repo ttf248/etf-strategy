@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 from enum import Enum
 
+# http://baostock.com/baostock/index.php/A%E8%82%A1K%E7%BA%BF%E6%95%B0%E6%8D%AE
 
 class DataFrequency(Enum):
     """数据频率枚举"""
@@ -30,35 +31,39 @@ class AdjustFlag(Enum):
 @dataclass
 class DailyWeeklyMonthlyData:
     """日线、周线、月线数据结构（包含停牌证券）"""
-    date: str           # 交易日期，格式YYYY-MM-DD
-    code: str           # 证券代码，格式sh.XXXXXX或sz.XXXXXX
-    open: float         # 开盘价
-    high: float         # 最高价
-    low: float          # 最低价
-    close: float        # 收盘价
-    preclose: float     # 前收盘价
-    volume: int         # 成交量（股）
-    amount: float       # 成交额（元）
-    adjustflag: str     # 复权状态，1-后复权，2-前复权，3-不复权
-    turn: Optional[float]  # 换手率，停牌时为空
-    tradestatus: str    # 交易状态，1-正常交易，0-停牌
-    pctChg: float       # 涨跌幅（%）
-    isST: str           # 是否ST股票，1-是，0-否
+    date: str           # 交易所行情日期，格式：YYYY-MM-DD
+    code: str           # 证券代码，格式：sh.600000。sh：上海，sz：深圳
+    open: float         # 今开盘价格，精度：小数点后4位；单位：人民币元
+    high: float         # 最高价，精度：小数点后4位；单位：人民币元
+    low: float          # 最低价，精度：小数点后4位；单位：人民币元
+    close: float        # 今收盘价，精度：小数点后4位；单位：人民币元
+    preclose: float     # 昨日收盘价，精度：小数点后4位；单位：人民币元
+    volume: int         # 成交数量，单位：股
+    amount: float       # 成交金额，精度：小数点后4位；单位：人民币元
+    adjustflag: str     # 复权状态，不复权、前复权、后复权
+    turn: Optional[float]  # 换手率，精度：小数点后6位；单位：%
+    tradestatus: str    # 交易状态，1：正常交易 0：停牌
+    pctChg: float       # 涨跌幅（百分比），精度：小数点后6位
+    peTTM: Optional[float]     # 滚动市盈率，精度：小数点后6位
+    psTTM: Optional[float]     # 滚动市销率，精度：小数点后6位
+    pcfNcfTTM: Optional[float] # 滚动市现率，精度：小数点后6位
+    pbMRQ: Optional[float]     # 市净率，精度：小数点后6位
+    isST: str           # 是否ST，1是，0否
 
 
 @dataclass
 class MinuteData:
     """分钟线数据结构（5、15、30、60分钟，不包含指数）"""
-    date: str           # 交易日期，格式YYYY-MM-DD
-    time: str           # 交易时间，格式HH:MM:SS
-    code: str           # 证券代码，格式sh.XXXXXX或sz.XXXXXX
-    open: float         # 开盘价
-    high: float         # 最高价
-    low: float          # 最低价
-    close: float        # 收盘价
-    volume: int         # 成交量（股）
-    amount: float       # 成交额（元）
-    adjustflag: str     # 复权状态，1-后复权，2-前复权，3-不复权
+    date: str           # 交易所行情日期，格式：YYYY-MM-DD
+    time: str           # 交易所行情时间，格式：YYYYMMDDHHMMSSsss
+    code: str           # 证券代码，格式：sh.600000。sh：上海，sz：深圳
+    open: float         # 开盘价格，精度：小数点后4位；单位：人民币元
+    high: float         # 最高价，精度：小数点后4位；单位：人民币元
+    low: float          # 最低价，精度：小数点后4位；单位：人民币元
+    close: float        # 收盘价，精度：小数点后4位；单位：人民币元
+    volume: int         # 成交数量，单位：股；时间范围内的累计成交数量
+    amount: float       # 成交金额，精度：小数点后4位；单位：人民币元；时间范围内的累计成交金额
+    adjustflag: str     # 复权状态，不复权、前复权、后复权
 
 
 class DataFieldsConfig:
@@ -66,34 +71,38 @@ class DataFieldsConfig:
     
     # 日线、周线、月线字段（包含停牌证券）
     DAILY_WEEKLY_MONTHLY_FIELDS = [
-        "date",         # 交易日期
-        "code",         # 证券代码
-        "open",         # 开盘价
-        "high",         # 最高价
-        "low",          # 最低价
-        "close",        # 收盘价
-        "preclose",     # 前收盘价
-        "volume",       # 成交量
-        "amount",       # 成交额
-        "adjustflag",   # 复权状态
-        "turn",         # 换手率
-        "tradestatus",  # 交易状态
-        "pctChg",       # 涨跌幅
-        "isST"          # 是否ST股票
+        "date",         # 交易所行情日期，格式：YYYY-MM-DD
+        "code",         # 证券代码，格式：sh.600000。sh：上海，sz：深圳
+        "open",         # 今开盘价格，精度：小数点后4位；单位：人民币元
+        "high",         # 最高价，精度：小数点后4位；单位：人民币元
+        "low",          # 最低价，精度：小数点后4位；单位：人民币元
+        "close",        # 今收盘价，精度：小数点后4位；单位：人民币元
+        "preclose",     # 昨日收盘价，精度：小数点后4位；单位：人民币元
+        "volume",       # 成交数量，单位：股
+        "amount",       # 成交金额，精度：小数点后4位；单位：人民币元
+        "adjustflag",   # 复权状态，不复权、前复权、后复权
+        "turn",         # 换手率，精度：小数点后6位；单位：%
+        "tradestatus",  # 交易状态，1：正常交易 0：停牌
+        "pctChg",       # 涨跌幅（百分比），精度：小数点后6位
+        "peTTM",        # 滚动市盈率，精度：小数点后6位
+        "psTTM",        # 滚动市销率，精度：小数点后6位
+        "pcfNcfTTM",    # 滚动市现率，精度：小数点后6位
+        "pbMRQ",        # 市净率，精度：小数点后6位
+        "isST"          # 是否ST，1是，0否
     ]
     
     # 分钟线字段（5、15、30、60分钟，不包含指数）
     MINUTE_FIELDS = [
-        "date",         # 交易日期
-        "time",         # 交易时间
-        "code",         # 证券代码
-        "open",         # 开盘价
-        "high",         # 最高价
-        "low",          # 最低价
-        "close",        # 收盘价
-        "volume",       # 成交量
-        "amount",       # 成交额
-        "adjustflag"    # 复权状态
+        "date",         # 交易所行情日期，格式：YYYY-MM-DD
+        "time",         # 交易所行情时间，格式：YYYYMMDDHHMMSSsss
+        "code",         # 证券代码，格式：sh.600000。sh：上海，sz：深圳
+        "open",         # 开盘价格，精度：小数点后4位；单位：人民币元
+        "high",         # 最高价，精度：小数点后4位；单位：人民币元
+        "low",          # 最低价，精度：小数点后4位；单位：人民币元
+        "close",        # 收盘价，精度：小数点后4位；单位：人民币元
+        "volume",       # 成交数量，单位：股；时间范围内的累计成交数量
+        "amount",       # 成交金额，精度：小数点后4位；单位：人民币元；时间范围内的累计成交金额
+        "adjustflag"    # 复权状态，不复权、前复权、后复权
     ]
     
     @classmethod
@@ -235,9 +244,11 @@ def validate_and_convert_data(df: pd.DataFrame, frequency: str) -> pd.DataFrame:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce')
             
-            # 特殊处理换手率，可能为空字符串
-            if "turn" in df.columns:
-                df["turn"] = df["turn"].apply(lambda x: float(x) if x else None)
+            # 特殊处理可能为空字符串的字段
+            optional_numeric_cols = ["turn", "peTTM", "psTTM", "pcfNcfTTM", "pbMRQ"]
+            for col in optional_numeric_cols:
+                if col in df.columns:
+                    df[col] = df[col].apply(lambda x: float(x) if x and str(x).strip() else None)
         
         logger.info("数据类型转换成功")
         return df
