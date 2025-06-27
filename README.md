@@ -8,8 +8,17 @@
 
 准备进行一个投资计划，初始投资五万，总金额：二十万，初始投资五万，后续的资金，分三次进行加仓
 
+下跌的定义： 当市价低于总平均成本的百分比
+
 用最近五年的收市价数据计算，假如在任意时间点进行建仓，买入初始的五万
-下跌多少，下跌的定义： 只有当市价低于总平均成本，进行加仓合适，持有多长时间合适，二十万本金全部投入后，限制最多持有一年，或者全部资金都投资以后，年化收益率超过 10%
+下跌多少，进行加仓合适，持有多长时间合适
+
+策略截止条件：
+
+- 二十万本金全部
+- 限制最多持有一年 或者 年化收益率超过 10%
+
+任务详情：
 
 1. 思考建立什么样的数学模型合适，我这种方案，有对应的交易策略吗
 2. 用Python代码实现你的模型，代码不要立即生成，你先分析方案是否还有优化空间
@@ -36,3 +45,10 @@ def setup_logging(log_dir='log'):
     log_format = "{time:YYYY-MM-DD HH:mm:ss} - {level} - {name}:{function}:{line} - {message}"
     logger.add(log_file, rotation="00:00", retention="30 days", level="DEBUG", format=log_format)
 ```
+
+## 数据源
+
+还没开工，和AI沟通方案，发现了数据源的问题，本来是让腾讯混元给我推荐几个免费白嫖行情数据的库，了解到了不同的复权计算逻辑
+
+[https://ttf248.life/p/where-can-i-find-backtest-data](https://ttf248.life/p/where-can-i-find-backtest-data)
+
