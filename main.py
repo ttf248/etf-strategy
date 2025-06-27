@@ -32,8 +32,8 @@ def load_data(file_path):
         df.set_index('date', inplace=True)
         
         # 根据用户要求，筛选最近五年的数据
-        five_years_ago = datetime.now() - timedelta(days=5*365)
-        df = df[df.index >= five_years_ago]
+        # five_years_ago = datetime.now() - timedelta(days=5*365)
+        # df = df[df.index >= five_years_ago]
         
         # 确保数据按时间升序排列
         df.sort_index(inplace=True)
