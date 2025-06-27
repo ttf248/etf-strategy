@@ -39,9 +39,9 @@ def load_data(file_path):
         df.sort_index(inplace=True)
         
         # 只需要收盘价
-        df = df[['close']]
+        df = df[['preclose']]
         
-        logger.info(f"数据预处理完成，筛选最近五年数据后，剩余 {len(df)} 条记录")
+        logger.info(f"数据预处理完成，合集 {len(df)} 条记录")
         return df
     except FileNotFoundError:
         logger.error(f"数据文件未找到: {file_path}")
