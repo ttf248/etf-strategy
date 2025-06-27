@@ -49,6 +49,8 @@ def load_data(file_path):
 
 def run_backtest_simulation(df, start_date, drop_percentage):
     """执行单次回测模拟"""
+    logger.info(f"--- 开始新的回测模拟 --- StartDate: {start_date.strftime('%Y-%m-%d')}, DropPercentage: {drop_percentage:.2%}")
+
     # 找到实际的交易开始日期
     trading_days = df[df.index >= start_date]
     if len(trading_days) < 20: # 如果剩余交易日太少，无法进行有意义的回测
@@ -60,10 +62,12 @@ def run_backtest_simulation(df, start_date, drop_percentage):
     top_ups_left = config.NUM_TOP_UPS
 
     # 初始投资
-    first_day_price = trading_days.iloc[0]['close']
+    first_day_price = trading_days.iloc[0]['preclose']
     shares = config.INITIAL_INVESTMENT / first_day_price
     total_investment = config.INITIAL_INVESTMENT
     avg_cost = first_day_price
+    logger.info(f"初始投资: 日期={trading_days.index[0].strftime('%Y-%m-%d')}, 价格={first_day_price:.2f}, 份额={shares:.2f}")
+
 
     # 记录交易历史
     history = []
@@ -82,7 +86,7 @@ def run_backtest_simulation(df, start_date, drop_percentage):
     # 开始模拟
     for i in range(1, len(trading_days)):
         current_date = trading_days.index[i]
-        current_price = trading_days.iloc[i]['close']
+        current_price = trading_days.iloc[i]['preclose']
         
         # 检查是否需要加仓
         if top_ups_left > 0 and current_price < avg_cost * (1 - drop_percentage):
@@ -101,7 +105,8 @@ def run_backtest_simulation(df, start_date, drop_percentage):
                 'total_investment': total_investment,
                 'avg_cost': avg_cost
             })
-            logger.info(f"{current_date}: 价格下跌超过 {drop_percentage:.2%}，加仓 {top_up_amount:.2f}")
+            logger.info(f"加仓: 日期={current_date.strftime('%Y-%m-%d')}, 价格={current_price:.2f}, 投入={top_up_amount:.2f}, 新均价={avg_cost:.2f}, 总份额={shares:.2f}")
+
 
         # 计算当前收益
         current_value = shares * current_price
@@ -118,8 +123,8 @@ def run_backtest_simulation(df, start_date, drop_percentage):
         exit_reason = None
         if holding_days >= config.MAX_HOLDING_YEARS * 365:
             exit_reason = f"持有满 {config.MAX_HOLDING_YEARS} 年"
-        elif annualized_return >= config.TARGET_ANNUALIZED_RETURN:
-            exit_reason = f"年化收益率达到 {config.TARGET_ANNUALIZED_RETURN:.2%}"
+        elif top_ups_left == 0 and annualized_return >= config.TARGET_ANNUALIZED_RETURN:
+            exit_reason = f"资金全部投入且年化收益率达到 {config.TARGET_ANNUALIZED_RETURN:.2%}"
         elif top_ups_left == 0 and i == len(trading_days) - 1: # 资金用完且到数据末尾
             exit_reason = "资金全部投入且已到数据末尾"
 
@@ -144,6 +149,8 @@ def run_backtest_simulation(df, start_date, drop_percentage):
 
 def find_optimal_drop_percentage(df):
     """通过多次回测找到最优的下跌加仓百分比"""
+    logger.info("=== 开始寻找最优加仓百分比 ===")
+
     logger.info("开始寻找最优加仓百分比...")
     
     # 我们将测试从 1% 到 MAX_DROP_PERCENTAGE 的所有下跌百分比
@@ -154,13 +161,17 @@ def find_optimal_drop_percentage(df):
     possible_start_dates = df.index[:-20] # 保证至少有20天的交易期
 
     for perc in drop_percentages:
+        logger.info(f"-- 测试加仓百分比: {perc:.2%} --")
         annual_returns = []
-        for _ in range(config.BACKTEST_RUNS):
+        for i in range(config.BACKTEST_RUNS):
             # 随机选择一个开始日期
             start_date = random.choice(possible_start_dates)
             simulation_result = run_backtest_simulation(df, start_date, perc)
             if simulation_result:
-                annual_returns.append(simulation_result['final_annualized_return'])
+                return_val = simulation_result['final_annualized_return']
+                annual_returns.append(return_val)
+                logger.debug(f"  Run {i+1}/{config.BACKTEST_RUNS} for {perc:.2%}: Start={start_date.strftime('%Y-%m-%d')}, Return={return_val:.2%}")
+
         
         if annual_returns:
             avg_return = np.mean(annual_returns)
@@ -198,7 +209,7 @@ def plot_simulation_results(df, simulation_result):
     # 坐标轴1: 价格
     ax1.set_xlabel('日期')
     ax1.set_ylabel('价格 (元)', color='tab:blue')
-    ax1.plot(plot_df.index, plot_df['close'], label='ETF收盘价', color='tab:blue', alpha=0.7)
+    ax1.plot(plot_df.index, plot_df['preclose'], label='ETF收盘价', color='tab:blue', alpha=0.7)
     ax1.plot(history_df.index, history_df['avg_cost'], label='平均持仓成本', color='tab:orange', linestyle='--')
     ax1.tick_params(axis='y', labelcolor='tab:blue')
 
