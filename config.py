@@ -21,6 +21,7 @@ TARGET_ANNUALIZED_RETURN = 0.10  # 目标年化收益率 10%
 
 # 回测参数
 BACKTEST_RUNS = 100  # 随机回测次数
+MAX_DROP_PERCENTAGE = 0.10 # 最大回撤百分比
 
 # 日志配置
 LOG_DIR = "log"

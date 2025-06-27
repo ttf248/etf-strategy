@@ -146,8 +146,8 @@ def find_optimal_drop_percentage(df):
     """通过多次回测找到最优的下跌加仓百分比"""
     logger.info("开始寻找最优加仓百分比...")
     
-    # 我们将测试从 1% 到 20% 的所有下跌百分比
-    drop_percentages = np.arange(0.01, 0.21, 0.01)
+    # 我们将测试从 1% 到 MAX_DROP_PERCENTAGE 的所有下跌百分比
+    drop_percentages = np.arange(0.01, config.MAX_DROP_PERCENTAGE + 0.01, 0.01)
     results = []
 
     # 获取所有可能的开始日期
