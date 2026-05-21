@@ -12,6 +12,7 @@
 
 - 日线 `download` / `run` 在不传 `--start/--end` 时，会先尽量下载 Yahoo 可提供的全历史
 - 仓库里提交的 `data/processed/1810_hk_daily.csv` 只是某次提交时的正式样本快照
+- 参数筛选不再只看“整段样本内单次最高分”，而是会额外检查多窗口稳健性
 
 ## 先说结论
 
@@ -22,6 +23,43 @@
 - `take_profit = 3%`
 
 这不是“拍脑袋挑的”，而是程序把一组候选参数全部跑完后，用统一评分公式选出来的。
+
+## 联网调研后，哪些方案比“单窗最高分”更靠谱
+
+这次补了一轮外部调研，结论很明确：如果参数筛选只看一整段样本内的最高分，过拟合风险会比较高。更常见、也更稳的做法主要有 3 类：
+
+1. 时间序列滚动验证 / Walk-Forward
+   参考：[scikit-learn `TimeSeriesSplit`](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.TimeSeriesSplit.html)
+   核心思想是：时间序列不能像普通机器学习那样随便打乱，应该按时间顺序拆成多个窗口，看同一组参数是否在不同阶段都还说得过去。
+
+2. 大搜索空间下使用更高效的优化器
+   参考：[backtesting.py `Backtest.optimize`](https://kernc.github.io/backtesting.py/doc/backtesting/backtesting.html#backtesting.backtesting.Backtest.optimize)、[Optuna `TPESampler`](https://optuna.readthedocs.io/en/stable/reference/samplers/generated/optuna.samplers.TPESampler.html)
+   如果参数维度继续增加，纯穷举会越来越慢，这时候通常会换成更高效的搜索器，而不是把组合全跑一遍。
+
+3. 多目标优化，而不是只压一个分数
+   参考：[Optuna 多目标优化教程](https://optuna.readthedocs.io/en/stable/tutorial/20_recipes/002_multi_objective.html)
+   很多策略不会把“收益、回撤、稳定性”硬压成单一目标，而是同时看多个维度，再从 Pareto 前沿里挑更平衡的参数。
+
+## 本项目现在落地的是哪一版
+
+当前项目没有直接引入外部优化器，原因是现在的搜索空间还不大：
+
+- 日线：`5 x 4 x 3 = 60` 组
+- 分钟线：`5 x 4 x 4 = 80` 组
+
+这个量级继续穷举，优点反而更明显：
+
+- 结果完全可复现
+- 每一组参数都真实跑过
+- 更容易解释“为什么选中它”
+
+但为了避免“只在一小段样本里凑巧好看”，这次又补了一层多窗口稳健筛选：
+
+1. 先把所有候选参数全部穷举跑完。
+2. 先算整段样本内综合分 `Score`。
+3. 再把样本内按时间顺序拆成多个连续窗口，分别重跑同一组参数。
+4. 汇总这些窗口结果，计算稳健分 `RobustScore`。
+5. 最终优先选择稳健分更高的参数，而不是单窗最高分最亮的孤点。
 
 ## 参数搜索到底怎么做
 
@@ -89,6 +127,16 @@
   - 样本起点底仓实际买了多少股。
 - `GridUnitsPerLevel`
   - 每一层网格固定买多少股。
+- `WalkForwardScoreMean`
+  - 同一组参数在多个时间窗口里的平均综合分。
+- `WalkForwardScoreMin`
+  - 同一组参数在最差那个窗口里的综合分。
+- `WalkForwardReturnStdPct`
+  - 同一组参数在多个窗口里的收益波动有多大。
+- `WalkForwardPositiveWindowRatio`
+  - 多窗口里有多少比例是正收益。
+- `RobustScore`
+  - 最终真正用来排第一的稳健分。
 
 ## 最优参数不是只看“谁收益最高”
 
@@ -111,9 +159,29 @@ Score = ReturnPct - abs(MaxDrawdownPct) * 0.7 + CostReductionPct * 0.5
 
 所以现在是把收益、回撤、成本下降三个目标放在一起评分。
 
+但现在还多了一层稳健筛选：
+
+```text
+RobustScore = 0.6 x WalkForwardScoreMean
+            + 0.4 x WalkForwardScoreMin
+            - 0.25 x WalkForwardReturnStdPct
+```
+
+翻成人话就是：
+
+- 平均表现要过关
+- 最差那一段不能太差
+- 不喜欢“某一段暴赚、某一段暴亏”的高波动参数
+
+所以现在的顺序已经变成：
+
+1. 先看整段样本内有没有基本可用性
+2. 再看这组参数在多个时间窗口里稳不稳
+3. 最后才把它拿去样本外验证
+
 ## 为什么最后选到 `7% / 5 / 3%`
 
-程序在 `outputs/optimize/in_sample_grid_search.csv` 里保存了 60 组结果，按评分从高到低排序。
+程序在 `outputs/optimize/in_sample_grid_search.csv` 里保存了 60 组结果，当前会优先按 `RobustScore` 从高到低排序，而不是只按单个 `Score` 排。
 
 最终最优参数是：
 
@@ -141,8 +209,8 @@ Score = ReturnPct - abs(MaxDrawdownPct) * 0.7 + CostReductionPct * 0.5
 
 要注意两件事：
 
-1. 这个“最优”是相对当前候选参数集合和评分公式的最优，不代表放到别的年份也一定最优。
-2. 这个“最优”也不代表绝对赚钱。它只是说明在这轮样本里，这组参数综合起来最不差。
+1. 这个“最优”是相对当前候选参数集合、稳健性规则和评分公式的最优，不代表放到别的年份也一定最优。
+2. 这个“最优”也不代表绝对赚钱。它只是说明在这轮样本里，这组参数综合起来更稳、也更不容易只靠单窗碰运气。
 
 ## “用了网格，我到底赚了多少钱”怎么理解
 

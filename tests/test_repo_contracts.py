@@ -39,6 +39,12 @@ class RepoContractTests(unittest.TestCase):
                     msg=f"{markdown_file.relative_to(REPO_ROOT)} -> {target} 不存在",
                 )
 
+    def test_readme_top_has_report_shortcuts(self) -> None:
+        readme_lines = (REPO_ROOT / "README.md").read_text(encoding="utf-8").splitlines()[:20]
+        top_block = "\n".join(readme_lines)
+        self.assertIn("reports/1810_hk_grid_report.md", top_block)
+        self.assertIn("reports/minute/1810_hk_15m_grid_report.md", top_block)
+
     def test_reports_keep_two_layer_structure(self) -> None:
         report_files = [
             REPO_ROOT / "reports" / "1810_hk_grid_report.md",

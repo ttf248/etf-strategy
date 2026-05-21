@@ -2,6 +2,14 @@
 
 基于 Yahoo Finance 数据的小型策略回测项目，当前默认用 `1810.HK` 作为开发验证样本，研究“样本起点建仓 + 固定股数网格交易”的回测流程。
 
+## 快速跳转
+
+- [最新日线正式报告](reports/1810_hk_grid_report.md)
+- [最新 15 分钟正式报告](reports/minute/1810_hk_15m_grid_report.md)
+- [参数筛选方法说明](doc/grid_parameter_search.md)
+- [回测报告阅读指南](doc/report_reading_guide.md)
+- [项目导航与阅读顺序](doc/index.md)
+
 这个仓库现在的定位不是“一次性脚本”，而是“可重复运行的策略研究工程”：
 
 - 所有命令统一从根目录 `main.py` 进入
