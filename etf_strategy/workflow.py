@@ -15,6 +15,17 @@ from loguru import logger
 
 from etf_strategy.config import DEFAULT_OUTPUT_DIR
 from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
+from etf_strategy.settings import (
+    DAILY_GRID_COUNTS,
+    DAILY_SPACINGS,
+    DAILY_TAKE_PROFITS,
+    DEFAULT_LOOKBACK_DAYS,
+    DEFAULT_VALIDATION_RATIO,
+    DEFAULT_VALIDATION_START,
+    INTRADAY_GRID_COUNTS,
+    INTRADAY_SPACINGS,
+    INTRADAY_TAKE_PROFITS,
+)
 from etf_strategy.strategy.grid import (
     load_price_frame,
     optimize_grid_parameters,
@@ -34,17 +45,17 @@ def run_optimization_workflow(
     data_path: str | Path,
     symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "optimize",
-    validation_start: str = "2026-01-01",
-    lookback_days: int = 120,
+    validation_start: str = DEFAULT_VALIDATION_START,
+    lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     spacings: list[float] | None = None,
     grid_counts: list[int] | None = None,
     take_profits: list[float] | None = None,
 ) -> dict[str, object]:
     """执行样本内参数搜索并保存结果。"""
     started_at = perf_counter()
-    spacings = spacings or [0.03, 0.04, 0.05, 0.06, 0.07]
-    grid_counts = grid_counts or [4, 5, 6, 7]
-    take_profits = take_profits or [0.03, 0.05, 0.07]
+    spacings = spacings or list(DAILY_SPACINGS)
+    grid_counts = grid_counts or list(DAILY_GRID_COUNTS)
+    take_profits = take_profits or list(DAILY_TAKE_PROFITS)
 
     # 先解析 symbol 和 lot rule，避免回测跑到一半才发现交易单位不支持。
     resolved_symbol = _resolve_symbol(symbol, data_path)
@@ -106,8 +117,8 @@ def run_validation_workflow(
     take_profit_pct: float,
     symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "validation",
-    validation_start: str = "2026-01-01",
-    lookback_days: int = 120,
+    validation_start: str = DEFAULT_VALIDATION_START,
+    lookback_days: int = DEFAULT_LOOKBACK_DAYS,
 ) -> dict[str, object]:
     """执行 2026 样本外验证。"""
     from etf_strategy.strategy.grid import run_grid_backtest
@@ -154,8 +165,8 @@ def run_full_workflow(
     data_path: str | Path,
     symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR,
-    validation_start: str = "2026-01-01",
-    lookback_days: int = 120,
+    validation_start: str = DEFAULT_VALIDATION_START,
+    lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     spacings: list[float] | None = None,
     grid_counts: list[int] | None = None,
     take_profits: list[float] | None = None,
@@ -211,16 +222,16 @@ def run_minute_optimization_workflow(
     data_path: str | Path,
     symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "minute" / "optimize",
-    validation_ratio: float = 0.25,
+    validation_ratio: float = DEFAULT_VALIDATION_RATIO,
     spacings: list[float] | None = None,
     grid_counts: list[int] | None = None,
     take_profits: list[float] | None = None,
 ) -> dict[str, object]:
     """执行分钟线样本内参数搜索并保存结果。"""
     started_at = perf_counter()
-    spacings = spacings or [0.01, 0.015, 0.02, 0.03, 0.04]
-    grid_counts = grid_counts or [4, 5, 6, 7]
-    take_profits = take_profits or [0.01, 0.015, 0.02, 0.03]
+    spacings = spacings or list(INTRADAY_SPACINGS)
+    grid_counts = grid_counts or list(INTRADAY_GRID_COUNTS)
+    take_profits = take_profits or list(INTRADAY_TAKE_PROFITS)
 
     resolved_symbol = _resolve_symbol(symbol, data_path)
     lot_rule = resolve_lot_size_rule(resolved_symbol)
@@ -280,7 +291,7 @@ def run_minute_validation_workflow(
     take_profit_pct: float,
     symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "minute" / "validation",
-    validation_ratio: float = 0.25,
+    validation_ratio: float = DEFAULT_VALIDATION_RATIO,
 ) -> dict[str, object]:
     """执行分钟线样本外验证。"""
     from etf_strategy.strategy.grid import run_grid_backtest
@@ -326,7 +337,7 @@ def run_minute_full_workflow(
     data_path: str | Path,
     symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "minute",
-    validation_ratio: float = 0.25,
+    validation_ratio: float = DEFAULT_VALIDATION_RATIO,
     spacings: list[float] | None = None,
     grid_counts: list[int] | None = None,
     take_profits: list[float] | None = None,

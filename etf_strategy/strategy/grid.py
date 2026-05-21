@@ -20,6 +20,14 @@ import numpy as np
 import pandas as pd
 from backtesting import Backtest, Strategy
 
+from etf_strategy.settings import (
+    DEFAULT_LOOKBACK_DAYS,
+    DEFAULT_VALIDATION_RATIO,
+    DEFAULT_VALIDATION_START,
+    DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
+    DEFAULT_WALK_FORWARD_WINDOW_COUNT,
+)
+
 
 TOTAL_CAPITAL = 200000.0
 INITIAL_CASH_RATIO = 0.5
@@ -314,8 +322,8 @@ def load_price_frame(data_path: str | Path) -> pd.DataFrame:
 
 def build_sample_window(
     data: pd.DataFrame,
-    validation_start: str = "2026-01-01",
-    lookback_days: int = 120,
+    validation_start: str = DEFAULT_VALIDATION_START,
+    lookback_days: int = DEFAULT_LOOKBACK_DAYS,
 ) -> DeclineWindow:
     """构建日线样本内/样本外窗口摘要。
 
@@ -385,8 +393,8 @@ def _events_to_frame(events: list[dict[str, object]]) -> pd.DataFrame:
 
 def build_walk_forward_windows(
     data: pd.DataFrame,
-    window_count: int = 3,
-    min_window_size: int = 20,
+    window_count: int = DEFAULT_WALK_FORWARD_WINDOW_COUNT,
+    min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
 ) -> list[pd.DataFrame]:
     """把样本内区间按时间顺序拆成多个连续窗口。
 
@@ -646,8 +654,8 @@ def optimize_grid_parameters(
 
 def split_in_sample_and_validation(
     data: pd.DataFrame,
-    validation_start: str = "2026-01-01",
-    lookback_days: int = 120,
+    validation_start: str = DEFAULT_VALIDATION_START,
+    lookback_days: int = DEFAULT_LOOKBACK_DAYS,
 ) -> tuple[DeclineWindow, pd.DataFrame, pd.DataFrame]:
     """拆分样本内和样本外数据。"""
     decline_window = build_sample_window(
@@ -664,7 +672,7 @@ def split_in_sample_and_validation(
 
 def split_intraday_in_sample_and_validation(
     data: pd.DataFrame,
-    validation_ratio: float = 0.25,
+    validation_ratio: float = DEFAULT_VALIDATION_RATIO,
 ) -> tuple[DeclineWindow, pd.DataFrame, pd.DataFrame]:
     """按最近分钟线样本拆分样本内和样本外数据。
 

@@ -32,6 +32,11 @@ from etf_strategy.data.yahoo import (
 )
 from etf_strategy.logging_utils import configure_logging
 from etf_strategy.reporting import build_minute_report_markdown, build_report_markdown
+from etf_strategy.settings import (
+    DEFAULT_LOOKBACK_DAYS,
+    DEFAULT_VALIDATION_RATIO,
+    DEFAULT_VALIDATION_START,
+)
 from etf_strategy.workflow import (
     run_full_workflow,
     run_minute_full_workflow,
@@ -76,9 +81,9 @@ def build_parser() -> argparse.ArgumentParser:
     optimize_parser.add_argument("--symbol", default=None, help="Yahoo Finance 标的代码；不传时尝试从文件名推断")
     optimize_parser.add_argument("--interval", default="1d", help="数据周期，决定使用日线还是分钟线工作流")
     optimize_parser.add_argument("--output-dir", default=None, help="参数搜索结果输出目录")
-    optimize_parser.add_argument("--validation-start", default="2026-01-01", help="样本外起始日期")
-    optimize_parser.add_argument("--lookback-days", type=int, default=120, help="样本内回看天数")
-    optimize_parser.add_argument("--validation-ratio", type=float, default=0.25, help="分钟线样本外比例")
+    optimize_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
+    optimize_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="样本内回看天数")
+    optimize_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
 
     backtest_parser = subparsers.add_parser("backtest", help="执行样本外验证")
     backtest_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
@@ -103,9 +108,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="单层止盈比例，例如 0.03 表示某层买入后反弹 3%% 就卖出该层",
     )
     backtest_parser.add_argument("--output-dir", default=None, help="样本外验证输出目录")
-    backtest_parser.add_argument("--validation-start", default="2026-01-01", help="样本外起始日期")
-    backtest_parser.add_argument("--lookback-days", type=int, default=120, help="样本内回看天数")
-    backtest_parser.add_argument("--validation-ratio", type=float, default=0.25, help="分钟线样本外比例")
+    backtest_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
+    backtest_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="样本内回看天数")
+    backtest_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
 
     report_parser = subparsers.add_parser("report", help="生成图表与中文报告")
     report_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
@@ -113,9 +118,9 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser.add_argument("--interval", default="1d", help="数据周期，决定使用日线还是分钟线工作流")
     report_parser.add_argument("--output-dir", default=None, help="工作流中间文件目录")
     report_parser.add_argument("--report-dir", default=None, help="图表与 Markdown 报告输出目录")
-    report_parser.add_argument("--validation-start", default="2026-01-01", help="样本外起始日期")
-    report_parser.add_argument("--lookback-days", type=int, default=120, help="样本内回看天数")
-    report_parser.add_argument("--validation-ratio", type=float, default=0.25, help="分钟线样本外比例")
+    report_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
+    report_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="样本内回看天数")
+    report_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
 
     run_parser = subparsers.add_parser("run", help="串联下载、寻参、验证和报告生成")
     run_parser.add_argument("--symbol", default=DEFAULT_SYMBOL, help="Yahoo Finance 标的代码")
@@ -130,9 +135,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument("--output-dir", default=None, help="完整工作流输出目录")
     run_parser.add_argument("--report-dir", default=None, help="图表与 Markdown 报告输出目录")
-    run_parser.add_argument("--validation-start", default="2026-01-01", help="样本外起始日期")
-    run_parser.add_argument("--lookback-days", type=int, default=120, help="样本内回看天数")
-    run_parser.add_argument("--validation-ratio", type=float, default=0.25, help="分钟线样本外比例")
+    run_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
+    run_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="样本内回看天数")
+    run_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
 
     return parser
 
