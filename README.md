@@ -1,6 +1,6 @@
 # ETF Strategy
 
-基于 Yahoo Finance 数据的小型策略回测项目，当前聚焦小米港股 `1810.HK` 的样本起点建仓 + 网格交易验证。
+基于 Yahoo Finance 数据的小型策略回测项目，当前聚焦小米港股 `1810.HK` 的样本起点建仓 + 固定股数网格交易验证。
 
 项目目标已经从早期的“ETF 补仓脚本”调整为“可重复运行的策略研究工程”。现在的仓库重点是：
 
@@ -25,6 +25,13 @@
   - 总资金 `200000`
   - 样本开始时用 `50%` 资金建立底仓
   - 剩余 `50%` 资金用于双向网格
+- 下单规则：
+  - 底仓和网格都按“股数”下单，不再按“固定金额”下单
+  - 先查询标的最小交易单位，再按整手向下取整
+  - 当前支持：
+    - 港股：抓取公开页面里的 `Lot Size`
+    - 美股：默认 `1` 股
+    - 其他市场：直接报错
 - 选优目标：收益、最大回撤、成本下降幅度的综合评分
 
 ### 参数怎么理解
@@ -32,7 +39,7 @@
 当前日线最优参数是：
 
 - `grid_spacing = 7%`
-- `grid_count = 7`
+- `grid_count = 5`
 - `take_profit = 3%`
 
 这三个参数在当前实现里的实际含义是：
@@ -43,8 +50,12 @@
   - 如果底仓建仓价是 `55.85`，那么第 1 层大约在 `51.94`，第 2 层大约在 `48.03`。
 - `grid_count`
   - 表示最多准备多少层网格仓位。
-  - 例如 `7` 的含义是：剩余那 `100000` 网格资金会被拆成 `7` 份预算，每层约 `14285.71`。
-  - 这 `7` 层不是一次性全买，而是只有跌到对应价位才触发对应那一层。
+  - 例如 `5` 的含义是：最多允许开启 `5` 层固定股数网格仓位。
+  - 它不再表示“把剩余资金拆成几份预算”；现在每一层买入的都是同样的固定股数。
+  - 当前这组日线最优参数里：
+    - 底仓固定数量：`1600` 股
+    - 单层网格固定数量：`200` 股
+  - 这 `5` 层不是一次性全买，而是只有跌到对应价位才触发对应那一层。
 - `take_profit`
   - 表示某一层网格买入后，价格从该层买入价反弹多少就把这一层卖掉。
   - 例如 `3%` 的含义是：某层如果在 `48.00` 买入，只要涨到约 `49.44`，这一层就会止盈卖出。
@@ -53,7 +64,7 @@
 一句话概括：
 
 - `grid_spacing` 决定“跌多少再补一层”
-- `grid_count` 决定“最多补几层、每层分多少钱”
+- `grid_count` 决定“最多补几层固定股数仓位”
 - `take_profit` 决定“某层买进去后，反弹多少先兑现这一层”
 
 ## 项目结构
@@ -107,7 +118,7 @@ py -3.13 main.py download --symbol 1810.HK --interval 15m --period 60d --proxy h
 ### 2. 样本内参数搜索
 
 ```powershell
-py -3.13 main.py optimize --data data/processed/xiaomi_1810_hk_daily.csv
+py -3.13 main.py optimize --data data/processed/xiaomi_1810_hk_daily.csv --symbol 1810.HK
 ```
 
 输出目录默认是 `outputs/optimize/`，会生成：
@@ -116,10 +127,12 @@ py -3.13 main.py optimize --data data/processed/xiaomi_1810_hk_daily.csv
 - `in_sample_grid_search.csv`
 - `in_sample_best_*.csv`
 
+如果你的 CSV 文件名不是类似 `1810_hk_1d.csv`、`xiaomi_1810_hk_daily.csv` 这种可推断格式，建议显式传 `--symbol`。
+
 ### 3. 使用指定参数做日线样本外验证
 
 ```powershell
-py -3.13 main.py backtest --data data/processed/xiaomi_1810_hk_daily.csv --grid-spacing 0.07 --grid-count 7 --take-profit 0.03
+py -3.13 main.py backtest --data data/processed/xiaomi_1810_hk_daily.csv --symbol 1810.HK --grid-spacing 0.07 --grid-count 5 --take-profit 0.03
 ```
 
 输出目录默认是 `outputs/validation/`。
@@ -127,13 +140,13 @@ py -3.13 main.py backtest --data data/processed/xiaomi_1810_hk_daily.csv --grid-
 上面这个例子翻成中文就是：
 
 - 每跌 `7%` 开下一层网格
-- 最多开 `7` 层
+- 最多开 `5` 层固定股数网格
 - 某层买入后，反弹 `3%` 就把这一层卖掉
 
 ### 4. 直接生成图表和中文报告
 
 ```powershell
-py -3.13 main.py report --data data/processed/xiaomi_1810_hk_daily.csv
+py -3.13 main.py report --data data/processed/xiaomi_1810_hk_daily.csv --symbol 1810.HK
 ```
 
 会重新执行样本内寻参与样本外验证，并输出到：
@@ -144,7 +157,7 @@ py -3.13 main.py report --data data/processed/xiaomi_1810_hk_daily.csv
 如果要生成 15 分钟线报告：
 
 ```powershell
-py -3.13 main.py report --data data/processed/xiaomi_1810_hk_15m.csv --interval 15m
+py -3.13 main.py report --data data/processed/xiaomi_1810_hk_15m.csv --symbol 1810.HK --interval 15m
 ```
 
 对应输出到：
@@ -205,4 +218,5 @@ py -3.13 -m unittest tests.test_grid_strategy
 
 - 使用 `backtesting.py` 做订单撮合和权益曲线，避免继续维护手写回测循环
 - Yahoo 数据优先走 `yfinance`，失败后自动回退到 Yahoo Chart API，解决大陆环境限流和区域限制
+- 固定股数下单先查最小交易单位，避免出现港股按非整手数量回测、结果不符合真实交易规则
 - 报告里同时保留收益、回撤、成本摊薄和交易记录，不把“摊薄成本”误当成“绝对赚钱”
