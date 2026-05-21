@@ -3,8 +3,5 @@ __pycache__
 .pytest_cache
 .venv
 outputs
-data/processed/*
-!data/processed/1810_hk_daily.csv
-!data/processed/1810_hk_15m.csv
 data/processed/*_test.csv
 *.pyc
