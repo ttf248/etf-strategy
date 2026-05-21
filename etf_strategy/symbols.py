@@ -6,6 +6,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from etf_strategy.data.southbound import (
+    build_southbound_source_label,
+    load_southbound_shanghai_snapshot,
+    normalize_southbound_symbol,
+)
+
 
 @dataclass(frozen=True)
 class SymbolSpec:
@@ -53,6 +59,28 @@ HSTECH_CONSTITUENTS: tuple[SymbolSpec, ...] = (
 
 CN_ETF_513050 = SymbolSpec("513050.SS", "中概互联网ETF", "国内ETF", "用户指定追加标的")
 
+
+def _build_southbound_shanghai_constituents() -> tuple[SymbolSpec, ...]:
+    rows = load_southbound_shanghai_snapshot()
+    constituents: list[SymbolSpec] = []
+    for row in rows:
+        security_type = row["SecurityType"] or "股票"
+        category = "港股通沪ETF" if security_type.upper() == "ETF" else "港股通沪股票"
+        name = row["AbbrCn"] or row["AbbrEn"] or row["SecurityCode"]
+        constituents.append(
+            SymbolSpec(
+                normalize_southbound_symbol(row["SecurityCode"]),
+                name,
+                category,
+                build_southbound_source_label(row["UpdateDate"]),
+            )
+        )
+    return tuple(constituents)
+
+
+SOUTHBOUND_SHANGHAI_CONSTITUENTS: tuple[SymbolSpec, ...] = _build_southbound_shanghai_constituents()
+
 SYMBOL_SETS: dict[str, tuple[SymbolSpec, ...]] = {
     "hstech_plus_513050": (*HSTECH_CONSTITUENTS, CN_ETF_513050),
+    "southbound_shanghai_all": SOUTHBOUND_SHANGHAI_CONSTITUENTS,
 }

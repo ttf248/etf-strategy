@@ -5,6 +5,7 @@
 - 正式报告总数：`34`，成功 `31`，失败 `3`。
 - 这份文件是唯一正式汇总报告；单个合约、批量合约、单策略报告和多策略对比报告都收录在同一张表里。
 - 主键口径：`symbol + interval + report_view`；同一视图重复生成时会覆盖旧记录。
+- 样本外净收益率高于 `5.00%` 的记录会在总表中加粗，便于先看高收益候选。
 
 ## 报告列表
 
@@ -26,7 +27,7 @@
 | 恒生科技成分股 | 1698.HK | TME - SW | 15m | grid | 网格 | 0.71% | 0.49% | ok | 间距 3.00% / 层数 7 / 止盈 1.50% | [打开报告](1698_hk/minute/1698_hk_15m_grid_report.md) |
 | 恒生科技成分股 | 1810.HK | XIAOMI - W | 15m | compare | 多策略对比 | 0.00% | 0.00% | ok | 推荐 网格；对比 网格 / 分钟急跌反抽 / 分钟反抽+冲高回落过滤 | [打开报告](1810_hk/minute/1810_hk_15m_strategy_compare_report.md) |
 | 恒生科技成分股 | 1810.HK | XIAOMI - W | 15m | grid | 网格 | 0.00% | 0.00% | ok | 间距 4.00% / 层数 7 / 止盈 1.00% | [打开报告](1810_hk/minute/1810_hk_15m_grid_report.md) |
-| 恒生科技成分股 | 1810.HK | XIAOMI - W | 1d | compare | 多策略对比 | 9.66% | 4.35% | ok | 推荐 日线超跌反弹；对比 网格 / 日线超跌反弹 | [打开报告](1810_hk/daily/1810_hk_daily_strategy_compare_report.md) |
+| 恒生科技成分股 | **1810.HK** | **XIAOMI - W** | 1d | compare | 多策略对比 | **9.66%** | 4.35% | ok | **推荐 日线超跌反弹；对比 网格 / 日线超跌反弹** | [打开报告](1810_hk/daily/1810_hk_daily_strategy_compare_report.md) |
 | 恒生科技成分股 | 1810.HK | XIAOMI - W | 1d | grid | 网格 | -1.71% | 3.42% | ok | 间距 7.00% / 层数 7 / 止盈 3.00% | [打开报告](1810_hk/daily/1810_hk_grid_report.md) |
 | 恒生科技成分股 | 2015.HK | LI AUTO - W | 15m | grid | 网格 | -1.41% | 2.11% | ok | 间距 4.00% / 层数 4 / 止盈 3.00% | [打开报告](2015_hk/minute/2015_hk_15m_grid_report.md) |
 | 恒生科技成分股 | 2382.HK | SUNNY OPTICAL | 15m | grid | 网格 | 0.28% | 0.15% | ok | 间距 2.00% / 层数 6 / 止盈 2.00% | [打开报告](2382_hk/minute/2382_hk_15m_grid_report.md) |

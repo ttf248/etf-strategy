@@ -153,6 +153,8 @@
 - `main.py` 会主动尝试把 Windows 控制台切到 UTF-8，`.vscode/launch.json` 也会显式传入 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`
 - `report` 命令会输出 `[1/2] -> [2/2]` 进度，`run` 命令会输出 `[1/3] -> [2/3] -> [3/3]` 顶层进度
 - `batch` 命令用于多标的研究汇总，默认分钟线周期为 `15m`，把单标的结果写到 `outputs/batch/<symbol>/`，批量汇总写到 `outputs/batch/batch_summary.csv`，所有单标的/批量/单策略/多策略对比都会统一回写到 `reports/report_index.md`，单标的正式报告写到 `reports/<symbol>/minute/`
+- 内置标的池除了 `hstech_plus_513050`，还支持 `southbound_shanghai_all`；后者基于仓库内快照 `data/reference/southbound_shanghai_eligible_snapshot.csv`，来源是上交所官方港股通沪名单
+- `reports/report_index.md` 会把样本外净收益率高于 `5%` 的记录加粗，便于在大批量回测后快速定位高收益候选
 
 这里没有继续使用参考示例里的 `type=python`，因为微软当前 Python 调试文档已经把 `debugpy` 作为 Python Debugger 扩展的调试类型；旧写法在部分 VS Code 环境里会导致无法启动调试。
 

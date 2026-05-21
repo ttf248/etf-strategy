@@ -1516,3 +1516,45 @@
 - `py -3.13 -m unittest tests.test_grid_strategy tests.test_repo_contracts tests.test_yahoo_data`
 - `py -3.13 -m compileall etf_strategy tests`
 - `git diff --check`
+
+## 港股通沪全量网格回测入口
+
+### 状态
+
+已完成代码实现，待本轮验证和提交。
+
+### 修改方案
+
+新增上交所官方港股通沪名单抓取与仓库快照，扩展 `batch --symbol-set` 支持 `southbound_shanghai_all`，并让统一汇总报告对样本外净收益率高于 `5%` 的合约做加粗标记。
+
+### 修改内容
+
+- 数据层：
+  - 新增 `etf_strategy/data/southbound.py`
+  - 通过上交所官方接口 `COMMON_SSE_JYFW_HGT_XXPL_BDZQQD_L` 抓取港股通沪名单
+  - 新增仓库快照 `data/reference/southbound_shanghai_eligible_snapshot.csv`
+- 标的池：
+  - `etf_strategy/symbols.py` 新增 `southbound_shanghai_all`
+  - 当前快照口径：`2026-05-21`，共 `633` 只，含 `602` 股票和 `31` ETF
+- 汇总报告：
+  - `etf_strategy/reporting.py` 把样本外净收益率高于 `5%` 的记录加粗
+  - `batch` 写统一索引时显式透传当前标的池的 `category/name/source`，避免与恒科等其他标的池互相覆盖分类
+- 文档：
+  - `README.md`
+  - `doc/index.md`
+  - `doc/development_guide.md`
+- 测试：
+  - 补充上交所 JSONP 解析、快照刷新/读取测试
+  - 补充 `southbound_shanghai_all` 参数解析、统一汇总加粗和批量分类透传测试
+
+### 设计取舍
+
+- 运行时默认从仓库快照读取港股通沪名单，不在 CLI 解析阶段联网，避免因为外部网络失败导致命令都无法启动。
+- 官方抓取逻辑和本地快照读取分层实现，后续更新名单时只需要刷新快照，不需要手改 `symbols.py` 常量。
+- “收益率不错”先固定用样本外净收益率 `> 5%` 作为高亮阈值，不叠加额外回撤过滤，保持总表规则简单可读。
+
+### 验证
+
+- `py -3.13 -m unittest tests.test_grid_strategy tests.test_repo_contracts tests.test_yahoo_data`
+- `py -3.13 -m compileall etf_strategy tests`
+- `git diff --check`

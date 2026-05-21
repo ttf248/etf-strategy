@@ -1,10 +1,17 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pandas as pd
 
+from etf_strategy.data.southbound import (
+    build_southbound_source_label,
+    fetch_southbound_shanghai_eligible_rows,
+    load_southbound_shanghai_snapshot,
+    normalize_southbound_symbol,
+    refresh_southbound_shanghai_snapshot,
+)
 from etf_strategy.data.yahoo import DEFAULT_DAILY_PERIOD, download_price_bars, merge_price_bars, save_price_bars
 
 
@@ -115,6 +122,44 @@ class YahooDataTests(unittest.TestCase):
                     period="60d",
                     proxy="http://127.0.0.1:7897",
                 )
+
+    @patch("etf_strategy.data.southbound.requests.get")
+    def test_fetch_southbound_shanghai_eligible_rows_parses_official_jsonp(self, mock_get: Mock) -> None:
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.text = (
+            'jsonpCallback({"pageHelp":{"data":['
+            '{"SECURITY_CODE":"1","ABBR_EN":"CKH HOLDINGS","ABBR_CN":"长和　　　　　　","SECURITY_TYPE":"股票","UPDATE_DATE":"2026-05-21"},'
+            '{"SECURITY_CODE":"2800","ABBR_EN":"TRACKER FUND","ABBR_CN":"盈富基金","SECURITY_TYPE":"ETF","UPDATE_DATE":"2026-05-21"}]}})'
+        )
+        mock_get.return_value = mock_response
+
+        rows = fetch_southbound_shanghai_eligible_rows()
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["SecurityCode"], "00001")
+        self.assertEqual(rows[0]["AbbrCn"], "长和")
+        self.assertEqual(rows[1]["SecurityType"], "ETF")
+        self.assertEqual(normalize_southbound_symbol(rows[1]["SecurityCode"]), "02800.HK")
+
+    @patch("etf_strategy.data.southbound.requests.get")
+    def test_refresh_and_load_southbound_shanghai_snapshot(self, mock_get: Mock) -> None:
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.text = (
+            'jsonpCallback({"pageHelp":{"data":['
+            '{"SECURITY_CODE":"5","ABBR_EN":"HSBC HOLDINGS","ABBR_CN":"汇丰控股","SECURITY_TYPE":"股票","UPDATE_DATE":"2026-05-21"}]}})'
+        )
+        mock_get.return_value = mock_response
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            snapshot_path = Path(temp_dir) / "southbound.csv"
+            refresh_southbound_shanghai_snapshot(snapshot_path=snapshot_path)
+            rows = load_southbound_shanghai_snapshot(snapshot_path=snapshot_path)
+
+        self.assertEqual(rows[0]["SecurityCode"], "00005")
+        self.assertEqual(rows[0]["AbbrCn"], "汇丰控股")
+        self.assertEqual(build_southbound_source_label(rows[0]["UpdateDate"]), "上交所港股通沪名单，数据截至 2026-05-21")
 
 
 if __name__ == "__main__":

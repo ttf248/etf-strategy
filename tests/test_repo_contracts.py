@@ -16,6 +16,7 @@ class RepoContractTests(unittest.TestCase):
     def test_default_sample_paths_exist(self) -> None:
         self.assertTrue((REPO_ROOT / DEFAULT_DATA_PATH).exists())
         self.assertTrue((REPO_ROOT / DEFAULT_MINUTE_DATA_PATH).exists())
+        self.assertTrue((REPO_ROOT / "data" / "reference" / "southbound_shanghai_eligible_snapshot.csv").exists())
 
     def test_document_links_resolve_to_existing_files(self) -> None:
         markdown_files = [

@@ -15,6 +15,8 @@ DEFAULT_MINUTE_PERIOD = "60d"
 # 中间结果与正式报告目录分开，方便重复回测时只替换输出而不污染文档目录。
 DEFAULT_OUTPUT_DIR = Path("outputs")
 DEFAULT_MINUTE_OUTPUT_DIR = DEFAULT_OUTPUT_DIR / "minute"
+DEFAULT_REFERENCE_DATA_DIR = Path("data/reference")
+DEFAULT_SOUTHBOUND_SHANGHAI_SNAPSHOT_PATH = DEFAULT_REFERENCE_DATA_DIR / "southbound_shanghai_eligible_snapshot.csv"
 DEFAULT_REPORT_ROOT = Path("reports")
 DEFAULT_REPORT_INDEX_PATH = DEFAULT_REPORT_ROOT / "report_index.md"
 DEFAULT_REPORT_REGISTRY_PATH = DEFAULT_REPORT_ROOT / "report_registry.csv"

@@ -26,6 +26,7 @@
 - 同时输出中间结果、图表、交易记录和中文报告，方便复盘
 - 回测命令默认使用 `realistic` 执行口径，计入可配置的手续费、滑点、仓位上限、停手机制和左侧行情强制退出对照
 - 批量入口默认支持恒生科技 30 只成分股和 `513050.SS` 的分钟线研究
+- 仓库也内置上交所官方港股通沪名单快照，可直接批量研究当前 `633` 只合资格港股与 ETF
 
 ## 你先从哪里开始
 
@@ -97,6 +98,24 @@ py -3.13 main.py batch --symbol-set hstech_plus_513050 --download --proxy http:/
 - 批量汇总：`outputs/batch/batch_summary.csv`
 - 统一汇总报告：`reports/report_index.md`
 - 单标的报告：`reports/<symbol>/minute/`
+
+### 3.1 批量生成港股通沪日线网格报告
+
+```powershell
+py -3.13 main.py batch --symbol-set southbound_shanghai_all --interval 1d --download --proxy http://127.0.0.1:7897 --jobs auto --cache-dir outputs/cache/southbound_daily
+```
+
+### 3.2 批量生成港股通沪 15 分钟网格报告
+
+```powershell
+py -3.13 main.py batch --symbol-set southbound_shanghai_all --interval 15m --download --proxy http://127.0.0.1:7897 --jobs auto --cache-dir outputs/cache/southbound_15m
+```
+
+补充说明：
+
+- `southbound_shanghai_all` 使用仓库内置的上交所官方快照 `data/reference/southbound_shanghai_eligible_snapshot.csv`
+- 当前快照更新日：`2026-05-21`
+- 统一汇总报告里，样本外净收益率高于 `5%` 的记录会加粗，方便先看高收益候选
 
 ## 文档导航
 
@@ -297,6 +316,10 @@ py -3.13 main.py batch --symbol-set hstech_plus_513050 --download --proxy http:/
 - 统一汇总报告：`reports/report_index.md`
 - 单标的中间结果：`outputs/batch/<symbol>/`
 - 单标的报告：`reports/<symbol>/minute/`
+
+也可以把 `--symbol-set` 换成：
+
+- `southbound_shanghai_all`：上交所官方港股通沪全量名单，当前 `633` 只（`602` 股票 + `31` ETF）
 
 如果希望批量运行前先下载并合并行情，加上 `--download`。批量入口仍然只做研究回测，不做实盘下单。
 

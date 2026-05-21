@@ -8,8 +8,9 @@ import pandas as pd
 from etf_strategy.cli import build_parser, handle_batch, handle_download, handle_run
 from etf_strategy.config import DEFAULT_DATA_PATH, DEFAULT_MINUTE_DATA_PATH, DEFAULT_MINUTE_OUTPUT_DIR
 from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
-from etf_strategy.reporting import build_report_index_entry, load_report_registry, register_report_index_entries
+from etf_strategy.reporting import build_report_index_entry, build_unified_report_index, load_report_registry, register_report_index_entries
 from etf_strategy.settings import build_execution_config
+from etf_strategy.symbols import SymbolSpec
 from etf_strategy.strategy.grid import (
     build_sample_window,
     build_walk_forward_windows,
@@ -254,6 +255,7 @@ class GridStrategyTests(unittest.TestCase):
                 "etf_strategy.cli.build_minute_report_markdown",
                 return_value="reports/1810_hk/minute/1810_hk_15m_grid_report.md",
             ),
+            patch("etf_strategy.cli._refresh_unified_report_index", return_value=Path("reports") / "report_index.md"),
             patch("builtins.print"),
         ):
             result = handle_run(args)
@@ -317,6 +319,15 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(args.interval, "15m")
         self.assertEqual(args.period, "60d")
 
+    def test_batch_parser_reads_southbound_shanghai_symbol_set(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(["batch", "--symbol-set", "southbound_shanghai_all", "--interval", "1d"])
+
+        self.assertEqual(args.command, "batch")
+        self.assertEqual(args.symbol_set, "southbound_shanghai_all")
+        self.assertEqual(args.interval, "1d")
+
     def test_batch_parser_reads_compare_strategy_arguments(self) -> None:
         parser = build_parser()
 
@@ -363,6 +374,8 @@ class GridStrategyTests(unittest.TestCase):
         }
 
         with tempfile.TemporaryDirectory() as temp_dir:
+            data_path = Path(temp_dir) / "00001_hk_daily.csv"
+            data_path.write_text("Date,Open,High,Low,Close,Volume\n2026-05-20,1,1,1,1,1\n", encoding="utf-8")
             args = parser.parse_args(
                 [
                     "batch",
@@ -453,6 +466,8 @@ class GridStrategyTests(unittest.TestCase):
         }
 
         with tempfile.TemporaryDirectory() as temp_dir:
+            data_path = Path(temp_dir) / "00001_hk_daily.csv"
+            data_path.write_text("Date,Open,High,Low,Close,Volume\n2026-05-20,1,1,1,1,1\n", encoding="utf-8")
             args = parser.parse_args(
                 [
                     "batch",
@@ -486,6 +501,79 @@ class GridStrategyTests(unittest.TestCase):
         self.assertIn("1810.HK", index_content)
         self.assertIn("| compare | 多策略对比 |", index_content)
         self.assertIn("推荐 分钟急跌反抽", index_content)
+
+    def test_handle_batch_uses_batch_symbol_spec_in_unified_report_index(self) -> None:
+        parser = build_parser()
+        workflow_result = {
+            "combined_summary_path": "outputs/batch/00001_hk/combined_summary.csv",
+            "optimization": {
+                "best_run": {
+                    "summary": {
+                        "GridSpacingPct": 2.0,
+                        "GridCount": 4,
+                        "TakeProfitPct": 1.0,
+                        "ReturnPct": 6.0,
+                        "NetReturnPct": 6.2,
+                    }
+                }
+            },
+            "validation": {
+                "run": {
+                    "summary": {
+                        "ReturnPct": 6.5,
+                        "NetReturnPct": 6.8,
+                        "MaxDrawdownPct": 3.2,
+                    }
+                }
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_path = Path(temp_dir) / "00001_hk_daily.csv"
+            data_path.write_text("Date,Open,High,Low,Close,Volume\n2026-05-20,1,1,1,1,1\n", encoding="utf-8")
+            args = parser.parse_args(
+                [
+                    "batch",
+                    "--symbol-set",
+                    "southbound_shanghai_all",
+                    "--interval",
+                    "1d",
+                    "--output-dir",
+                    str(Path(temp_dir) / "out"),
+                    "--report-dir",
+                    str(Path(temp_dir) / "reports"),
+                ]
+            )
+            with (
+                patch(
+                    "etf_strategy.cli._resolve_batch_symbols",
+                    return_value=(
+                        ["00001.HK"],
+                        {
+                            "00001.HK": SymbolSpec(
+                                "00001.HK",
+                                "长和",
+                                "港股通沪股票",
+                                "上交所港股通沪名单，数据截至 2026-05-21",
+                            )
+                        },
+                    ),
+                ),
+                patch("etf_strategy.cli._resolve_download_output_path", return_value=data_path),
+                patch("etf_strategy.cli.run_full_workflow", return_value=workflow_result),
+                patch(
+                    "etf_strategy.cli.build_report_markdown",
+                    return_value=Path(temp_dir) / "reports" / "00001_hk" / "daily" / "00001_hk_grid_report.md",
+                ),
+                patch("builtins.print"),
+            ):
+                result = handle_batch(args)
+
+            registry = load_report_registry(report_root=Path(temp_dir) / "reports")
+
+        self.assertEqual(result, 0)
+        self.assertEqual(registry.iloc[0]["Category"], "港股通沪股票")
+        self.assertIn("上交所港股通沪名单", registry.iloc[0]["Source"])
 
     def test_register_report_index_entries_prefers_new_record_over_legacy(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -524,6 +612,50 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(len(registry), 1)
         self.assertEqual(registry.iloc[0]["Note"], "新记录")
         self.assertEqual(registry.iloc[0]["ReportPath"], "1810_hk/minute/current_report.md")
+
+    def test_build_unified_report_index_bolds_good_return_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            report_root = Path(temp_dir) / "reports"
+            good_entry = build_report_index_entry(
+                report_path=report_root / "good.md",
+                symbol="00001.HK",
+                interval="1d",
+                report_view="grid",
+                strategy_kind="grid",
+                strategy_name="网格",
+                validation_return_pct=6.8,
+                max_drawdown_pct=3.2,
+                note="高收益样本",
+                category="港股通沪股票",
+                name="长和",
+                source="上交所港股通沪名单，数据截至 2026-05-21",
+                report_root=report_root,
+            )
+            normal_entry = build_report_index_entry(
+                report_path=report_root / "normal.md",
+                symbol="00002.HK",
+                interval="1d",
+                report_view="grid",
+                strategy_kind="grid",
+                strategy_name="网格",
+                validation_return_pct=4.9,
+                max_drawdown_pct=2.1,
+                note="普通样本",
+                category="港股通沪股票",
+                name="中电控股",
+                source="上交所港股通沪名单，数据截至 2026-05-21",
+                report_root=report_root,
+            )
+            register_report_index_entries([good_entry, normal_entry], report_root=report_root)
+            index_path = build_unified_report_index(report_root=report_root)
+            index_content = index_path.read_text(encoding="utf-8")
+
+        self.assertIn("**00001.HK**", index_content)
+        self.assertIn("**长和**", index_content)
+        self.assertIn("**6.80%**", index_content)
+        self.assertIn("**高收益样本**", index_content)
+        self.assertIn("00002.HK", index_content)
+        self.assertNotIn("**00002.HK**", index_content)
 
     def test_handle_batch_stops_when_download_fails(self) -> None:
         parser = build_parser()

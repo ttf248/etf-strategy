@@ -28,6 +28,10 @@ from etf_strategy.config import (
     DEFAULT_SYMBOL,
 )
 from etf_strategy.symbols import CN_ETF_513050, HSTECH_CONSTITUENTS, SymbolSpec
+from etf_strategy.symbols import SOUTHBOUND_SHANGHAI_CONSTITUENTS
+
+
+GOOD_RETURN_HIGHLIGHT_THRESHOLD_PCT = 5.0
 
 
 def configure_matplotlib() -> None:
@@ -59,6 +63,8 @@ REPORT_INDEX_COLUMNS = [
 def _symbol_specs_by_symbol() -> dict[str, SymbolSpec]:
     specs = {spec.symbol.upper(): spec for spec in HSTECH_CONSTITUENTS}
     specs[CN_ETF_513050.symbol.upper()] = CN_ETF_513050
+    for spec in SOUTHBOUND_SHANGHAI_CONSTITUENTS:
+        specs.setdefault(spec.symbol.upper(), spec)
     return specs
 
 
@@ -263,22 +269,32 @@ def build_unified_report_index(report_root: str | Path = DEFAULT_REPORT_ROOT) ->
     for row in registry.sort_values(["Category", "Symbol", "Interval", "ReportView"]).itertuples(index=False):
         report_target = str(row.ReportPath)
         report_link = f"[打开报告]({report_target})" if report_target else "未生成"
+        highlight_good_return = (
+            str(row.Status) == "ok"
+            and not pd.isna(row.ValidationNetReturnPct)
+            and float(row.ValidationNetReturnPct) > GOOD_RETURN_HIGHLIGHT_THRESHOLD_PCT
+        )
         validation_return = "-" if pd.isna(row.ValidationNetReturnPct) else f"{float(row.ValidationNetReturnPct):.2f}%"
         max_drawdown = "-" if pd.isna(row.ValidationMaxDrawdownPct) else f"{float(row.ValidationMaxDrawdownPct):.2f}%"
+        symbol_display = f"**{row.Symbol}**" if highlight_good_return else str(row.Symbol)
+        name_display = f"**{row.Name}**" if highlight_good_return else str(row.Name)
+        validation_return_display = f"**{validation_return}**" if highlight_good_return and validation_return != "-" else validation_return
+        note_text = str(row.Note).replace("|", "/")
+        note_display = f"**{note_text}**" if highlight_good_return and note_text else note_text
         table_rows.append(
             "| "
             + " | ".join(
                 [
                     str(row.Category),
-                    str(row.Symbol),
-                    str(row.Name),
+                    symbol_display,
+                    name_display,
                     str(row.Interval),
                     str(row.ReportView),
                     str(row.StrategyName),
-                    validation_return,
+                    validation_return_display,
                     max_drawdown,
                     str(row.Status),
-                    str(row.Note).replace("|", "/"),
+                    note_display,
                     report_link,
                 ]
             )
@@ -294,6 +310,7 @@ def build_unified_report_index(report_root: str | Path = DEFAULT_REPORT_ROOT) ->
             f"- 正式报告总数：`{len(registry)}`，成功 `{'%d' % len(ok_rows)}`，失败 `{'%d' % len(failed_rows)}`。",
             "- 这份文件是唯一正式汇总报告；单个合约、批量合约、单策略报告和多策略对比报告都收录在同一张表里。",
             "- 主键口径：`symbol + interval + report_view`；同一视图重复生成时会覆盖旧记录。",
+            f"- 样本外净收益率高于 `{GOOD_RETURN_HIGHLIGHT_THRESHOLD_PCT:.2f}%` 的记录会在总表中加粗，便于先看高收益候选。",
             "",
             "## 报告列表",
             "",

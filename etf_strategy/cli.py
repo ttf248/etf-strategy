@@ -301,6 +301,7 @@ def _single_report_index_entry(
     symbol: str,
     interval: str,
     strategy_kind: str | None = None,
+    spec: SymbolSpec | None = None,
     report_root: str | Path = DEFAULT_REPORT_ROOT,
 ) -> dict[str, object]:
     best_summary = workflow_result["optimization"]["best_run"]["summary"]
@@ -323,6 +324,9 @@ def _single_report_index_entry(
         validation_return_pct=float(validation_summary.get("NetReturnPct", validation_summary.get("ReturnPct", 0.0))),
         max_drawdown_pct=float(validation_summary.get("MaxDrawdownPct", 0.0)),
         note=note,
+        category=spec.category if spec else None,
+        name=spec.name if spec else None,
+        source=spec.source if spec else None,
         report_root=report_root,
     )
 
@@ -332,6 +336,7 @@ def _comparison_report_index_entry(
     comparison_results: dict[str, dict[str, object]],
     interval: str,
     symbol: str,
+    spec: SymbolSpec | None = None,
     report_root: str | Path = DEFAULT_REPORT_ROOT,
 ) -> dict[str, object]:
     ranked = sorted(
@@ -357,6 +362,9 @@ def _comparison_report_index_entry(
         validation_return_pct=float(validation_summary.get("NetReturnPct", validation_summary.get("ReturnPct", 0.0))),
         max_drawdown_pct=float(validation_summary.get("MaxDrawdownPct", 0.0)),
         note=note,
+        category=spec.category if spec else None,
+        name=spec.name if spec else None,
+        source=spec.source if spec else None,
         report_root=report_root,
     )
 
@@ -367,6 +375,7 @@ def _failed_report_index_entry(
     interval: str,
     report_view: str,
     error: Exception,
+    spec: SymbolSpec | None = None,
     report_root: str | Path = DEFAULT_REPORT_ROOT,
 ) -> dict[str, object]:
     return build_report_index_entry(
@@ -381,6 +390,9 @@ def _failed_report_index_entry(
         note=str(error),
         status="failed",
         error=str(error),
+        category=spec.category if spec else None,
+        name=spec.name if spec else None,
+        source=spec.source if spec else None,
         report_root=report_root,
     )
 
@@ -898,6 +910,7 @@ def handle_batch(args: argparse.Namespace) -> int:
                         comparison_results=comparison_results,
                         interval=args.interval,
                         symbol=symbol,
+                        spec=spec,
                         report_root=report_root,
                     )
                 )
@@ -938,6 +951,7 @@ def handle_batch(args: argparse.Namespace) -> int:
                         symbol=symbol,
                         interval=args.interval,
                         strategy_kind=args.strategy,
+                        spec=spec,
                         report_root=report_root,
                     )
                 )
@@ -987,6 +1001,7 @@ def handle_batch(args: argparse.Namespace) -> int:
                     interval=args.interval,
                     report_view=report_view,
                     error=exc,
+                    spec=spec,
                     report_root=report_root,
                 )
             )
