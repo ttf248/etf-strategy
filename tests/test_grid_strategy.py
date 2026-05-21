@@ -229,7 +229,10 @@ class GridStrategyTests(unittest.TestCase):
             patch("etf_strategy.cli.download_price_bars", return_value=bars) as mock_download,
             patch("etf_strategy.cli.save_price_bars", return_value=DEFAULT_MINUTE_DATA_PATH) as mock_save,
             patch("etf_strategy.cli.run_minute_full_workflow", return_value=workflow_result) as mock_workflow,
-            patch("etf_strategy.cli.build_minute_report_markdown", return_value="reports/minute/1810_hk_15m_grid_report.md"),
+            patch(
+                "etf_strategy.cli.build_minute_report_markdown",
+                return_value="reports/1810_hk/minute/1810_hk_15m_grid_report.md",
+            ),
             patch("builtins.print"),
         ):
             result = handle_run(args)
@@ -334,14 +337,17 @@ class GridStrategyTests(unittest.TestCase):
             )
             with (
                 patch("etf_strategy.cli.run_full_workflow", return_value=workflow_result) as mock_workflow,
-                patch("etf_strategy.cli.build_report_markdown", return_value=Path(temp_dir) / "reports" / "1810_hk_grid_report.md"),
+                patch(
+                    "etf_strategy.cli.build_report_markdown",
+                    return_value=Path(temp_dir) / "reports" / "1810_hk" / "daily" / "1810_hk_grid_report.md",
+                ),
                 patch("builtins.print"),
             ):
                 result = handle_batch(args)
 
             summary_path = Path(temp_dir) / "out" / "batch_summary.csv"
             summary = pd.read_csv(summary_path, encoding="utf-8-sig")
-            index_path = Path(temp_dir) / "reports" / "batch_1d_report_index.md"
+            index_path = Path(temp_dir) / "reports" / "report_index_1d.md"
             index_exists = index_path.exists()
 
         self.assertEqual(result, 0)

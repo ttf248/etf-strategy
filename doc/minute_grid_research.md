@@ -67,7 +67,7 @@
 - `DEFAULT_MINUTE_PERIOD = "60d"`
 - `DEFAULT_MINUTE_DATA_PATH = data/processed/1810_hk_15m.csv`
 - `DEFAULT_MINUTE_OUTPUT_DIR = outputs/minute`
-- `DEFAULT_MINUTE_REPORT_DIR = reports/minute`
+- `DEFAULT_MINUTE_REPORT_DIR = reports/1810_hk/minute`
 
 直接运行分钟线完整流程：
 
@@ -178,7 +178,7 @@ Score = ReturnPct - abs(MaxDrawdownPct) * 0.7 + ClosedGridReturnPct * 0.5
 
 ## 对应产物在哪
 
-- 分钟线报告：`reports/minute/1810_hk_15m_grid_report.md`
-- 分钟线图表：`reports/minute/figures/`
+- 分钟线报告：`reports/1810_hk/minute/1810_hk_15m_grid_report.md`
+- 分钟线图表：`reports/1810_hk/minute/figures/`
 - 分钟线样本内结果：`outputs/minute/optimize/`
 - 分钟线样本外结果：`outputs/minute/validation/`

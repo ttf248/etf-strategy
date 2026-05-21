@@ -43,8 +43,8 @@ class RepoContractTests(unittest.TestCase):
     def test_readme_top_has_report_shortcuts(self) -> None:
         readme_lines = (REPO_ROOT / "README.md").read_text(encoding="utf-8").splitlines()[:45]
         top_block = "\n".join(readme_lines)
-        self.assertIn("reports/batch/hstech_15m_report_index.md", top_block)
-        self.assertIn("reports/minute/1810_hk_15m_grid_report.md", top_block)
+        self.assertIn("reports/hstech_plus_513050/minute/hstech_15m_report_index.md", top_block)
+        self.assertIn("reports/1810_hk/minute/1810_hk_15m_grid_report.md", top_block)
 
     def test_vscode_launch_only_keeps_one_click_report_configs(self) -> None:
         launch_payload = json.loads((REPO_ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))
@@ -75,8 +75,8 @@ class RepoContractTests(unittest.TestCase):
 
     def test_reports_keep_two_layer_structure(self) -> None:
         report_files = [
-            REPO_ROOT / "reports" / "1810_hk_grid_report.md",
-            REPO_ROOT / "reports" / "minute" / "1810_hk_15m_grid_report.md",
+            REPO_ROOT / "reports" / "1810_hk" / "daily" / "1810_hk_grid_report.md",
+            REPO_ROOT / "reports" / "1810_hk" / "minute" / "1810_hk_15m_grid_report.md",
         ]
         required_sections = [
             "## 第一层：先看结论",

@@ -1320,6 +1320,51 @@
 - 重新生成索引命令：
   - `py -3.13 -` 内联调用 `_build_batch_report_index()`，输入为 `outputs/batch/batch_summary.csv`。
 
+## 按标的重构 reports 目录
+
+### 状态
+
+已完成。
+
+### 修改方案
+
+把 `reports/` 从“按产物类型分层”改成“按标的/组合分层”：
+
+- 单标的日线报告收敛到 `reports/1810_hk/daily/`
+- 单标的分钟线报告收敛到 `reports/1810_hk/minute/`
+- 恒生科技加 `513050.SS` 的分钟线汇总收敛到 `reports/hstech_plus_513050/minute/`
+- 删除独立的 `reports/batch/`、根级 `reports/figures/` 和根级 `reports/minute/`
+
+### 修改内容
+
+- 代码与默认路径：
+  - `etf_strategy/config.py` 新增 `DEFAULT_REPORT_ROOT`、`DEFAULT_BATCH_REPORT_DIR`
+  - 日线默认报告目录改为 `reports/1810_hk/daily`
+  - 分钟线默认报告目录改为 `reports/1810_hk/minute`
+  - 批量分钟报告默认目录改为 `reports/hstech_plus_513050/minute`
+  - 非 `hstech_plus_513050` 的汇总索引文件名从 `batch_{interval}_report_index.md` 改为 `report_index_{interval}.md`
+- 报告产物迁移：
+  - 用 `git mv` 迁移小米日线与分钟线正式报告及图表
+  - 用 `git mv` 迁移恒科加 `513050` 的汇总索引、单标的 Markdown 报告和图表
+  - 批量目录下的小米分钟报告保留一份在组合汇总目录，默认样本分钟报告单独保留在 `reports/1810_hk/minute/`
+- 文档与入口：
+  - README 顶部报告链接表和正文路径全部切到新目录
+  - 更新 `doc/index.md`、`doc/grid_parameter_search.md`、`doc/minute_grid_research.md`、`doc/development_guide.md`
+  - 更新 `.vscode/launch.json` 的批量报告输出目录
+- 测试：
+  - 更新仓库契约测试和 CLI 路径断言，适配新目录结构
+
+### 设计取舍
+
+- 目录先按“标的/组合”分层，再按 `daily` / `minute` 分层，阅读路径更直观，也避免 `batch` 目录和单标的目录并列造成混淆。
+- 组合汇总目录继续保留每个成分标的自己的子目录，索引仍然只需要一层相对链接，不需要改报告内部图片相对路径。
+- 历史任务记录里的旧路径不全量改写，只在当前任务段和产物清单里记录新结构，避免把历史上下文改得难以追溯。
+
+### 验证
+
+- `py -3.13 -m unittest tests.test_repo_contracts tests.test_grid_strategy tests.test_yahoo_data`
+- `git diff --check`
+
 ## 产物清单
 
 - 入口与代码：
@@ -1334,12 +1379,12 @@
   - `outputs/validation/`
   - `outputs/combined_summary.csv`
 - 报告：
-  - `reports/1810_hk_grid_report.md`
-  - `reports/figures/1810_hk_in_sample_grid.png`
-  - `reports/figures/1810_hk_validation_grid.png`
-  - `reports/figures/1810_hk_grid_search_heatmap.png`
-  - `reports/minute/1810_hk_15m_grid_report.md`
-  - `reports/minute/figures/`
+  - `reports/1810_hk/daily/1810_hk_grid_report.md`
+  - `reports/1810_hk/daily/figures/`
+  - `reports/1810_hk/minute/1810_hk_15m_grid_report.md`
+  - `reports/1810_hk/minute/figures/`
+  - `reports/hstech_plus_513050/minute/hstech_15m_report_index.md`
+  - `reports/hstech_plus_513050/minute/<symbol>/`
 - 文档：
   - `doc/grid_parameter_search.md`
   - `doc/minute_grid_research.md`

@@ -15,6 +15,7 @@ import pandas as pd
 from loguru import logger
 
 from etf_strategy.config import (
+    DEFAULT_BATCH_REPORT_DIR,
     DEFAULT_DATA_PATH,
     DEFAULT_MINUTE_OUTPUT_DIR,
     DEFAULT_MINUTE_REPORT_DIR,
@@ -168,7 +169,7 @@ def build_parser() -> argparse.ArgumentParser:
     batch_parser.add_argument("--download", action="store_true", help="批量运行前先下载并合并行情")
     batch_parser.add_argument("--proxy", default=os.getenv("ETF_STRATEGY_PROXY"), help="访问 Yahoo 必须配置的代理地址")
     batch_parser.add_argument("--output-dir", default="outputs/batch", help="批量中间结果与汇总输出目录")
-    batch_parser.add_argument("--report-dir", default="reports/batch", help="批量报告输出目录")
+    batch_parser.add_argument("--report-dir", default=str(DEFAULT_BATCH_REPORT_DIR), help="批量报告输出目录")
     batch_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="日线样本外起始日期")
     batch_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="日线样本内回看天数")
     batch_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
@@ -573,12 +574,12 @@ def _build_batch_report_index(
     interval: str,
     symbol_set: str | None,
 ) -> Path:
-    """生成批量报告索引，README 和人工复盘都直接链接这里。"""
+    """生成多标的汇总索引，README 和人工复盘都直接链接这里。"""
     report_root.mkdir(parents=True, exist_ok=True)
     if symbol_set == "hstech_plus_513050" and interval == DEFAULT_MINUTE_INTERVAL:
         target = report_root / "hstech_15m_report_index.md"
     else:
-        target = report_root / f"batch_{interval}_report_index.md"
+        target = report_root / f"report_index_{interval}.md"
     ok_rows = [row for row in rows if row.get("Status") == "ok"]
     failed_rows = [row for row in rows if row.get("Status") != "ok"]
     source_notes = sorted(
@@ -633,7 +634,7 @@ def _build_batch_report_index(
     source_block = "\n".join(f"- {source}" for source in source_notes) or "- 命令行自定义标的。"
     content = "\n".join(
         [
-            "# 恒生科技分钟线批量回测报告索引",
+            "# 恒生科技分钟线汇总报告索引",
             "",
             "## 汇总备注",
             "",

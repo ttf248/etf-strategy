@@ -232,5 +232,5 @@ RobustScore = 0.6 x WalkForwardScoreMean
 ## 对应产物在哪
 
 - 日线参数搜索结果：`outputs/optimize/in_sample_grid_search.csv`
-- 日线综合报告：`reports/1810_hk_grid_report.md`
-- 日线图表目录：`reports/figures/`
+- 日线综合报告：`reports/1810_hk/daily/1810_hk_grid_report.md`
+- 日线图表目录：`reports/1810_hk/daily/figures/`
