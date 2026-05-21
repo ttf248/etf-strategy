@@ -9,6 +9,7 @@ CLI 层只负责三件事：
 import argparse
 import os
 from pathlib import Path
+from time import perf_counter
 
 from loguru import logger
 
@@ -161,8 +162,10 @@ def _resolve_download_output_path(symbol: str, interval: str, period: str | None
 
 def handle_download(args: argparse.Namespace) -> int:
     """执行下载命令。"""
+    started_at = perf_counter()
     _validate_daily_date_range(args, "download")
     output = _resolve_download_output_path(args.symbol, args.interval, args.period, args.output)
+    logger.info("收到 download 命令: symbol={} interval={} output={}", args.symbol, args.interval, output)
 
     bars = download_price_bars(
         symbol=args.symbol,
@@ -174,6 +177,7 @@ def handle_download(args: argparse.Namespace) -> int:
     )
     # 下载命令默认做增量合并，分钟线能保留本地历史，日线也不会因为重跑而覆盖旧样本。
     output_path = save_price_bars(bars, output, interval=args.interval, merge_with_existing=True)
+    logger.info("download 命令完成: output={} elapsed={:.2f}s", output_path, perf_counter() - started_at)
     print(f"下载完成: {output_path}")
     return 0
 
@@ -187,6 +191,8 @@ def handle_placeholder(args: argparse.Namespace) -> int:
 
 def handle_optimize(args: argparse.Namespace) -> int:
     """执行样本内参数搜索，并按周期选择对应工作流。"""
+    started_at = perf_counter()
+    logger.info("收到 optimize 命令: data={} interval={}", args.data, args.interval)
     if is_intraday_interval(args.interval):
         output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR / "optimize")
         result = run_minute_optimization_workflow(
@@ -213,11 +219,21 @@ def handle_optimize(args: argparse.Namespace) -> int:
         f"take_profit={best_summary['TakeProfitPct']:.2f}% "
         f"score={best_summary['Score']:.2f}"
     )
+    logger.info("optimize 命令完成: results={} elapsed={:.2f}s", result["results_path"], perf_counter() - started_at)
     return 0
 
 
 def handle_backtest(args: argparse.Namespace) -> int:
     """执行样本外验证。"""
+    started_at = perf_counter()
+    logger.info(
+        "收到 backtest 命令: data={} interval={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
+        args.data,
+        args.interval,
+        args.grid_spacing * 100,
+        args.grid_count,
+        args.take_profit * 100,
+    )
     if is_intraday_interval(args.interval):
         output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR / "validation")
         result = run_minute_validation_workflow(
@@ -248,16 +264,26 @@ def handle_backtest(args: argparse.Namespace) -> int:
         f"max_drawdown={summary['MaxDrawdownPct']:.2f}% "
         f"cost_reduction={summary['CostReductionPct']:.2f}%"
     )
+    logger.info("backtest 命令完成: elapsed={:.2f}s", perf_counter() - started_at)
     return 0
 
 
 def handle_run(args: argparse.Namespace) -> int:
     """执行“下载 -> 寻参 -> 验证 -> 报告”的完整链路。"""
+    started_at = perf_counter()
     intraday_mode = is_intraday_interval(args.interval)
     _validate_daily_date_range(args, "run")
     output_dir = Path(args.output_dir or (DEFAULT_MINUTE_OUTPUT_DIR if intraday_mode else DEFAULT_OUTPUT_DIR))
     report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR if intraday_mode else DEFAULT_REPORT_DIR)
     data_path = _resolve_download_output_path(args.symbol, args.interval, args.period, output=None)
+    logger.info(
+        "收到 run 命令: symbol={} interval={} data_path={} output_dir={} report_dir={}",
+        args.symbol,
+        args.interval,
+        data_path,
+        output_dir,
+        report_dir,
+    )
     bars = download_price_bars(
         symbol=args.symbol,
         interval=args.interval,
@@ -302,11 +328,14 @@ def handle_run(args: argparse.Namespace) -> int:
         f"max_drawdown={validation_summary['MaxDrawdownPct']:.2f}% "
         f"cost_reduction={validation_summary['CostReductionPct']:.2f}%"
     )
+    logger.info("run 命令完成: report={} elapsed={:.2f}s", report_path, perf_counter() - started_at)
     return 0
 
 
 def handle_report(args: argparse.Namespace) -> int:
     """基于已有 CSV 重跑工作流并生成正式报告。"""
+    started_at = perf_counter()
+    logger.info("收到 report 命令: data={} interval={}", args.data, args.interval)
     if is_intraday_interval(args.interval):
         output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR)
         report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR)
@@ -329,6 +358,7 @@ def handle_report(args: argparse.Namespace) -> int:
         )
         report_path = build_report_markdown(result, report_dir=report_dir)
     print(f"报告已生成: {report_path}")
+    logger.info("report 命令完成: report={} elapsed={:.2f}s", report_path, perf_counter() - started_at)
     return 0
 
 

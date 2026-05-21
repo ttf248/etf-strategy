@@ -8,8 +8,10 @@ from __future__ import annotations
 """
 
 from pathlib import Path
+from time import perf_counter
 
 import pandas as pd
+from loguru import logger
 
 from etf_strategy.config import DEFAULT_OUTPUT_DIR
 from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
@@ -34,6 +36,7 @@ def run_optimization_workflow(
     take_profits: list[float] | None = None,
 ) -> dict[str, object]:
     """执行样本内参数搜索并保存结果。"""
+    started_at = perf_counter()
     spacings = spacings or [0.03, 0.04, 0.05, 0.06, 0.07]
     grid_counts = grid_counts or [4, 5, 6, 7]
     take_profits = take_profits or [0.03, 0.05, 0.07]
@@ -42,6 +45,7 @@ def run_optimization_workflow(
     resolved_symbol = _resolve_symbol(symbol, data_path)
     lot_rule = resolve_lot_size_rule(resolved_symbol)
     data = load_price_frame(data_path)
+    logger.info("开始执行日线样本内寻参: symbol={} data={} rows={}", lot_rule.symbol, data_path, len(data))
     decline_window, in_sample, _ = split_in_sample_and_validation(
         data=data,
         validation_start=validation_start,
@@ -66,6 +70,13 @@ def run_optimization_workflow(
     results.to_csv(results_path, index=False, encoding="utf-8-sig")
     window_path = save_decline_window(target_dir, decline_window)
     best_paths = save_run_artifacts(target_dir, "in_sample_best", best_run)
+    logger.info(
+        "日线样本内寻参完成: best_spacing={:.2f}% best_count={} best_take_profit={:.2f}% elapsed={:.2f}s",
+        float(best_run["summary"]["GridSpacingPct"]),
+        int(best_run["summary"]["GridCount"]),
+        float(best_run["summary"]["TakeProfitPct"]),
+        perf_counter() - started_at,
+    )
 
     return {
         "decline_window": decline_window,
@@ -90,9 +101,18 @@ def run_validation_workflow(
     """执行 2026 样本外验证。"""
     from etf_strategy.strategy.grid import run_grid_backtest
 
+    started_at = perf_counter()
     resolved_symbol = _resolve_symbol(symbol, data_path)
     lot_rule = resolve_lot_size_rule(resolved_symbol)
     data = load_price_frame(data_path)
+    logger.info(
+        "开始执行日线样本外验证: symbol={} data={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
+        lot_rule.symbol,
+        data_path,
+        grid_spacing_pct * 100,
+        grid_count,
+        take_profit_pct * 100,
+    )
     _, _, validation = split_in_sample_and_validation(
         data=data,
         validation_start=validation_start,
@@ -110,6 +130,12 @@ def run_validation_workflow(
         lot_size_source=lot_rule.source,
     )
     paths = save_run_artifacts(output_dir, "validation_2026", validation_run)
+    logger.info(
+        "日线样本外验证完成: return={:.2f}% max_drawdown={:.2f}% elapsed={:.2f}s",
+        float(validation_run["summary"]["ReturnPct"]),
+        float(validation_run["summary"]["MaxDrawdownPct"]),
+        perf_counter() - started_at,
+    )
     return {"run": validation_run, "paths": paths}
 
 
@@ -128,6 +154,8 @@ def run_full_workflow(
     这里复用样本内最优参数直接做样本外，不在验证阶段再次寻参，
     目的是让报告清楚区分“历史上调出来的参数”和“新样本上的延续性”。
     """
+    started_at = perf_counter()
+    logger.info("开始执行日线完整工作流: data={} output_dir={}", data_path, output_dir)
     optimization = run_optimization_workflow(
         data_path=data_path,
         symbol=symbol,
@@ -159,6 +187,7 @@ def run_full_workflow(
     combined_path = Path(output_dir) / "combined_summary.csv"
     combined_path.parent.mkdir(parents=True, exist_ok=True)
     combined_summary.to_csv(combined_path, index=False, encoding="utf-8-sig")
+    logger.info("日线完整工作流完成: summary={} elapsed={:.2f}s", combined_path, perf_counter() - started_at)
 
     return {
         "optimization": optimization,
@@ -177,6 +206,7 @@ def run_minute_optimization_workflow(
     take_profits: list[float] | None = None,
 ) -> dict[str, object]:
     """执行分钟线样本内参数搜索并保存结果。"""
+    started_at = perf_counter()
     spacings = spacings or [0.01, 0.015, 0.02, 0.03, 0.04]
     grid_counts = grid_counts or [4, 5, 6, 7]
     take_profits = take_profits or [0.01, 0.015, 0.02, 0.03]
@@ -184,6 +214,7 @@ def run_minute_optimization_workflow(
     resolved_symbol = _resolve_symbol(symbol, data_path)
     lot_rule = resolve_lot_size_rule(resolved_symbol)
     data = load_price_frame(data_path)
+    logger.info("开始执行分钟线样本内寻参: symbol={} data={} rows={}", lot_rule.symbol, data_path, len(data))
     decline_window, in_sample, _ = split_intraday_in_sample_and_validation(
         data=data,
         validation_ratio=validation_ratio,
@@ -207,6 +238,13 @@ def run_minute_optimization_workflow(
     results.to_csv(results_path, index=False, encoding="utf-8-sig")
     window_path = save_decline_window(target_dir, decline_window)
     best_paths = save_run_artifacts(target_dir, "minute_in_sample_best", best_run)
+    logger.info(
+        "分钟线样本内寻参完成: best_spacing={:.2f}% best_count={} best_take_profit={:.2f}% elapsed={:.2f}s",
+        float(best_run["summary"]["GridSpacingPct"]),
+        int(best_run["summary"]["GridCount"]),
+        float(best_run["summary"]["TakeProfitPct"]),
+        perf_counter() - started_at,
+    )
 
     return {
         "decline_window": decline_window,
@@ -230,9 +268,18 @@ def run_minute_validation_workflow(
     """执行分钟线样本外验证。"""
     from etf_strategy.strategy.grid import run_grid_backtest
 
+    started_at = perf_counter()
     resolved_symbol = _resolve_symbol(symbol, data_path)
     lot_rule = resolve_lot_size_rule(resolved_symbol)
     data = load_price_frame(data_path)
+    logger.info(
+        "开始执行分钟线样本外验证: symbol={} data={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
+        lot_rule.symbol,
+        data_path,
+        grid_spacing_pct * 100,
+        grid_count,
+        take_profit_pct * 100,
+    )
     _, _, validation = split_intraday_in_sample_and_validation(
         data=data,
         validation_ratio=validation_ratio,
@@ -249,6 +296,12 @@ def run_minute_validation_workflow(
         lot_size_source=lot_rule.source,
     )
     paths = save_run_artifacts(output_dir, "minute_validation", validation_run)
+    logger.info(
+        "分钟线样本外验证完成: return={:.2f}% max_drawdown={:.2f}% elapsed={:.2f}s",
+        float(validation_run["summary"]["ReturnPct"]),
+        float(validation_run["summary"]["MaxDrawdownPct"]),
+        perf_counter() - started_at,
+    )
     return {"run": validation_run, "paths": paths}
 
 
@@ -262,6 +315,8 @@ def run_minute_full_workflow(
     take_profits: list[float] | None = None,
 ) -> dict[str, object]:
     """串联分钟线样本内寻参和样本外验证。"""
+    started_at = perf_counter()
+    logger.info("开始执行分钟线完整工作流: data={} output_dir={}", data_path, output_dir)
     optimization = run_minute_optimization_workflow(
         data_path=data_path,
         symbol=symbol,
@@ -291,6 +346,7 @@ def run_minute_full_workflow(
     combined_path = Path(output_dir) / "combined_summary.csv"
     combined_path.parent.mkdir(parents=True, exist_ok=True)
     combined_summary.to_csv(combined_path, index=False, encoding="utf-8-sig")
+    logger.info("分钟线完整工作流完成: summary={} elapsed={:.2f}s", combined_path, perf_counter() - started_at)
 
     return {
         "workflow_type": "minute",

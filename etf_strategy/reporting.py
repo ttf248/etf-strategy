@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+from time import perf_counter
 
 import matplotlib
 
@@ -16,6 +17,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from loguru import logger
 
 from etf_strategy.config import DEFAULT_MINUTE_REPORT_DIR, DEFAULT_REPORT_DIR
 
@@ -581,6 +583,7 @@ def build_report_markdown(
     report_dir: str | Path = DEFAULT_REPORT_DIR,
 ) -> Path:
     """根据完整工作流结果生成中文报告。"""
+    started_at = perf_counter()
     workflow_type = workflow_result.get("workflow_type", "daily")
     interval = workflow_result.get("interval", "1d")
     target_dir = Path(report_dir)
@@ -593,6 +596,7 @@ def build_report_markdown(
     best_summary = optimization["best_run"]["summary"]
     validation_summary = validation["run"]["summary"]
     symbol = str(best_summary["Symbol"])
+    logger.info("开始生成正式报告: symbol={} workflow_type={} report_dir={}", symbol, workflow_type, report_dir)
     in_sample_words = _describe_run_in_plain_words(optimization["best_run"])
     validation_words = _describe_run_in_plain_words(validation["run"])
     artifact_names = _build_report_artifact_names(symbol, workflow_type, interval)
@@ -781,6 +785,7 @@ def build_report_markdown(
 - {conclusion_tail}
 """
     report_path.write_text(report_content, encoding="utf-8")
+    logger.info("正式报告生成完成: report={} elapsed={:.2f}s", report_path, perf_counter() - started_at)
     return report_path
 
 
