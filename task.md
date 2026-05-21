@@ -26,6 +26,7 @@
 - [x] 默认正式样本纳入版本控制
 - [x] README 与文档体系重构
 - [x] 补充仓库级文档与报告契约测试
+- [x] 解除服务层对小米标的的深度绑定
 
 ## 项目规划整理
 
@@ -550,8 +551,8 @@
 - 修改 `.gitignore`：
   - 不再整体忽略 `data/processed`
   - 只纳入：
-    - `data/processed/xiaomi_1810_hk_daily.csv`
-    - `data/processed/xiaomi_1810_hk_15m.csv`
+    - `data/processed/1810_hk_daily.csv`
+    - `data/processed/1810_hk_15m.csv`
   - 继续忽略：
     - `*_test.csv`
     - 其他一次性实验样本
@@ -621,6 +622,31 @@
 - 这类测试的目标不是防业务 bug，而是防“文档和报告结构悄悄漂移”。
 - 仓库已经开始依赖默认样本、文档导航和报告双层结构，就应该把这些东西纳入自动校验。
 
+## 解除服务层对小米标的的深度绑定
+
+### 状态
+
+已完成。
+
+### 修改方案
+
+保留 `1810.HK` 作为默认开发验证样本，但不再把“小米”写死进服务层的类名、默认文件名、报告标题和示例产物命名。
+
+### 修改内容
+
+- `config.py`：
+  - 默认正式样本路径改成按 `symbol` 派生的通用命名
+- `strategy/grid.py`：
+  - 策略类名从面向小米的命名改成通用网格策略命名
+- `reporting.py`：
+  - 报告标题、图表标题、正式报告文件名、图表文件名全部改成按 `symbol` 动态生成
+- README、`doc/`、测试和报告契约同步改成新的通用文件名
+
+### 设计规则、原因和收益
+
+- `1810.HK` 只是当前默认示例，不应该继续污染服务层命名，否则后续换标的时会持续产生认知噪音。
+- 让输出文件和标题直接跟随 `symbol` 变化后，项目才能真正支持“换标的即复用流程”，而不是“换标的但到处残留小米字样”。
+
 ## 产物清单
 
 - 入口与代码：
@@ -629,17 +655,17 @@
 - 调试配置：
   - `.vscode/launch.json`
 - 数据：
-  - `data/processed/xiaomi_1810_hk_daily.csv`
+  - `data/processed/1810_hk_daily.csv`
 - 中间结果：
   - `outputs/optimize/`
   - `outputs/validation/`
   - `outputs/combined_summary.csv`
 - 报告：
-  - `reports/xiaomi_grid_report.md`
-  - `reports/figures/xiaomi_in_sample_grid.png`
-  - `reports/figures/xiaomi_validation_2026_grid.png`
-  - `reports/figures/xiaomi_grid_search_heatmap.png`
-  - `reports/minute/xiaomi_15m_grid_report.md`
+  - `reports/1810_hk_grid_report.md`
+  - `reports/figures/1810_hk_in_sample_grid.png`
+  - `reports/figures/1810_hk_validation_grid.png`
+  - `reports/figures/1810_hk_grid_search_heatmap.png`
+  - `reports/minute/1810_hk_15m_grid_report.md`
   - `reports/minute/figures/`
 - 文档：
   - `doc/grid_parameter_search.md`

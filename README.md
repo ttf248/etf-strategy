@@ -1,6 +1,6 @@
 # ETF Strategy
 
-基于 Yahoo Finance 数据的小型策略回测项目，当前聚焦小米港股 `1810.HK` 的样本起点建仓 + 固定股数网格交易验证。
+基于 Yahoo Finance 数据的小型策略回测项目，当前默认用 `1810.HK` 作为开发验证样本，研究“样本起点建仓 + 固定股数网格交易”的回测流程。
 
 这个仓库现在的定位不是“一次性脚本”，而是“可重复运行的策略研究工程”：
 
@@ -21,8 +21,8 @@
 
 为了让默认流程可复现，仓库直接跟踪两份正式样本：
 
-- `data/processed/xiaomi_1810_hk_daily.csv`
-- `data/processed/xiaomi_1810_hk_15m.csv`
+- `data/processed/1810_hk_daily.csv`
+- `data/processed/1810_hk_15m.csv`
 
 它们分别对应：
 
@@ -42,24 +42,24 @@ py -3.13 -m pip install -r requirements.txt
 ### 2. 直接生成日线报告
 
 ```powershell
-py -3.13 main.py report --data data/processed/xiaomi_1810_hk_daily.csv --symbol 1810.HK
+py -3.13 main.py report --data data/processed/1810_hk_daily.csv --symbol 1810.HK
 ```
 
 输出：
 
 - 中间结果：`outputs/`
-- 正式报告：`reports/xiaomi_grid_report.md`
+- 正式报告：`reports/1810_hk_grid_report.md`
 
 ### 3. 直接生成 15 分钟线报告
 
 ```powershell
-py -3.13 main.py report --data data/processed/xiaomi_1810_hk_15m.csv --symbol 1810.HK --interval 15m
+py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK --interval 15m
 ```
 
 输出：
 
 - 中间结果：`outputs/minute/`
-- 正式报告：`reports/minute/xiaomi_15m_grid_report.md`
+- 正式报告：`reports/minute/1810_hk_15m_grid_report.md`
 
 ## 文档导航
 
@@ -98,13 +98,13 @@ py -3.13 main.py download --symbol 1810.HK --interval 15m --period 60d --proxy h
 ### 样本内参数搜索
 
 ```powershell
-py -3.13 main.py optimize --data data/processed/xiaomi_1810_hk_daily.csv --symbol 1810.HK
+py -3.13 main.py optimize --data data/processed/1810_hk_daily.csv --symbol 1810.HK
 ```
 
 ### 样本外验证
 
 ```powershell
-py -3.13 main.py backtest --data data/processed/xiaomi_1810_hk_daily.csv --symbol 1810.HK --grid-spacing 0.07 --grid-count 5 --take-profit 0.03
+py -3.13 main.py backtest --data data/processed/1810_hk_daily.csv --symbol 1810.HK --grid-spacing 0.07 --grid-count 5 --take-profit 0.03
 ```
 
 ### 一键执行完整流程
@@ -133,7 +133,7 @@ task.md          AI 任务记录
 
 ## 输出与版本控制
 
-- `data/processed/`：默认正式样本输入，当前只跟踪两份小米样本
+- `data/processed/`：默认正式样本输入，当前只跟踪两份 `1810.HK` 示例样本
 - `outputs/`：运行时中间文件，默认忽略版本控制
 - `reports/`：正式中文报告、图表和交易记录展示
 - `log/`：日志输出

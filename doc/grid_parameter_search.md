@@ -6,7 +6,7 @@
 - [术语表与口径说明](glossary.md)
 - [回测报告阅读指南](report_reading_guide.md)
 
-这份文档只解释日线主流程，也就是 README 里默认那套 `2024-01-01` 到 `2026-05-22` 的小米港股 `1810.HK` 回测。
+这份文档只解释日线主流程，也就是 README 里默认那套 `2024-01-01` 到 `2026-05-22` 的 `1810.HK` 示例回测。
 
 ## 先说结论
 
@@ -164,5 +164,5 @@ Score = ReturnPct - abs(MaxDrawdownPct) * 0.7 + CostReductionPct * 0.5
 ## 对应产物在哪
 
 - 日线参数搜索结果：`outputs/optimize/in_sample_grid_search.csv`
-- 日线综合报告：`reports/xiaomi_grid_report.md`
+- 日线综合报告：`reports/1810_hk_grid_report.md`
 - 日线图表目录：`reports/figures/`

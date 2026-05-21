@@ -45,8 +45,8 @@ def format_timestamp(timestamp: pd.Timestamp) -> str:
     return normalized.strftime("%Y-%m-%d")
 
 
-class XiaomiGridStrategy(Strategy):
-    """小米港股样本起点建仓 + 双向网格策略。"""
+class FixedUnitGridStrategy(Strategy):
+    """样本起点建仓 + 双向固定股数网格策略。"""
 
     total_capital = TOTAL_CAPITAL
     initial_cash_ratio = INITIAL_CASH_RATIO
@@ -408,7 +408,7 @@ def run_grid_backtest(
     """
     backtest = Backtest(
         data,
-        XiaomiGridStrategy,
+        FixedUnitGridStrategy,
         cash=total_capital,
         commission=0.0,
         trade_on_close=True,
@@ -423,7 +423,7 @@ def run_grid_backtest(
         take_profit_pct=take_profit_pct,
         lot_size=lot_size,
     )
-    strategy: XiaomiGridStrategy = stats["_strategy"]
+    strategy: FixedUnitGridStrategy = stats["_strategy"]
     history = _history_to_frame(strategy.history)
     events = _events_to_frame(strategy.event_log)
 

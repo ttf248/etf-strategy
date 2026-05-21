@@ -55,7 +55,7 @@
 
 - `DEFAULT_MINUTE_INTERVAL = "15m"`
 - `DEFAULT_MINUTE_PERIOD = "60d"`
-- `DEFAULT_MINUTE_DATA_PATH = data/processed/xiaomi_1810_hk_15m.csv`
+- `DEFAULT_MINUTE_DATA_PATH = data/processed/1810_hk_15m.csv`
 - `DEFAULT_MINUTE_OUTPUT_DIR = outputs/minute`
 - `DEFAULT_MINUTE_REPORT_DIR = reports/minute`
 
@@ -68,7 +68,7 @@ py -3.13 main.py run --interval 15m --period 60d --proxy http://127.0.0.1:7897
 如果只想基于已有分钟线 CSV 生成报告：
 
 ```powershell
-py -3.13 main.py report --data data/processed/xiaomi_1810_hk_15m.csv --interval 15m
+py -3.13 main.py report --data data/processed/1810_hk_15m.csv --interval 15m
 ```
 
 ## 分钟线参数怎么测
@@ -163,7 +163,7 @@ Score = ReturnPct - abs(MaxDrawdownPct) * 0.7 + CostReductionPct * 0.5
 
 ## 对应产物在哪
 
-- 分钟线报告：`reports/minute/xiaomi_15m_grid_report.md`
+- 分钟线报告：`reports/minute/1810_hk_15m_grid_report.md`
 - 分钟线图表：`reports/minute/figures/`
 - 分钟线样本内结果：`outputs/minute/optimize/`
 - 分钟线样本外结果：`outputs/minute/validation/`

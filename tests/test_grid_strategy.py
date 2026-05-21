@@ -87,7 +87,7 @@ class GridStrategyTests(unittest.TestCase):
             [
                 "backtest",
                 "--data",
-                "data/processed/xiaomi_1810_hk_daily.csv",
+                "data/processed/1810_hk_daily.csv",
                 "--symbol",
                 "1810.HK",
                 "--grid-spacing",
@@ -100,7 +100,7 @@ class GridStrategyTests(unittest.TestCase):
         )
 
         self.assertEqual(args.command, "backtest")
-        self.assertEqual(args.data, "data/processed/xiaomi_1810_hk_daily.csv")
+        self.assertEqual(args.data, "data/processed/1810_hk_daily.csv")
         self.assertEqual(args.symbol, "1810.HK")
         self.assertAlmostEqual(args.grid_spacing, 0.06)
         self.assertEqual(args.grid_count, 7)
@@ -109,7 +109,7 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(args.lookback_days, 120)
 
     def test_infer_symbol_from_data_path(self) -> None:
-        self.assertEqual(infer_symbol_from_data_path("data/processed/xiaomi_1810_hk_daily.csv"), "1810.HK")
+        self.assertEqual(infer_symbol_from_data_path("data/processed/1810_hk_daily.csv"), "1810.HK")
         self.assertEqual(infer_symbol_from_data_path("data/processed/spy_1d.csv"), "SPY")
         self.assertEqual(infer_symbol_from_data_path("data/processed/brk-b_15m.csv"), "BRK-B")
 

@@ -6,10 +6,10 @@
 
 from pathlib import Path
 
-# 默认标的是小米港股，既用于命令行默认值，也用于 README 示例。
+# 默认标的只作为示例输入存在，不代表服务绑定某一只股票。
 DEFAULT_SYMBOL = "1810.HK"
-DEFAULT_DATA_PATH = Path("data/processed/xiaomi_1810_hk_daily.csv")
-DEFAULT_MINUTE_DATA_PATH = Path("data/processed/xiaomi_1810_hk_15m.csv")
+DEFAULT_DATA_PATH = Path("data/processed/1810_hk_daily.csv")
+DEFAULT_MINUTE_DATA_PATH = Path("data/processed/1810_hk_15m.csv")
 DEFAULT_MINUTE_INTERVAL = "15m"
 DEFAULT_MINUTE_PERIOD = "60d"
 # 中间结果与正式报告目录分开，方便重复回测时只替换输出而不污染文档目录。

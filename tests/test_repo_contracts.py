@@ -41,8 +41,8 @@ class RepoContractTests(unittest.TestCase):
 
     def test_reports_keep_two_layer_structure(self) -> None:
         report_files = [
-            REPO_ROOT / "reports" / "xiaomi_grid_report.md",
-            REPO_ROOT / "reports" / "minute" / "xiaomi_15m_grid_report.md",
+            REPO_ROOT / "reports" / "1810_hk_grid_report.md",
+            REPO_ROOT / "reports" / "minute" / "1810_hk_15m_grid_report.md",
         ]
         required_sections = [
             "## 第一层：先看结论",

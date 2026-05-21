@@ -13,8 +13,8 @@
 1. [README](../README.md)
 2. [回测报告阅读指南](report_reading_guide.md)
 3. 正式报告：
-   - [日线报告](../reports/xiaomi_grid_report.md)
-   - [15 分钟线报告](../reports/minute/xiaomi_15m_grid_report.md)
+   - [日线报告](../reports/1810_hk_grid_report.md)
+   - [15 分钟线报告](../reports/minute/1810_hk_15m_grid_report.md)
 4. 再按需要看专题文档：
    - [日线网格参数测试方法](grid_parameter_search.md)
    - [Yahoo 分钟线支持与 15 分钟回测说明](minute_grid_research.md)
@@ -23,8 +23,8 @@
 
 直接看：
 
-- [日线报告](../reports/xiaomi_grid_report.md)
-- [15 分钟线报告](../reports/minute/xiaomi_15m_grid_report.md)
+- [日线报告](../reports/1810_hk_grid_report.md)
+- [15 分钟线报告](../reports/minute/1810_hk_15m_grid_report.md)
 - [回测报告阅读指南](report_reading_guide.md)
 
 这样做的原因是：报告现在已经按“先看结论、再看细节”的双层结构组织，阅读门槛比直接翻源码低很多。
@@ -93,13 +93,13 @@ task.md          AI 任务记录
 
 日线主流程：
 
-- 输入：`data/processed/xiaomi_1810_hk_daily.csv`
+- 输入：`data/processed/1810_hk_daily.csv`
 - 样本外起点：`2026-01-01`
 - 样本内窗口：向前回看 `120` 天
 
 分钟线研究流程：
 
-- 输入：`data/processed/xiaomi_1810_hk_15m.csv`
+- 输入：`data/processed/1810_hk_15m.csv`
 - 数据范围：Yahoo 最近 `60d`
 - 切分方式：`75% / 25%`
 

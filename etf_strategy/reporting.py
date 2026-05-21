@@ -8,6 +8,7 @@ from __future__ import annotations
 """
 
 from pathlib import Path
+import re
 
 import matplotlib
 
@@ -242,6 +243,30 @@ def plot_grid_search(results: pd.DataFrame, output_path: str | Path) -> Path:
     return target
 
 
+def _symbol_to_slug(symbol: str) -> str:
+    """把标的代码转换成适合文件名使用的稳定 slug。"""
+    normalized = re.sub(r"[^A-Za-z0-9]+", "_", symbol.strip().lower())
+    return normalized.strip("_") or "symbol"
+
+
+def _build_report_artifact_names(symbol: str, workflow_type: str, interval: str) -> dict[str, str]:
+    """根据标的和周期生成报告与图表文件名。"""
+    slug = _symbol_to_slug(symbol)
+    if workflow_type == "minute":
+        return {
+            "report": f"{slug}_{interval}_grid_report.md",
+            "in_sample_chart": f"{slug}_{interval}_in_sample_grid.png",
+            "validation_chart": f"{slug}_{interval}_validation_grid.png",
+            "search_chart": f"{slug}_{interval}_grid_search_heatmap.png",
+        }
+    return {
+        "report": f"{slug}_grid_report.md",
+        "in_sample_chart": f"{slug}_in_sample_grid.png",
+        "validation_chart": f"{slug}_validation_grid.png",
+        "search_chart": f"{slug}_grid_search_heatmap.png",
+    }
+
+
 def _build_run_chart_summary(run_result: dict[str, object], run_words: dict[str, float | bool]) -> str:
     """生成单次回测图的速读总结。"""
     summary = run_result["summary"]
@@ -401,27 +426,29 @@ def build_report_markdown(
     decline_window = optimization["decline_window"]
     best_summary = optimization["best_run"]["summary"]
     validation_summary = validation["run"]["summary"]
+    symbol = str(best_summary["Symbol"])
     in_sample_words = _describe_run_in_plain_words(optimization["best_run"])
     validation_words = _describe_run_in_plain_words(validation["run"])
+    artifact_names = _build_report_artifact_names(symbol, workflow_type, interval)
 
     if workflow_type == "minute":
         in_sample_chart = plot_run_result(
             optimization["best_run"],
-            figure_dir / "xiaomi_15m_in_sample_grid.png",
-            "小米港股 15 分钟样本内网格回测",
+            figure_dir / artifact_names["in_sample_chart"],
+            f"{symbol} 15 分钟样本内网格回测",
         )
         validation_chart = plot_run_result(
             validation["run"],
-            figure_dir / "xiaomi_15m_validation_grid.png",
-            "小米港股 15 分钟样本外网格回测",
+            figure_dir / artifact_names["validation_chart"],
+            f"{symbol} 15 分钟样本外网格回测",
         )
         search_chart = plot_grid_search(
             optimization["results"],
-            figure_dir / "xiaomi_15m_grid_search_heatmap.png",
+            figure_dir / artifact_names["search_chart"],
         )
-        report_path = target_dir / "xiaomi_15m_grid_report.md"
+        report_path = target_dir / artifact_names["report"]
         summary_lines = [
-            f"- 标的：小米集团 `1810.HK`",
+            f"- 标的：`{symbol}`",
             f"- 数据周期：Yahoo Finance 最近 60 天 `{interval}`",
             f"- 样本内窗口：{decline_window.sample_start} 至 {decline_window.sample_end}",
             f"- 样本外窗口：{decline_window.validation_start} 至 {validation_summary['EndDate']}",
@@ -437,21 +464,21 @@ def build_report_markdown(
     else:
         in_sample_chart = plot_run_result(
             optimization["best_run"],
-            figure_dir / "xiaomi_in_sample_grid.png",
-            "小米港股样本内网格回测",
+            figure_dir / artifact_names["in_sample_chart"],
+            f"{symbol} 样本内网格回测",
         )
         validation_chart = plot_run_result(
             validation["run"],
-            figure_dir / "xiaomi_validation_2026_grid.png",
-            "小米港股 2026 样本外网格回测",
+            figure_dir / artifact_names["validation_chart"],
+            f"{symbol} 样本外网格回测",
         )
         search_chart = plot_grid_search(
             optimization["results"],
-            figure_dir / "xiaomi_grid_search_heatmap.png",
+            figure_dir / artifact_names["search_chart"],
         )
-        report_path = target_dir / "xiaomi_grid_report.md"
+        report_path = target_dir / artifact_names["report"]
         summary_lines = [
-            f"- 标的：小米集团 `1810.HK`",
+            f"- 标的：`{symbol}`",
             f"- 样本内窗口：{decline_window.sample_start} 至 {decline_window.sample_end}",
             f"- 样本外窗口：{decline_window.validation_start} 至 {validation_summary['EndDate']}",
             f"- 初始规则：样本开始时投入 50% 资金建底仓，剩余 50% 资金做网格买卖",
@@ -504,7 +531,7 @@ def build_report_markdown(
     in_sample_trade_table = _build_trade_table(optimization["best_run"])
     validation_event_table = _build_event_table(validation["run"])
     validation_trade_table = _build_trade_table(validation["run"])
-    report_content = f"""# 小米港股网格回测报告
+    report_content = f"""# {symbol} 网格回测报告
 
 ## 摘要
 

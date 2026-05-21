@@ -91,8 +91,8 @@
 
 当前包括：
 
-- `data/processed/xiaomi_1810_hk_daily.csv`
-- `data/processed/xiaomi_1810_hk_15m.csv`
+- `data/processed/1810_hk_daily.csv`
+- `data/processed/1810_hk_15m.csv`
 
 ## 中间结果
 
