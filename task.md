@@ -38,6 +38,7 @@
 - [x] 修复 VS Code 调试器类型
 - [x] 重写仓库规则分层结构
 - [x] 建立策略研究统一配置基座
+- [x] 接入实盘口径与基础风控
 
 ## 项目规划整理
 
@@ -1058,6 +1059,43 @@
 - 默认值散落会导致后续同时改 CLI、报告、测试和文档时容易漏改；集中到配置层后，新增实盘口径和批量研究更容易保持一致。
 - `WorkflowSpec` 本轮先作为结构承载，不急于一次性重写所有工作流，避免架构调整和策略口径变化混在同一提交里。
 - `ExecutionConfig` 先定义数据结构，后续阶段再把费用、滑点、仓位上限、停手机制接入策略执行。
+
+## 接入实盘口径与基础风控
+
+### 状态
+
+已完成。
+
+### 修改方案
+
+在保留 `research` 简化研究口径的同时，新增默认面向命令行的 `realistic` 执行口径，把手续费、滑点、最大仓位占用、止损停手和 benchmark 对照纳入回测、报告和文档。
+
+### 修改内容
+
+- 策略层：
+  - `run_grid_backtest()` 支持传入 `ExecutionConfig`。
+  - `FixedUnitGridStrategy` 记录估算成交价、手续费、滑点成本、仓位占用、止损停手事件和风控跳过事件。
+  - 汇总结果新增 `NetReturnPct`、`TransactionCost`、`SlippageCost`、`MaxPositionRatioUsed`、`StopLossEvents`、`RiskSkipEvents`、`BaseOnlyReturnPct`、`BuyHoldReturnPct`、`GridVsBaseOnly`、`GridVsBuyHold` 等字段。
+- CLI 层：
+  - `optimize`、`backtest`、`report`、`run` 新增 `--execution-profile`、`--commission-bps`、`--slippage-bps`、`--max-position-ratio`、`--stop-loss-pct`、`--cooldown-bars`、`--benchmark`。
+  - 默认命令行执行口径改为 `realistic`，底层函数仍可用 `research` 做兼容验证。
+  - 新增 `--wf-window-count` 和 `--wf-min-window-size`，让 walk-forward 稳健性窗口可配置。
+- 报告层：
+  - 回测图新增仓位占用、仓位上限、累计手续费和累计滑点展示。
+  - 报告摘要和表格新增执行口径、风控约束、净收益、交易成本，以及“只拿底仓 / 买入持有”对照。
+- 文档和 VS Code：
+  - README 补充执行口径和风控参数说明。
+  - `.vscode/launch.json` 显式使用 `--execution-profile realistic`。
+  - `doc/` 补充报告阅读和术语口径。
+- 测试：
+  - 新增 realistic 口径费用记录和止损停手事件测试。
+  - 更新 CLI 默认执行口径与工作流调用契约测试。
+
+### 设计规则、原因和收益
+
+- 默认报告继续只靠本地样本可复现，但从简化研究口径升级为更接近实盘的执行假设。
+- `research` 仍保留，方便后续对比“策略逻辑本身”和“执行成本/风控约束”分别造成的影响。
+- 风控触发时写入事件流水，避免报告里只看到交易减少，却不知道是仓位上限还是停手机制生效。
 
 ## 产物清单
 

@@ -15,6 +15,7 @@
 - 所有命令统一从根目录 `main.py` 进入
 - 只保留 Yahoo 数据链路，降低维护面
 - 同时输出中间结果、图表、交易记录和中文报告，方便复盘
+- 回测命令默认使用 `realistic` 执行口径，计入可配置的手续费、滑点、仓位上限和停手机制
 
 ## 你先从哪里开始
 
@@ -131,6 +132,28 @@ py -3.13 main.py optimize --data data/processed/1810_hk_daily.csv --symbol 1810.
 ```powershell
 py -3.13 main.py backtest --data data/processed/1810_hk_daily.csv --symbol 1810.HK --grid-spacing 0.07 --grid-count 5 --take-profit 0.03
 ```
+
+### 执行口径与风控参数
+
+`optimize`、`backtest`、`report`、`run` 默认使用更接近实盘的口径：
+
+- `--execution-profile realistic`
+- 默认计入手续费、滑点、最大仓位占用和止损停手
+- 报告会同时对比网格、只拿底仓和买入持有
+
+如果需要复现旧的简化研究口径，可以显式传：
+
+```powershell
+py -3.13 main.py report --data data/processed/1810_hk_daily.csv --symbol 1810.HK --execution-profile research
+```
+
+常用覆盖参数：
+
+- `--commission-bps`：单边手续费，单位 bps
+- `--slippage-bps`：单边滑点，单位 bps
+- `--max-position-ratio`：最大仓位占总资金比例，例如 `0.95`
+- `--stop-loss-pct`：触发停止新增网格的跌幅，例如 `0.2`
+- `--cooldown-bars`：触发停手后的冷却 K 线数量
 
 ### 一键执行完整流程
 

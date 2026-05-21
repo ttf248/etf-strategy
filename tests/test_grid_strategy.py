@@ -1,11 +1,12 @@
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 import pandas as pd
 
 from etf_strategy.cli import build_parser, handle_download, handle_run
 from etf_strategy.config import DEFAULT_DATA_PATH, DEFAULT_OUTPUT_DIR
 from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
+from etf_strategy.settings import build_execution_config
 from etf_strategy.strategy.grid import (
     build_sample_window,
     build_walk_forward_windows,
@@ -82,6 +83,7 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(args.period, "60d")
         self.assertIsNone(args.start)
         self.assertIsNone(args.end)
+        self.assertEqual(args.execution_profile, "realistic")
 
     def test_handle_download_allows_daily_without_range_and_merges_existing(self) -> None:
         parser = build_parser()
@@ -175,7 +177,12 @@ class GridStrategyTests(unittest.TestCase):
             output_dir=DEFAULT_OUTPUT_DIR,
             validation_start="2026-01-01",
             lookback_days=120,
+            execution_config=ANY,
+            wf_window_count=3,
+            wf_min_window_size=20,
         )
+        execution_config = mock_workflow.call_args.kwargs["execution_config"]
+        self.assertEqual(execution_config.profile, "realistic")
 
     def test_backtest_parser_reads_grid_parameters(self) -> None:
         parser = build_parser()
@@ -204,6 +211,9 @@ class GridStrategyTests(unittest.TestCase):
         self.assertAlmostEqual(args.take_profit, 0.03)
         self.assertEqual(args.validation_start, "2026-01-01")
         self.assertEqual(args.lookback_days, 120)
+        self.assertEqual(args.execution_profile, "realistic")
+        self.assertIsNone(args.commission_bps)
+        self.assertIsNone(args.slippage_bps)
 
     def test_infer_symbol_from_data_path(self) -> None:
         self.assertEqual(infer_symbol_from_data_path("data/processed/1810_hk_daily.csv"), "1810.HK")
@@ -296,6 +306,74 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(events.iloc[0]["Date"], "2025-10-01")
         self.assertEqual(events.iloc[0]["EventType"], "base_buy")
         self.assertTrue((events["Units"] % 200 == 0).all())
+
+    def test_run_grid_backtest_realistic_profile_records_costs(self) -> None:
+        prices = [20.0, 19.0, 18.0, 19.2, 20.0]
+        frame = build_test_frame(prices, start="2025-10-01")
+
+        result = run_grid_backtest(
+            data=frame,
+            scenario_name="realistic_unit_test",
+            grid_spacing_pct=0.05,
+            grid_count=3,
+            take_profit_pct=0.05,
+            symbol="1810.HK",
+            market="HK",
+            lot_size=200,
+            lot_size_source="unit test",
+            total_capital=200000,
+            execution_config=build_execution_config(
+                "realistic",
+                commission_bps=10,
+                slippage_bps=5,
+                max_position_ratio=1.0,
+                stop_loss_pct=0.0,
+                cooldown_bars=0,
+            ),
+        )
+
+        summary = result["summary"]
+        events = result["events"]
+
+        self.assertEqual(summary["ExecutionProfile"], "realistic")
+        self.assertGreater(summary["TransactionCost"], 0)
+        self.assertGreater(summary["SlippageCost"], 0)
+        self.assertLess(summary["BaseUnits"], 5000)
+        self.assertIn("ExecutionPrice", events.columns)
+        self.assertIn("BaseOnlyReturnPct", summary)
+        self.assertIn("BuyHoldReturnPct", summary)
+
+    def test_run_grid_backtest_realistic_profile_records_stop_loss_event(self) -> None:
+        prices = [20.0, 18.0, 17.0, 16.0]
+        frame = build_test_frame(prices, start="2025-10-01")
+
+        result = run_grid_backtest(
+            data=frame,
+            scenario_name="risk_unit_test",
+            grid_spacing_pct=0.05,
+            grid_count=3,
+            take_profit_pct=0.05,
+            symbol="1810.HK",
+            market="HK",
+            lot_size=200,
+            lot_size_source="unit test",
+            total_capital=200000,
+            execution_config=build_execution_config(
+                "realistic",
+                commission_bps=0,
+                slippage_bps=0,
+                max_position_ratio=1.0,
+                stop_loss_pct=0.05,
+                cooldown_bars=2,
+            ),
+        )
+
+        summary = result["summary"]
+        events = result["events"]
+
+        self.assertGreaterEqual(summary["StopLossEvents"], 1)
+        self.assertGreaterEqual(summary["RiskSkipEvents"], 1)
+        self.assertIn("risk_stop_loss", set(events["EventType"]))
 
     def test_split_intraday_in_sample_and_validation(self) -> None:
         dates = pd.date_range(start="2026-04-01 09:30:00", periods=40, freq="15min")

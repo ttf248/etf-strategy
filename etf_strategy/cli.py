@@ -36,6 +36,9 @@ from etf_strategy.settings import (
     DEFAULT_LOOKBACK_DAYS,
     DEFAULT_VALIDATION_RATIO,
     DEFAULT_VALIDATION_START,
+    DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
+    DEFAULT_WALK_FORWARD_WINDOW_COUNT,
+    build_execution_config,
 )
 from etf_strategy.workflow import (
     run_full_workflow,
@@ -84,6 +87,9 @@ def build_parser() -> argparse.ArgumentParser:
     optimize_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
     optimize_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="样本内回看天数")
     optimize_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
+    optimize_parser.add_argument("--wf-window-count", type=int, default=DEFAULT_WALK_FORWARD_WINDOW_COUNT, help="样本内稳健性窗口数")
+    optimize_parser.add_argument("--wf-min-window-size", type=int, default=DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE, help="单个稳健性窗口最少 K 线数")
+    _add_execution_arguments(optimize_parser)
 
     backtest_parser = subparsers.add_parser("backtest", help="执行样本外验证")
     backtest_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
@@ -111,6 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
     backtest_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
     backtest_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="样本内回看天数")
     backtest_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
+    _add_execution_arguments(backtest_parser)
 
     report_parser = subparsers.add_parser("report", help="生成图表与中文报告")
     report_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
@@ -121,6 +128,9 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
     report_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="样本内回看天数")
     report_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
+    report_parser.add_argument("--wf-window-count", type=int, default=DEFAULT_WALK_FORWARD_WINDOW_COUNT, help="样本内稳健性窗口数")
+    report_parser.add_argument("--wf-min-window-size", type=int, default=DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE, help="单个稳健性窗口最少 K 线数")
+    _add_execution_arguments(report_parser)
 
     run_parser = subparsers.add_parser("run", help="串联下载、寻参、验证和报告生成")
     run_parser.add_argument("--symbol", default=DEFAULT_SYMBOL, help="Yahoo Finance 标的代码")
@@ -138,8 +148,45 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
     run_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="样本内回看天数")
     run_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
+    run_parser.add_argument("--wf-window-count", type=int, default=DEFAULT_WALK_FORWARD_WINDOW_COUNT, help="样本内稳健性窗口数")
+    run_parser.add_argument("--wf-min-window-size", type=int, default=DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE, help="单个稳健性窗口最少 K 线数")
+    _add_execution_arguments(run_parser)
 
     return parser
+
+
+def _add_execution_arguments(parser: argparse.ArgumentParser) -> None:
+    """给会执行回测的命令补充执行口径参数。"""
+    parser.add_argument(
+        "--execution-profile",
+        choices=["research", "realistic"],
+        default="realistic",
+        help="执行口径：research 保持简化撮合，realistic 加入费用、滑点和基础风控",
+    )
+    parser.add_argument("--commission-bps", type=float, default=None, help="单边手续费，单位 bps；不传则使用执行口径默认值")
+    parser.add_argument("--slippage-bps", type=float, default=None, help="单边滑点，单位 bps；不传则使用执行口径默认值")
+    parser.add_argument("--max-position-ratio", type=float, default=None, help="最大仓位占总资金比例，例如 0.95")
+    parser.add_argument("--stop-loss-pct", type=float, default=None, help="触发停止新增网格的跌幅，例如 0.2")
+    parser.add_argument("--cooldown-bars", type=int, default=None, help="触发停手后冷却的 K 线数量")
+    parser.add_argument(
+        "--benchmark",
+        choices=["base_only", "buy_hold"],
+        default=None,
+        help="报告重点对照基准；默认随执行口径",
+    )
+
+
+def _build_execution_from_args(args: argparse.Namespace):
+    """从命令行参数构造执行口径配置。"""
+    return build_execution_config(
+        profile=args.execution_profile,
+        commission_bps=args.commission_bps,
+        slippage_bps=args.slippage_bps,
+        max_position_ratio=args.max_position_ratio,
+        stop_loss_pct=args.stop_loss_pct,
+        cooldown_bars=args.cooldown_bars,
+        benchmark=args.benchmark,
+    )
 
 
 def _validate_daily_date_range(args: argparse.Namespace, command_name: str) -> None:
@@ -198,6 +245,7 @@ def handle_optimize(args: argparse.Namespace) -> int:
     """执行样本内参数搜索，并按周期选择对应工作流。"""
     started_at = perf_counter()
     logger.info("收到 optimize 命令: data={} interval={}", args.data, args.interval)
+    execution_config = _build_execution_from_args(args)
     if is_intraday_interval(args.interval):
         output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR / "optimize")
         result = run_minute_optimization_workflow(
@@ -205,6 +253,9 @@ def handle_optimize(args: argparse.Namespace) -> int:
             symbol=args.symbol,
             output_dir=output_dir,
             validation_ratio=args.validation_ratio,
+            execution_config=execution_config,
+            wf_window_count=args.wf_window_count,
+            wf_min_window_size=args.wf_min_window_size,
         )
     else:
         output_dir = args.output_dir or str(DEFAULT_OUTPUT_DIR / "optimize")
@@ -214,6 +265,9 @@ def handle_optimize(args: argparse.Namespace) -> int:
             output_dir=output_dir,
             validation_start=args.validation_start,
             lookback_days=args.lookback_days,
+            execution_config=execution_config,
+            wf_window_count=args.wf_window_count,
+            wf_min_window_size=args.wf_min_window_size,
         )
     best_summary = result["best_run"]["summary"]
     print(f"样本内最优参数已生成: {result['results_path']}")
@@ -239,6 +293,7 @@ def handle_backtest(args: argparse.Namespace) -> int:
         args.grid_count,
         args.take_profit * 100,
     )
+    execution_config = _build_execution_from_args(args)
     if is_intraday_interval(args.interval):
         output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR / "validation")
         result = run_minute_validation_workflow(
@@ -249,6 +304,7 @@ def handle_backtest(args: argparse.Namespace) -> int:
             symbol=args.symbol,
             output_dir=output_dir,
             validation_ratio=args.validation_ratio,
+            execution_config=execution_config,
         )
     else:
         output_dir = args.output_dir or str(DEFAULT_OUTPUT_DIR / "validation")
@@ -261,6 +317,7 @@ def handle_backtest(args: argparse.Namespace) -> int:
             output_dir=output_dir,
             validation_start=args.validation_start,
             lookback_days=args.lookback_days,
+            execution_config=execution_config,
         )
     summary = result["run"]["summary"]
     print(
@@ -289,6 +346,7 @@ def handle_run(args: argparse.Namespace) -> int:
         output_dir,
         report_dir,
     )
+    execution_config = _build_execution_from_args(args)
     logger.info("[1/3] 开始下载并合并最新行情")
     bars = download_price_bars(
         symbol=args.symbol,
@@ -309,6 +367,9 @@ def handle_run(args: argparse.Namespace) -> int:
             symbol=args.symbol,
             output_dir=output_dir,
             validation_ratio=args.validation_ratio,
+            execution_config=execution_config,
+            wf_window_count=args.wf_window_count,
+            wf_min_window_size=args.wf_min_window_size,
         )
     else:
         result = run_full_workflow(
@@ -317,6 +378,9 @@ def handle_run(args: argparse.Namespace) -> int:
             output_dir=output_dir,
             validation_start=args.validation_start,
             lookback_days=args.lookback_days,
+            execution_config=execution_config,
+            wf_window_count=args.wf_window_count,
+            wf_min_window_size=args.wf_min_window_size,
         )
     logger.info("[2/3] 完整回测工作流完成: summary={}", result["combined_summary_path"])
     logger.info("[3/3] 开始生成正式报告")
@@ -350,6 +414,7 @@ def handle_report(args: argparse.Namespace) -> int:
     started_at = perf_counter()
     logger.info("收到 report 命令: data={} interval={}", args.data, args.interval)
     logger.info("[1/2] 开始重跑工作流并准备报告数据")
+    execution_config = _build_execution_from_args(args)
     if is_intraday_interval(args.interval):
         output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR)
         report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR)
@@ -358,6 +423,9 @@ def handle_report(args: argparse.Namespace) -> int:
             symbol=args.symbol,
             output_dir=output_dir,
             validation_ratio=args.validation_ratio,
+            execution_config=execution_config,
+            wf_window_count=args.wf_window_count,
+            wf_min_window_size=args.wf_min_window_size,
         )
     else:
         output_dir = args.output_dir or str(DEFAULT_OUTPUT_DIR)
@@ -368,6 +436,9 @@ def handle_report(args: argparse.Namespace) -> int:
             output_dir=output_dir,
             validation_start=args.validation_start,
             lookback_days=args.lookback_days,
+            execution_config=execution_config,
+            wf_window_count=args.wf_window_count,
+            wf_min_window_size=args.wf_min_window_size,
         )
     logger.info("[2/2] 工作流数据准备完成，开始写正式报告")
     if is_intraday_interval(args.interval):

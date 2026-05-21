@@ -26,6 +26,8 @@ from etf_strategy.settings import (
     DEFAULT_VALIDATION_START,
     DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     DEFAULT_WALK_FORWARD_WINDOW_COUNT,
+    ExecutionConfig,
+    build_execution_config,
 )
 
 
@@ -63,6 +65,13 @@ class FixedUnitGridStrategy(Strategy):
     grid_count = 5
     take_profit_pct = 0.05
     lot_size = 1
+    execution_profile = "research"
+    commission_bps = 0.0
+    slippage_bps = 0.0
+    max_position_ratio = 1.0
+    stop_loss_pct = 0.0
+    cooldown_bars = 0
+    benchmark = "base_only"
 
     def init(self) -> None:
         """在样本第一根 K 线上完成底仓初始化。
@@ -83,11 +92,19 @@ class FixedUnitGridStrategy(Strategy):
         self.base_entered = False
         self.base_entry_date: pd.Timestamp | None = None
         self.base_entry_price = 0.0
+        self.base_transaction_cost = 0.0
         self.base_units = 0
         self.grid_units_per_level = 0
         self.grid_levels: list[dict[str, float | int | bool]] = []
         self.realized_grid_profit = 0.0
         self.grid_cycles_completed = 0
+        self.transaction_cost_total = 0.0
+        self.slippage_cost_total = 0.0
+        self.stop_loss_events = 0
+        self.risk_skip_events = 0
+        self.cooldown_remaining = 0
+        self.stop_loss_active = False
+        self.max_position_ratio_used = 0.0
         self.event_log: list[dict[str, object]] = []
         self.history: list[dict[str, object]] = []
         self._enter_base_position(first_date, first_close)
@@ -104,18 +121,26 @@ class FixedUnitGridStrategy(Strategy):
 
         # 先处理止盈，再处理新的买入，避免同一根 K 线既卖又立刻回补导致口径混乱。
         self._handle_grid_exits(current_date, close_price)
-        self._handle_grid_entries(current_date, close_price)
+        if self._grid_entries_allowed(current_date, close_price):
+            self._handle_grid_entries(current_date, close_price)
 
         self._record_snapshot(current_date, close_price)
+        self._decrement_cooldown()
 
     def _enter_base_position(self, current_date: pd.Timestamp, close_price: float) -> None:
         """建立底仓，并据此生成整套网格价位。"""
         units = self._build_base_units(close_price)
         self.buy(size=units, tag="base")
+        execution_price = self._buy_execution_price(close_price)
+        transaction_cost = self._transaction_cost(execution_price, units)
+        slippage_cost = self._slippage_cost(close_price, execution_price, units)
+        self.transaction_cost_total += transaction_cost
+        self.slippage_cost_total += slippage_cost
 
         self.base_entered = True
         self.base_entry_date = current_date
-        self.base_entry_price = close_price
+        self.base_entry_price = execution_price
+        self.base_transaction_cost = transaction_cost
         self.base_units = units
         self.grid_units_per_level = self._build_grid_units_per_level(close_price)
         self.grid_levels = self._build_grid_levels(close_price)
@@ -126,15 +151,19 @@ class FixedUnitGridStrategy(Strategy):
                 "EventType": "base_buy",
                 "Level": 0,
                 "Price": close_price,
+                "ExecutionPrice": execution_price,
                 "Units": units,
-                "CashFlow": units * close_price,
+                "CashFlow": units * execution_price + transaction_cost,
+                "TransactionCost": transaction_cost,
+                "SlippageCost": slippage_cost,
                 "Note": "样本开始时初始建仓",
             }
         )
 
     def _build_base_units(self, close_price: float) -> int:
         """根据底仓预算和最小交易单位，向下取整出可交易股数。"""
-        raw_units = int(self.base_cash_budget / close_price)
+        cash_per_unit = self._buy_cash_required_per_unit(close_price)
+        raw_units = int(self.base_cash_budget / cash_per_unit)
         units = self._round_down_to_lot(raw_units)
         if units <= 0:
             raise ValueError(
@@ -149,7 +178,8 @@ class FixedUnitGridStrategy(Strategy):
         目的是让所有网格层保持相同仓位大小，避免回测重新退化成“每层不同金额”。
         """
         per_level_budget = self.reserve_cash_budget / self.grid_count
-        raw_units = int(per_level_budget / base_price)
+        cash_per_unit = self._buy_cash_required_per_unit(base_price)
+        raw_units = int(per_level_budget / cash_per_unit)
         units = self._round_down_to_lot(raw_units)
         if units <= 0:
             raise ValueError(
@@ -174,6 +204,7 @@ class FixedUnitGridStrategy(Strategy):
                     "units": self.grid_units_per_level,
                     "active": False,
                     "entry_price": 0.0,
+                    "entry_transaction_cost": 0.0,
                 }
             )
         return levels
@@ -187,11 +218,20 @@ class FixedUnitGridStrategy(Strategy):
                 continue
 
             units = int(level["units"])
+            if not self._position_limit_allows_entry(current_date, close_price, units, int(level["level"])):
+                break
+
             tag = self._grid_tag(int(level["level"]))
             self.buy(size=units, tag=tag)
             # 只记录真实成交价，不使用预设阈值作为成本，否则止盈和成本口径都会失真。
+            execution_price = self._buy_execution_price(close_price)
+            transaction_cost = self._transaction_cost(execution_price, units)
+            slippage_cost = self._slippage_cost(close_price, execution_price, units)
+            self.transaction_cost_total += transaction_cost
+            self.slippage_cost_total += slippage_cost
             level["active"] = True
-            level["entry_price"] = close_price
+            level["entry_price"] = execution_price
+            level["entry_transaction_cost"] = transaction_cost
 
             self.event_log.append(
                 {
@@ -199,8 +239,11 @@ class FixedUnitGridStrategy(Strategy):
                     "EventType": "grid_buy",
                     "Level": int(level["level"]),
                     "Price": close_price,
+                    "ExecutionPrice": execution_price,
                     "Units": units,
-                    "CashFlow": units * close_price,
+                    "CashFlow": units * execution_price + transaction_cost,
+                    "TransactionCost": transaction_cost,
+                    "SlippageCost": slippage_cost,
                     "Note": "触发下行网格买入",
                 }
             )
@@ -212,6 +255,7 @@ class FixedUnitGridStrategy(Strategy):
                 continue
 
             entry_price = float(level["entry_price"])
+            entry_transaction_cost = float(level.get("entry_transaction_cost", 0.0))
             take_profit_price = entry_price * (1 + self.take_profit_pct)
             if close_price < take_profit_price:
                 continue
@@ -226,9 +270,15 @@ class FixedUnitGridStrategy(Strategy):
 
             units = int(level["units"])
             active_trade.close()
+            execution_price = self._sell_execution_price(close_price)
+            transaction_cost = self._transaction_cost(execution_price, units)
+            slippage_cost = self._slippage_cost(close_price, execution_price, units)
+            self.transaction_cost_total += transaction_cost
+            self.slippage_cost_total += slippage_cost
             level["active"] = False
             level["entry_price"] = 0.0
-            self.realized_grid_profit += (close_price - entry_price) * units
+            level["entry_transaction_cost"] = 0.0
+            self.realized_grid_profit += (execution_price - entry_price) * units - entry_transaction_cost - transaction_cost
             self.grid_cycles_completed += 1
 
             self.event_log.append(
@@ -237,8 +287,11 @@ class FixedUnitGridStrategy(Strategy):
                     "EventType": "grid_sell",
                     "Level": int(level["level"]),
                     "Price": close_price,
+                    "ExecutionPrice": execution_price,
                     "Units": units,
-                    "CashFlow": units * close_price,
+                    "CashFlow": units * execution_price - transaction_cost,
+                    "TransactionCost": transaction_cost,
+                    "SlippageCost": slippage_cost,
                     "Note": "达到网格止盈价后卖出本层仓位",
                 }
             )
@@ -259,14 +312,16 @@ class FixedUnitGridStrategy(Strategy):
             open_grid_levels += 1
             units = int(level["units"])
             open_grid_units += units
-            open_grid_cost += units * float(level["entry_price"])
+            open_grid_cost += units * float(level["entry_price"]) + float(level.get("entry_transaction_cost", 0.0))
 
         total_units = self.base_units + open_grid_units
-        gross_cost = self.base_units * self.base_entry_price + open_grid_cost
+        gross_cost = self.base_units * self.base_entry_price + self.base_transaction_cost + open_grid_cost
         # 已落袋的网格利润会抵减剩余持仓的等效成本，但不会改变市场价值。
         effective_cost_basis = gross_cost - self.realized_grid_profit
         effective_cost = effective_cost_basis / total_units if total_units else 0.0
         market_value = total_units * close_price
+        position_ratio = market_value / self.total_capital if self.total_capital else 0.0
+        self.max_position_ratio_used = max(self.max_position_ratio_used, position_ratio)
         cost_reduction_pct = (
             (self.base_entry_price - effective_cost) / self.base_entry_price * 100
             if self.base_entered and total_units
@@ -285,8 +340,135 @@ class FixedUnitGridStrategy(Strategy):
                 "EffectiveCost": effective_cost,
                 "CostReductionPct": cost_reduction_pct,
                 "MarketValue": market_value,
+                "PositionRatioPct": position_ratio * 100,
+                "TransactionCostCumulative": self.transaction_cost_total,
+                "SlippageCostCumulative": self.slippage_cost_total,
+                "MaxPositionRatioUsedPct": self.max_position_ratio_used * 100,
             }
         )
+
+    def _grid_entries_allowed(self, current_date: pd.Timestamp, close_price: float) -> bool:
+        """检查止损停手和冷却期是否允许继续开新网格。"""
+        if self.cooldown_remaining > 0:
+            self._record_risk_event(
+                current_date=current_date,
+                event_type="risk_cooldown",
+                close_price=close_price,
+                level=0,
+                note=f"停手机制冷却中，剩余 {self.cooldown_remaining} 根 K 线",
+            )
+            return False
+
+        if self.stop_loss_pct <= 0 or not self.base_entered:
+            return True
+
+        stop_loss_price = self.base_entry_price * (1 - self.stop_loss_pct)
+        if close_price > stop_loss_price:
+            self.stop_loss_active = False
+            return True
+
+        if not self.stop_loss_active:
+            self.stop_loss_events += 1
+            self.stop_loss_active = True
+            self.cooldown_remaining = max(int(self.cooldown_bars), 1)
+            self._record_risk_event(
+                current_date=current_date,
+                event_type="risk_stop_loss",
+                close_price=close_price,
+                level=0,
+                note=f"价格跌破停手线 {stop_loss_price:.2f}，暂停新增网格",
+            )
+        return False
+
+    def _position_limit_allows_entry(
+        self,
+        current_date: pd.Timestamp,
+        close_price: float,
+        units: int,
+        level: int,
+    ) -> bool:
+        """检查新增一层网格后是否超过最大仓位占用。"""
+        if self.max_position_ratio <= 0:
+            raise ValueError(f"max_position_ratio 必须大于 0，当前值为 {self.max_position_ratio}")
+
+        current_units = self.base_units + self._open_grid_units()
+        projected_market_value = (current_units + units) * close_price
+        projected_ratio = projected_market_value / self.total_capital if self.total_capital else 0.0
+        if projected_ratio <= self.max_position_ratio:
+            return True
+
+        self._record_risk_event(
+            current_date=current_date,
+            event_type="risk_position_limit",
+            close_price=close_price,
+            level=level,
+            note=(
+                f"新增网格后仓位占用 {projected_ratio * 100:.2f}% "
+                f"将超过上限 {self.max_position_ratio * 100:.2f}%"
+            ),
+        )
+        return False
+
+    def _record_risk_event(
+        self,
+        current_date: pd.Timestamp,
+        event_type: str,
+        close_price: float,
+        level: int,
+        note: str,
+    ) -> None:
+        """记录风控事件，避免风控触发时在报告里只看到交易消失。"""
+        self.risk_skip_events += 1
+        self.event_log.append(
+            {
+                "Date": format_timestamp(current_date),
+                "EventType": event_type,
+                "Level": level,
+                "Price": close_price,
+                "ExecutionPrice": close_price,
+                "Units": 0,
+                "CashFlow": 0.0,
+                "TransactionCost": 0.0,
+                "SlippageCost": 0.0,
+                "Note": note,
+            }
+        )
+
+    def _decrement_cooldown(self) -> None:
+        """每根 K 线结束后推进停手冷却计数。"""
+        if self.cooldown_remaining > 0:
+            self.cooldown_remaining -= 1
+
+    def _open_grid_units(self) -> int:
+        """统计当前仍打开的网格股数。"""
+        return sum(int(level["units"]) for level in self.grid_levels if level["active"])
+
+    def _commission_rate(self) -> float:
+        return max(float(self.commission_bps), 0.0) / 10000
+
+    def _slippage_rate(self) -> float:
+        return max(float(self.slippage_bps), 0.0) / 10000
+
+    def _buy_execution_price(self, close_price: float) -> float:
+        """按滑点估算买入成交价。"""
+        return close_price * (1 + self._slippage_rate())
+
+    def _sell_execution_price(self, close_price: float) -> float:
+        """按滑点估算卖出成交价。"""
+        return close_price * (1 - self._slippage_rate())
+
+    def _transaction_cost(self, execution_price: float, units: int) -> float:
+        """按成交金额估算手续费。"""
+        return execution_price * units * self._commission_rate()
+
+    def _slippage_cost(self, close_price: float, execution_price: float, units: int) -> float:
+        """记录相对收盘价的滑点成本，便于报告拆解。"""
+        return abs(execution_price - close_price) * units
+
+    def _buy_cash_required_per_unit(self, close_price: float) -> float:
+        """估算买入每股需要占用的现金。"""
+        execution_price = self._buy_execution_price(close_price)
+        return execution_price * (1 + self._commission_rate())
 
     @staticmethod
     def _grid_tag(level: int) -> str:
@@ -462,6 +644,60 @@ def _build_parameter_key(grid_spacing_pct: float, grid_count: int, take_profit_p
     return (round(float(grid_spacing_pct), 8), int(grid_count), round(float(take_profit_pct), 8))
 
 
+def _round_down_to_lot_value(units: int, lot_size: int) -> int:
+    """按最小交易单位向下取整。"""
+    if lot_size <= 0:
+        raise ValueError(f"lot_size 必须大于 0，当前值为 {lot_size}")
+    return units // lot_size * lot_size
+
+
+def _buy_cash_required_per_unit(close_price: float, execution: ExecutionConfig) -> float:
+    """估算指定执行口径下买入每股需要的现金。"""
+    commission_rate = max(execution.commission_bps, 0.0) / 10000
+    slippage_rate = max(execution.slippage_bps, 0.0) / 10000
+    execution_price = close_price * (1 + slippage_rate)
+    return execution_price * (1 + commission_rate)
+
+
+def _affordable_units(cash_budget: float, close_price: float, lot_size: int, execution: ExecutionConfig) -> int:
+    """根据现金预算、价格和交易单位估算可买股数。"""
+    raw_units = int(cash_budget / _buy_cash_required_per_unit(close_price, execution))
+    return _round_down_to_lot_value(raw_units, lot_size)
+
+
+def _build_benchmark_metrics(
+    data: pd.DataFrame,
+    total_capital: float,
+    lot_size: int,
+    execution: ExecutionConfig,
+) -> dict[str, float | int]:
+    """构造只拿底仓和买入持有两个对照组。
+
+    对照组使用同一套最小交易单位、手续费和买入滑点口径，避免报告里把
+    “策略差异”和“交易假设差异”混在一起。
+    """
+    entry_price = float(data.iloc[0]["Close"])
+    final_price = float(data.iloc[-1]["Close"])
+    base_budget = total_capital * INITIAL_CASH_RATIO
+
+    base_units = _affordable_units(base_budget, entry_price, lot_size, execution)
+    base_cash_used = base_units * _buy_cash_required_per_unit(entry_price, execution)
+    base_only_equity = total_capital - base_cash_used + base_units * final_price
+
+    buy_hold_units = _affordable_units(total_capital, entry_price, lot_size, execution)
+    buy_hold_cash_used = buy_hold_units * _buy_cash_required_per_unit(entry_price, execution)
+    buy_hold_equity = total_capital - buy_hold_cash_used + buy_hold_units * final_price
+
+    return {
+        "BaseOnlyUnits": base_units,
+        "BaseOnlyFinalEquity": base_only_equity,
+        "BaseOnlyReturnPct": (base_only_equity / total_capital - 1) * 100 if total_capital else 0.0,
+        "BuyHoldUnits": buy_hold_units,
+        "BuyHoldFinalEquity": buy_hold_equity,
+        "BuyHoldReturnPct": (buy_hold_equity / total_capital - 1) * 100 if total_capital else 0.0,
+    }
+
+
 def build_intraday_sample_window(
     data: pd.DataFrame,
     validation_start: pd.Timestamp,
@@ -500,17 +736,22 @@ def run_grid_backtest(
     lot_size: int,
     lot_size_source: str,
     total_capital: float = TOTAL_CAPITAL,
+    execution_config: ExecutionConfig | None = None,
 ) -> dict[str, object]:
     """运行单次网格回测。
 
     返回值既包含给报告使用的汇总数据，也保留明细表和 backtesting 原始统计，
     这样工作流、图表和测试都能共用同一次回测结果。
     """
+    execution = execution_config or build_execution_config("research")
+    commission_rate = max(execution.commission_bps, 0.0) / 10000
+    slippage_rate = max(execution.slippage_bps, 0.0) / 10000
     backtest = Backtest(
         data,
         FixedUnitGridStrategy,
         cash=total_capital,
-        commission=0.0,
+        spread=slippage_rate,
+        commission=commission_rate,
         trade_on_close=True,
         exclusive_orders=False,
         finalize_trades=True,
@@ -522,6 +763,13 @@ def run_grid_backtest(
         grid_count=grid_count,
         take_profit_pct=take_profit_pct,
         lot_size=lot_size,
+        execution_profile=execution.profile,
+        commission_bps=execution.commission_bps,
+        slippage_bps=execution.slippage_bps,
+        max_position_ratio=execution.max_position_ratio,
+        stop_loss_pct=execution.stop_loss_pct,
+        cooldown_bars=execution.cooldown_bars,
+        benchmark=execution.benchmark,
     )
     strategy: FixedUnitGridStrategy = stats["_strategy"]
     history = _history_to_frame(strategy.history)
@@ -533,6 +781,14 @@ def run_grid_backtest(
     max_drawdown_pct = abs(float(stats["Max. Drawdown [%]"]))
     return_pct = float(stats["Return [%]"])
     cost_reduction_pct = float(latest_snapshot.get("CostReductionPct", 0.0))
+    benchmark_metrics = _build_benchmark_metrics(
+        data=data,
+        total_capital=total_capital,
+        lot_size=lot_size,
+        execution=execution,
+    )
+    final_equity = float(stats["Equity Final [$]"])
+    net_pnl = final_equity - total_capital
 
     # summary 是项目内部统一口径的“最小汇总单元”，CSV、报告和参数搜索都依赖这些字段。
     summary = {
@@ -553,17 +809,34 @@ def run_grid_backtest(
         "GridCount": grid_count,
         "TakeProfitPct": take_profit_pct * 100,
         "ReturnPct": return_pct,
+        "NetReturnPct": return_pct,
+        "NetPnl": net_pnl,
         "AnnualReturnPct": float(stats["Return (Ann.) [%]"]),
         "MaxDrawdownPct": max_drawdown_pct,
         "ClosedTrades": int(stats["# Trades"]),
         "WinRatePct": float(stats["Win Rate [%]"]) if pd.notna(stats["Win Rate [%]"]) else 0.0,
-        "FinalEquity": float(stats["Equity Final [$]"]),
+        "FinalEquity": final_equity,
         "TotalCapital": total_capital,
         "PositionUnits": int(latest_snapshot.get("PositionUnits", 0)),
         "EffectiveCost": float(latest_snapshot.get("EffectiveCost", 0.0)),
         "CostReductionPct": cost_reduction_pct,
         "RealizedGridProfit": strategy.realized_grid_profit,
         "GridCyclesCompleted": strategy.grid_cycles_completed,
+        "ExecutionProfile": execution.profile,
+        "CommissionBps": execution.commission_bps,
+        "SlippageBps": execution.slippage_bps,
+        "TransactionCost": strategy.transaction_cost_total,
+        "SlippageCost": strategy.slippage_cost_total,
+        "MaxPositionRatio": execution.max_position_ratio * 100,
+        "MaxPositionRatioUsed": strategy.max_position_ratio_used * 100,
+        "StopLossPct": execution.stop_loss_pct * 100,
+        "CooldownBars": execution.cooldown_bars,
+        "StopLossEvents": strategy.stop_loss_events,
+        "RiskSkipEvents": strategy.risk_skip_events,
+        "Benchmark": execution.benchmark,
+        **benchmark_metrics,
+        "GridVsBaseOnly": final_equity - float(benchmark_metrics["BaseOnlyFinalEquity"]),
+        "GridVsBuyHold": final_equity - float(benchmark_metrics["BuyHoldFinalEquity"]),
         "Score": _compute_score(return_pct, max_drawdown_pct, cost_reduction_pct),
         "TriggeredEntry": bool(strategy.base_entered),
     }
@@ -590,15 +863,23 @@ def optimize_grid_parameters(
     market: str,
     lot_size: int,
     lot_size_source: str,
+    execution_config: ExecutionConfig | None = None,
+    wf_window_count: int = DEFAULT_WALK_FORWARD_WINDOW_COUNT,
+    wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """对网格参数做穷举搜索并返回最优结果。
 
     当前项目故意保留穷举，优先保证结果可重复和可解释；
     但最终选参不再只看单个样本窗口里的最高分，而是叠加多窗口稳健性筛选。
     """
+    execution = execution_config or build_execution_config("research")
     rows: list[dict[str, object]] = []
     run_records: dict[tuple[float, int, float], dict[str, object]] = {}
-    walk_forward_windows = build_walk_forward_windows(data)
+    walk_forward_windows = build_walk_forward_windows(
+        data,
+        window_count=wf_window_count,
+        min_window_size=wf_min_window_size,
+    )
 
     for spacing in spacings:
         for grid_count in grid_counts:
@@ -613,6 +894,7 @@ def optimize_grid_parameters(
                     market=market,
                     lot_size=lot_size,
                     lot_size_source=lot_size_source,
+                    execution_config=execution,
                 )
                 walk_forward_runs = [
                     run_grid_backtest(
@@ -625,6 +907,7 @@ def optimize_grid_parameters(
                         market=market,
                         lot_size=lot_size,
                         lot_size_source=lot_size_source,
+                        execution_config=execution,
                     )
                     for index, window in enumerate(walk_forward_windows)
                 ]

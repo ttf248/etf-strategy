@@ -136,6 +136,7 @@
 - `program=${workspaceFolder}/main.py`
 - `cwd=${workspaceFolder}`
 - `console=integratedTerminal`
+- `args` 中显式传入 `--execution-profile realistic`，确保 VS Code 一键报告使用接近实盘的默认口径
 - 运行时直接看 VS Code 集成终端里的 `INFO` 级别提示
 - 更详细的定位日志仍写入 `log/etf_strategy_YYYY-MM-DD.log`
 - `main.py` 会主动尝试把 Windows 控制台切到 UTF-8，`.vscode/launch.json` 也会显式传入 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`

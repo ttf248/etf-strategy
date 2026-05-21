@@ -17,7 +17,9 @@
                 "--data",
                 "data/processed/1810_hk_daily.csv",
                 "--symbol",
-                "1810.HK"
+                "1810.HK",
+                "--execution-profile",
+                "realistic"
             ]
         },
         {
@@ -38,7 +40,9 @@
                 "--symbol",
                 "1810.HK",
                 "--interval",
-                "15m"
+                "15m",
+                "--execution-profile",
+                "realistic"
             ]
         }
     ]

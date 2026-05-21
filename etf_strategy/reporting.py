@@ -49,7 +49,7 @@ def plot_run_result(run_result: dict[str, object], output_path: str | Path, titl
     equity_curve["ReturnPct"] = (equity_curve["Equity"] / total_capital - 1) * 100
     equity_curve["DrawdownPct"] = equity_curve["DrawdownPct"] * 100
 
-    figure, axes = plt.subplots(3, 1, figsize=(16, 12), sharex=True)
+    figure, axes = plt.subplots(4, 1, figsize=(16, 15), sharex=True)
     figure.suptitle(title, fontsize=16, fontweight="bold")
 
     axes[0].plot(history["Date"], history["Close"], color="#1f77b4", linewidth=1.6, label="收盘价")
@@ -84,8 +84,37 @@ def plot_run_result(run_result: dict[str, object], output_path: str | Path, titl
     axes[2].plot(equity_curve["Date"], equity_curve["DrawdownPct"], color="#d62728", linewidth=1.2, label="回撤比例")
     axes[2].axhline(0, color="#7f7f7f", linewidth=0.8)
     axes[2].set_ylabel("百分比")
-    axes[2].set_xlabel("日期")
     axes[2].legend(loc="upper right")
+
+    if "PositionRatioPct" in history.columns:
+        axes[3].plot(history["Date"], history["PositionRatioPct"], color="#6a51a3", linewidth=1.4, label="仓位占用")
+        max_position_ratio = float(run_result["summary"].get("MaxPositionRatio", 100.0))
+        axes[3].axhline(max_position_ratio, color="#9e9ac8", linewidth=1.0, linestyle="--", label="仓位上限")
+        axes[3].set_ylabel("仓位(%)")
+    if "TransactionCostCumulative" in history.columns:
+        cost_axis = axes[3].twinx()
+        cost_axis.plot(
+            history["Date"],
+            history["TransactionCostCumulative"],
+            color="#e6550d",
+            linewidth=1.2,
+            label="累计手续费",
+        )
+        if "SlippageCostCumulative" in history.columns:
+            cost_axis.plot(
+                history["Date"],
+                history["SlippageCostCumulative"],
+                color="#31a354",
+                linewidth=1.2,
+                label="累计滑点",
+            )
+        cost_axis.set_ylabel("成本")
+        lines, labels = axes[3].get_legend_handles_labels()
+        cost_lines, cost_labels = cost_axis.get_legend_handles_labels()
+        axes[3].legend(lines + cost_lines, labels + cost_labels, loc="upper right", ncol=4)
+    else:
+        axes[3].legend(loc="upper right")
+    axes[3].set_xlabel("日期")
 
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -105,7 +134,9 @@ def _describe_run_in_plain_words(run_result: dict[str, object], total_capital: f
     final_equity = float(summary["FinalEquity"])
     total_pnl = final_equity - total_capital
     triggered_entry = bool(summary.get("TriggeredEntry", False))
-    if triggered_entry:
+    if "BaseOnlyFinalEquity" in summary:
+        base_only_equity = float(summary["BaseOnlyFinalEquity"])
+    elif triggered_entry:
         end_price = float(history.iloc[-1]["Close"])
         base_buy = events[events["EventType"] == "base_buy"].iloc[0]
         base_units = int(base_buy["Units"])
@@ -116,6 +147,8 @@ def _describe_run_in_plain_words(run_result: dict[str, object], total_capital: f
     else:
         base_only_equity = total_capital
     base_only_pnl = base_only_equity - total_capital
+    buy_hold_equity = float(summary.get("BuyHoldFinalEquity", base_only_equity))
+    buy_hold_pnl = buy_hold_equity - total_capital
 
     return {
         "final_equity": final_equity,
@@ -124,6 +157,10 @@ def _describe_run_in_plain_words(run_result: dict[str, object], total_capital: f
         "base_only_pnl": base_only_pnl,
         "base_only_return_pct": base_only_pnl / total_capital * 100,
         "grid_vs_base_only": final_equity - base_only_equity,
+        "buy_hold_equity": buy_hold_equity,
+        "buy_hold_pnl": buy_hold_pnl,
+        "buy_hold_return_pct": buy_hold_pnl / total_capital * 100,
+        "grid_vs_buy_hold": final_equity - buy_hold_equity,
         "triggered_entry": triggered_entry,
     }
 
@@ -170,14 +207,28 @@ def _build_simple_markdown_table(headers: list[str], rows: list[list[object]]) -
 def _build_event_table(run_result: dict[str, object]) -> str:
     return _build_markdown_table(
         run_result["events"],
-        columns=["Date", "EventType", "Level", "Price", "Units", "CashFlow", "Note"],
+        columns=[
+            "Date",
+            "EventType",
+            "Level",
+            "Price",
+            "ExecutionPrice",
+            "Units",
+            "CashFlow",
+            "TransactionCost",
+            "SlippageCost",
+            "Note",
+        ],
         rename_map={
             "Date": "时间",
             "EventType": "事件类型",
             "Level": "层级",
             "Price": "价格",
+            "ExecutionPrice": "估算成交价",
             "Units": "数量",
             "CashFlow": "金额",
+            "TransactionCost": "手续费",
+            "SlippageCost": "滑点成本",
             "Note": "说明",
         },
     )
@@ -470,6 +521,18 @@ def _build_quick_answer_table(
             "正数表示网格比只拿底仓更好，负数表示网格反而拖累了结果。",
         ],
         [
+            "比买入持有好不好",
+            f"{float(in_sample_words['grid_vs_buy_hold']):.2f}",
+            f"{float(validation_words['grid_vs_buy_hold']):.2f}",
+            "买入持有用同样资金、交易单位和执行口径估算，正数表示网格更好。",
+        ],
+        [
+            "交易成本高不高",
+            f"{float(best_summary.get('TransactionCost', 0.0)):.2f}",
+            f"{float(validation_summary.get('TransactionCost', 0.0)):.2f}",
+            "这里统计手续费，滑点会单独体现在估算成交价和滑点成本里。",
+        ],
+        [
             "最坏会亏到什么程度",
             f"{float(best_summary['MaxDrawdownPct']):.2f}%",
             f"{float(validation_summary['MaxDrawdownPct']):.2f}%",
@@ -488,6 +551,14 @@ def _build_quick_answer_table(
 def _build_selection_method_table(best_summary: dict[str, object], optimization_results: pd.DataFrame) -> str:
     """说明参数为什么是这样选出来的。"""
     rows = [
+        [
+            "执行口径",
+            str(best_summary.get("ExecutionProfile", "research")),
+            (
+                f"手续费 {float(best_summary.get('CommissionBps', 0.0)):.2f} bps，"
+                f"滑点 {float(best_summary.get('SlippageBps', 0.0)):.2f} bps。"
+            ),
+        ],
         ["候选组合数", len(optimization_results), "先把候选参数全部跑完，不做随机抽样。"],
         [
             "单窗综合分",
@@ -516,18 +587,60 @@ def _build_selection_method_table(best_summary: dict[str, object], optimization_
     return _build_simple_markdown_table(["筛选环节", "结果", "你该怎么理解"], rows)
 
 
+def _build_execution_risk_table(
+    best_summary: dict[str, object],
+    validation_summary: dict[str, object],
+) -> str:
+    """展示执行口径和基础风控约束。"""
+    rows = [
+        [
+            "执行口径",
+            str(best_summary.get("ExecutionProfile", "research")),
+            str(validation_summary.get("ExecutionProfile", "research")),
+        ],
+        [
+            "手续费 / 滑点",
+            f"{float(best_summary.get('CommissionBps', 0.0)):.2f} / {float(best_summary.get('SlippageBps', 0.0)):.2f} bps",
+            f"{float(validation_summary.get('CommissionBps', 0.0)):.2f} / {float(validation_summary.get('SlippageBps', 0.0)):.2f} bps",
+        ],
+        [
+            "最大仓位占用",
+            f"{float(best_summary.get('MaxPositionRatioUsed', 0.0)):.2f}% / 上限 {float(best_summary.get('MaxPositionRatio', 100.0)):.2f}%",
+            f"{float(validation_summary.get('MaxPositionRatioUsed', 0.0)):.2f}% / 上限 {float(validation_summary.get('MaxPositionRatio', 100.0)):.2f}%",
+        ],
+        [
+            "停手事件",
+            int(best_summary.get("StopLossEvents", 0)),
+            int(validation_summary.get("StopLossEvents", 0)),
+        ],
+    ]
+    return _build_simple_markdown_table(["约束", "样本内", "样本外"], rows)
+
+
 def _build_core_metric_table(
     best_summary: dict[str, object],
     validation_summary: dict[str, object],
 ) -> str:
     """给出最关键的对比指标，减少长段落重复解释。"""
     rows = [
-        ["收益率", f"{float(best_summary['ReturnPct']):.2f}%", f"{float(validation_summary['ReturnPct']):.2f}%", "先看能不能赚钱。"],
+        ["净收益率", f"{float(best_summary.get('NetReturnPct', best_summary['ReturnPct'])):.2f}%", f"{float(validation_summary.get('NetReturnPct', validation_summary['ReturnPct'])):.2f}%", "已经按当前执行口径扣除回测引擎支持的费用影响。"],
         [
             "最大回撤",
             f"{float(best_summary['MaxDrawdownPct']):.2f}%",
             f"{float(validation_summary['MaxDrawdownPct']):.2f}%",
             "再看亏起来最难受会到什么程度。",
+        ],
+        [
+            "交易成本",
+            f"{float(best_summary.get('TransactionCost', 0.0)):.2f}",
+            f"{float(validation_summary.get('TransactionCost', 0.0)):.2f}",
+            "策略内部估算的手续费累计值，帮助判断网格频繁交易是否吃掉收益。",
+        ],
+        [
+            "滑点成本",
+            f"{float(best_summary.get('SlippageCost', 0.0)):.2f}",
+            f"{float(validation_summary.get('SlippageCost', 0.0)):.2f}",
+            "按收盘价和估算成交价差额累计，属于近似实盘口径。",
         ],
         [
             "有效持仓成本",
@@ -565,14 +678,24 @@ def _build_base_comparison_table(
             f"{float(validation_words['base_only_return_pct']):.2f}%",
         ],
         [
+            "买入持有收益率",
+            f"{float(in_sample_words['buy_hold_return_pct']):.2f}%",
+            f"{float(validation_words['buy_hold_return_pct']):.2f}%",
+        ],
+        [
             "网格策略收益率",
-            f"{float(best_summary['ReturnPct']):.2f}%",
-            f"{float(validation_summary['ReturnPct']):.2f}%",
+            f"{float(best_summary.get('NetReturnPct', best_summary['ReturnPct'])):.2f}%",
+            f"{float(validation_summary.get('NetReturnPct', validation_summary['ReturnPct'])):.2f}%",
         ],
         [
             "网格相对底仓多赚/多亏",
             f"{float(in_sample_words['grid_vs_base_only']):.2f}",
             f"{float(validation_words['grid_vs_base_only']):.2f}",
+        ],
+        [
+            "网格相对买入持有多赚/多亏",
+            f"{float(in_sample_words['grid_vs_buy_hold']):.2f}",
+            f"{float(validation_words['grid_vs_buy_hold']):.2f}",
         ],
     ]
     return _build_simple_markdown_table(["对比项", "样本内", "样本外"], rows)
@@ -627,6 +750,7 @@ def build_report_markdown(
             f"- 最小交易单位：{int(best_summary['LotSize'])} 股，来源：{best_summary['LotSizeSource']}",
             f"- 固定底仓数量：{int(best_summary['BaseUnits'])} 股",
             f"- 单层网格固定数量：{int(best_summary['GridUnitsPerLevel'])} 股",
+            f"- 执行口径：`{best_summary.get('ExecutionProfile', 'research')}`，手续费 `{float(best_summary.get('CommissionBps', 0.0)):.2f}` bps，滑点 `{float(best_summary.get('SlippageBps', 0.0)):.2f}` bps",
             f"- 最优参数：网格间距 {best_summary['GridSpacingPct']:.2f}% / 网格层数 {int(best_summary['GridCount'])} / 止盈比例 {best_summary['TakeProfitPct']:.2f}%",
         ]
         validation_title = "分钟线样本外验证"
@@ -655,6 +779,7 @@ def build_report_markdown(
             f"- 最小交易单位：{int(best_summary['LotSize'])} 股，来源：{best_summary['LotSizeSource']}",
             f"- 固定底仓数量：{int(best_summary['BaseUnits'])} 股",
             f"- 单层网格固定数量：{int(best_summary['GridUnitsPerLevel'])} 股",
+            f"- 执行口径：`{best_summary.get('ExecutionProfile', 'research')}`，手续费 `{float(best_summary.get('CommissionBps', 0.0)):.2f}` bps，滑点 `{float(best_summary.get('SlippageBps', 0.0)):.2f}` bps",
             f"- 最优参数：网格间距 {best_summary['GridSpacingPct']:.2f}% / 网格层数 {int(best_summary['GridCount'])} / 止盈比例 {best_summary['TakeProfitPct']:.2f}%",
         ]
         validation_title = "2026 样本外验证"
@@ -681,6 +806,7 @@ def build_report_markdown(
     selection_method_table = _build_selection_method_table(best_summary, optimization["results"])
     quick_answer_table = _build_quick_answer_table(best_summary, validation_summary, in_sample_words, validation_words)
     core_metric_table = _build_core_metric_table(best_summary, validation_summary)
+    execution_risk_table = _build_execution_risk_table(best_summary, validation_summary)
     base_comparison_table = _build_base_comparison_table(
         in_sample_words=in_sample_words,
         validation_words=validation_words,
@@ -720,6 +846,10 @@ def build_report_markdown(
 ### 关键结果对照
 
 {core_metric_table}
+
+### 执行口径和风控约束
+
+{execution_risk_table}
 
 ### 网格到底有没有帮忙
 
