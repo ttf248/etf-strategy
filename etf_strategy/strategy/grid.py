@@ -1,65 +1,46 @@
 from __future__ import annotations
 """网格策略核心实现。
 
-这里同时承担三类职责：
+这里聚焦两类职责：
 
 1. 定义 backtesting.py 直接调用的策略类。
-2. 提供日线 / 分钟线样本切分和评分规则。
-3. 对外暴露单次回测、参数搜索和产物保存能力。
+2. 对外暴露单次回测和参数搜索能力。
 
-之所以没有继续拆更细，是因为这些逻辑共享同一套口径：
-- 样本起点直接建底仓
-- 底仓和网格都按固定股数执行
-- 成本摊薄、网格已实现收益和总账户收益需要使用同一批中间状态计算
+样本切分和产物落盘已经拆到相邻模块，避免策略撮合文件继续膨胀。
 """
 
 import hashlib
 import json
 import pickle
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from backtesting import Backtest, Strategy
 
 from etf_strategy.settings import (
-    DEFAULT_LOOKBACK_DAYS,
-    DEFAULT_VALIDATION_RATIO,
-    DEFAULT_VALIDATION_START,
     DEFAULT_JOBS,
     DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     DEFAULT_WALK_FORWARD_WINDOW_COUNT,
     ExecutionConfig,
     build_execution_config,
 )
+from etf_strategy.strategy.artifacts import load_price_frame, save_decline_window, save_run_artifacts
+from etf_strategy.strategy.metrics import compute_score, summarize_walk_forward_runs
+from etf_strategy.strategy.sampling import (
+    DeclineWindow,
+    build_intraday_sample_window,
+    build_sample_window,
+    build_walk_forward_windows,
+    format_timestamp,
+    split_in_sample_and_validation,
+    split_intraday_in_sample_and_validation,
+)
 
 
 TOTAL_CAPITAL = 200000.0
 INITIAL_CASH_RATIO = 0.5
-
-
-@dataclass
-class DeclineWindow:
-    """样本窗口摘要。"""
-
-    peak_date: str
-    peak_price: float
-    entry_date: str
-    entry_price: float
-    sample_start: str
-    sample_end: str
-    validation_start: str
-
-
-def format_timestamp(timestamp: pd.Timestamp) -> str:
-    """按数据粒度输出日期或日期时间。"""
-    normalized = pd.Timestamp(timestamp)
-    if normalized.hour or normalized.minute or normalized.second:
-        return normalized.strftime("%Y-%m-%d %H:%M:%S")
-    return normalized.strftime("%Y-%m-%d")
-
 
 class FixedUnitGridStrategy(Strategy):
     """样本起点建仓 + 双向固定股数网格策略。"""
@@ -485,89 +466,6 @@ class FixedUnitGridStrategy(Strategy):
         return units // self.lot_size * self.lot_size
 
 
-def load_price_frame(data_path: str | Path) -> pd.DataFrame:
-    """加载标准化 CSV 并转成 backtesting 需要的结构。"""
-    frame = pd.read_csv(data_path, parse_dates=["Date"])
-    required_columns = {"Date", "Open", "High", "Low", "Close", "Volume"}
-    missing_columns = required_columns.difference(frame.columns)
-    if missing_columns:
-        raise ValueError(f"标准化 CSV 缺少字段: {sorted(missing_columns)}")
-
-    frame = frame.sort_values("Date").set_index("Date")
-    frame = frame.loc[:, ["Open", "High", "Low", "Close", "Volume"]]
-    frame = frame.astype(
-        {
-            "Open": "float64",
-            "High": "float64",
-            "Low": "float64",
-            "Close": "float64",
-            "Volume": "int64",
-        }
-    )
-    return frame
-
-
-def build_sample_window(
-    data: pd.DataFrame,
-    validation_start: str = DEFAULT_VALIDATION_START,
-    lookback_days: int = DEFAULT_LOOKBACK_DAYS,
-) -> DeclineWindow:
-    """构建日线样本内/样本外窗口摘要。
-
-    当前项目已经移除“先等 10% 回撤再建仓”的旧规则，
-    所以窗口起点就是样本内的首个交易日。
-    """
-    validation_timestamp = pd.Timestamp(validation_start)
-    sample_end_ts = validation_timestamp - pd.Timedelta(days=1)
-    sample_start_ts = sample_end_ts - pd.Timedelta(days=lookback_days)
-    window = data.loc[sample_start_ts:sample_end_ts]
-    if window.empty:
-        raise ValueError("样本内区间为空，无法构建样本窗口。")
-
-    first_date = window.index.min()
-    first_price = float(window.iloc[0]["Close"])
-    peak_date = window["Close"].idxmax()
-    peak_price = float(window.loc[peak_date, "Close"])
-    return DeclineWindow(
-        peak_date=format_timestamp(peak_date),
-        peak_price=peak_price,
-        entry_date=format_timestamp(first_date),
-        entry_price=first_price,
-        sample_start=format_timestamp(first_date),
-        sample_end=format_timestamp(window.index.max()),
-        validation_start=format_timestamp(validation_timestamp),
-    )
-
-
-def _compute_score(return_pct: float, max_drawdown_pct: float, cost_reduction_pct: float) -> float:
-    """收益/回撤综合评分。
-
-    这不是通用金融指标，而是当前项目为了平衡三件事的内部评分：
-    总收益、回撤可控性、以及摊薄剩余持仓成本的能力。
-    """
-    return return_pct - abs(max_drawdown_pct) * 0.7 + cost_reduction_pct * 0.5
-
-
-def _compute_robust_score(
-    walk_forward_score_mean: float,
-    walk_forward_score_min: float,
-    walk_forward_return_std_pct: float,
-    window_count: int,
-) -> float:
-    """基于多窗口结果给参数做稳健性评分。
-
-    当前项目不直接上随机搜索或外部优化器，
-    先在可解释性更强的穷举结果上叠加一层“时间顺序多窗口验证”：
-
-    - 平均分高，说明大多数窗口都不差
-    - 最差窗口分数不能太差，避免只在单一阶段好看
-    - 收益波动越大，说明参数越不稳定，需要扣分
-    """
-    if window_count <= 1:
-        return walk_forward_score_mean
-    return walk_forward_score_mean * 0.6 + walk_forward_score_min * 0.4 - walk_forward_return_std_pct * 0.25
-
-
 def _history_to_frame(history: list[dict[str, object]]) -> pd.DataFrame:
     """把策略内部快照列表转成统一 DataFrame。"""
     return pd.DataFrame(history) if history else pd.DataFrame()
@@ -576,72 +474,6 @@ def _history_to_frame(history: list[dict[str, object]]) -> pd.DataFrame:
 def _events_to_frame(events: list[dict[str, object]]) -> pd.DataFrame:
     """把事件流水转成统一 DataFrame。"""
     return pd.DataFrame(events) if events else pd.DataFrame()
-
-
-def build_walk_forward_windows(
-    data: pd.DataFrame,
-    window_count: int = DEFAULT_WALK_FORWARD_WINDOW_COUNT,
-    min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
-) -> list[pd.DataFrame]:
-    """把样本内区间按时间顺序拆成多个连续窗口。
-
-    这里不是机器学习里的训练/验证折，而是给固定参数做稳健性体检：
-    同一套参数如果只在一小段窗口表现突出，通常不值得直接拿去样本外验证。
-    """
-    if data.empty:
-        raise ValueError("样本为空，无法拆分稳健性窗口。")
-    if window_count < 1:
-        raise ValueError("window_count 至少为 1。")
-    if min_window_size < 5:
-        raise ValueError("min_window_size 过小，至少应保留 5 根 K 线。")
-    if len(data) < min_window_size * 2:
-        return [data.copy()]
-
-    max_window_count = max(1, len(data) // min_window_size)
-    effective_count = min(window_count, max_window_count)
-    if effective_count <= 1:
-        return [data.copy()]
-
-    split_points = np.linspace(0, len(data), effective_count + 1, dtype=int)
-    windows: list[pd.DataFrame] = []
-    for start_index, end_index in zip(split_points[:-1], split_points[1:]):
-        if end_index - start_index < min_window_size:
-            continue
-        windows.append(data.iloc[start_index:end_index].copy())
-
-    return windows or [data.copy()]
-
-
-def _summarize_walk_forward_runs(walk_forward_runs: list[dict[str, object]]) -> dict[str, float | int]:
-    """汇总多窗口回测结果。"""
-    summaries = [run_result["summary"] for run_result in walk_forward_runs]
-    score_values = [float(summary["Score"]) for summary in summaries]
-    return_values = [float(summary["ReturnPct"]) for summary in summaries]
-    drawdown_values = [float(summary["MaxDrawdownPct"]) for summary in summaries]
-    cost_values = [float(summary["CostReductionPct"]) for summary in summaries]
-    window_count = len(summaries)
-    positive_window_ratio = sum(1 for value in return_values if value > 0) / window_count * 100 if window_count else 0.0
-    walk_forward_score_mean = float(np.mean(score_values)) if score_values else 0.0
-    walk_forward_score_min = float(np.min(score_values)) if score_values else 0.0
-    walk_forward_return_std_pct = float(np.std(return_values, ddof=0)) if return_values else 0.0
-
-    return {
-        "WalkForwardWindowCount": window_count,
-        "WalkForwardScoreMean": walk_forward_score_mean,
-        "WalkForwardScoreMin": walk_forward_score_min,
-        "WalkForwardReturnMeanPct": float(np.mean(return_values)) if return_values else 0.0,
-        "WalkForwardReturnWorstPct": float(np.min(return_values)) if return_values else 0.0,
-        "WalkForwardDrawdownMeanPct": float(np.mean(drawdown_values)) if drawdown_values else 0.0,
-        "WalkForwardCostReductionMeanPct": float(np.mean(cost_values)) if cost_values else 0.0,
-        "WalkForwardReturnStdPct": walk_forward_return_std_pct,
-        "WalkForwardPositiveWindowRatio": positive_window_ratio,
-        "RobustScore": _compute_robust_score(
-            walk_forward_score_mean=walk_forward_score_mean,
-            walk_forward_score_min=walk_forward_score_min,
-            walk_forward_return_std_pct=walk_forward_return_std_pct,
-            window_count=window_count,
-        ),
-    }
 
 
 def _build_parameter_key(grid_spacing_pct: float, grid_count: int, take_profit_pct: float) -> tuple[float, int, float]:
@@ -736,33 +568,6 @@ def _save_cached_candidate(cache_path: Path | None, run_result: dict[str, object
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     with cache_path.open("wb") as handle:
         pickle.dump(run_result, handle)
-
-
-def build_intraday_sample_window(
-    data: pd.DataFrame,
-    validation_start: pd.Timestamp,
-) -> DeclineWindow:
-    """构建分钟线样本内/样本外窗口摘要。
-
-    分钟线窗口来源于最近样本按比例切分，因此这里不再使用固定日历日期回看。
-    """
-    if data.empty:
-        raise ValueError("分钟样本内区间为空，无法构建样本窗口。")
-
-    first_date = data.index.min()
-    first_price = float(data.iloc[0]["Close"])
-    peak_date = data["Close"].idxmax()
-    peak_price = float(data.loc[peak_date, "Close"])
-    sample_end = data.index.max()
-    return DeclineWindow(
-        peak_date=format_timestamp(peak_date),
-        peak_price=peak_price,
-        entry_date=format_timestamp(first_date),
-        entry_price=first_price,
-        sample_start=format_timestamp(first_date),
-        sample_end=format_timestamp(sample_end),
-        validation_start=format_timestamp(validation_start),
-    )
 
 
 def run_grid_backtest(
@@ -877,7 +682,7 @@ def run_grid_backtest(
         **benchmark_metrics,
         "GridVsBaseOnly": final_equity - float(benchmark_metrics["BaseOnlyFinalEquity"]),
         "GridVsBuyHold": final_equity - float(benchmark_metrics["BuyHoldFinalEquity"]),
-        "Score": _compute_score(return_pct, max_drawdown_pct, cost_reduction_pct),
+        "Score": compute_score(return_pct, max_drawdown_pct, cost_reduction_pct),
         "TriggeredEntry": bool(strategy.base_entered),
     }
 
@@ -976,7 +781,7 @@ def optimize_grid_parameters(
             )
             for index, window in enumerate(walk_forward_windows)
         ]
-        robust_summary = _summarize_walk_forward_runs(walk_forward_runs)
+        robust_summary = summarize_walk_forward_runs(walk_forward_runs)
         run_result["summary"].update(robust_summary)
         _save_cached_candidate(cache_path, run_result)
         return run_result
@@ -1015,84 +820,3 @@ def optimize_grid_parameters(
     if best_run is None:
         raise ValueError("无法回取最优参数对应的回测结果。")
     return results, best_run
-
-
-def split_in_sample_and_validation(
-    data: pd.DataFrame,
-    validation_start: str = DEFAULT_VALIDATION_START,
-    lookback_days: int = DEFAULT_LOOKBACK_DAYS,
-) -> tuple[DeclineWindow, pd.DataFrame, pd.DataFrame]:
-    """拆分样本内和样本外数据。"""
-    decline_window = build_sample_window(
-        data,
-        validation_start=validation_start,
-        lookback_days=lookback_days,
-    )
-    in_sample = data.loc[decline_window.sample_start:decline_window.sample_end].copy()
-    validation = data.loc[decline_window.validation_start:].copy()
-    if validation.empty:
-        raise ValueError("样本外区间为空，无法验证 2026 表现。")
-    return decline_window, in_sample, validation
-
-
-def split_intraday_in_sample_and_validation(
-    data: pd.DataFrame,
-    validation_ratio: float = DEFAULT_VALIDATION_RATIO,
-) -> tuple[DeclineWindow, pd.DataFrame, pd.DataFrame]:
-    """按最近分钟线样本拆分样本内和样本外数据。
-
-    免费分钟线通常只有最近 60 天，不能照搬日线那套跨年的固定切分方式，
-    所以这里按时间顺序做比例切分。
-    """
-    if not 0 < validation_ratio < 0.5:
-        raise ValueError("validation_ratio 必须在 0 和 0.5 之间。")
-    if len(data) < 20:
-        raise ValueError("分钟线样本过短，至少需要 20 根 K 线。")
-
-    split_index = int(len(data) * (1 - validation_ratio))
-    split_index = min(max(split_index, 1), len(data) - 1)
-    in_sample = data.iloc[:split_index].copy()
-    validation = data.iloc[split_index:].copy()
-    validation_start = pd.Timestamp(validation.index.min())
-    decline_window = build_intraday_sample_window(in_sample, validation_start=validation_start)
-    if validation.empty:
-        raise ValueError("分钟样本外区间为空，无法验证表现。")
-    return decline_window, in_sample, validation
-
-
-def save_run_artifacts(output_dir: str | Path, prefix: str, run_result: dict[str, object]) -> dict[str, Path]:
-    """保存单次回测产生的明细文件。
-
-    文件拆分得比较细，是为了让参数搜索、人工复盘和报告生成可以独立复用。
-    """
-    target_dir = Path(output_dir)
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    summary_path = target_dir / f"{prefix}_summary.csv"
-    history_path = target_dir / f"{prefix}_history.csv"
-    events_path = target_dir / f"{prefix}_events.csv"
-    trades_path = target_dir / f"{prefix}_trades.csv"
-    equity_path = target_dir / f"{prefix}_equity_curve.csv"
-
-    pd.DataFrame([run_result["summary"]]).to_csv(summary_path, index=False, encoding="utf-8-sig")
-    run_result["history"].to_csv(history_path, index=False, encoding="utf-8-sig")
-    run_result["events"].to_csv(events_path, index=False, encoding="utf-8-sig")
-    run_result["trades"].to_csv(trades_path, index=False, encoding="utf-8-sig")
-    run_result["equity_curve"].to_csv(equity_path, index=True, encoding="utf-8-sig")
-
-    return {
-        "summary": summary_path,
-        "history": history_path,
-        "events": events_path,
-        "trades": trades_path,
-        "equity_curve": equity_path,
-    }
-
-
-def save_decline_window(output_dir: str | Path, decline_window: DeclineWindow) -> Path:
-    """保存样本内区间定位结果。"""
-    target = Path(output_dir)
-    target.mkdir(parents=True, exist_ok=True)
-    window_path = target / "in_sample_window.csv"
-    pd.DataFrame([asdict(decline_window)]).to_csv(window_path, index=False, encoding="utf-8-sig")
-    return window_path

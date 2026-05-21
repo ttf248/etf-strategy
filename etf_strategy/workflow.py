@@ -31,14 +31,9 @@ from etf_strategy.settings import (
     ExecutionConfig,
     build_execution_config,
 )
-from etf_strategy.strategy.grid import (
-    load_price_frame,
-    optimize_grid_parameters,
-    save_decline_window,
-    save_run_artifacts,
-    split_intraday_in_sample_and_validation,
-    split_in_sample_and_validation,
-)
+from etf_strategy.strategy.artifacts import load_price_frame, save_decline_window, save_run_artifacts
+from etf_strategy.strategy.grid import optimize_grid_parameters
+from etf_strategy.strategy.sampling import split_intraday_in_sample_and_validation, split_in_sample_and_validation
 
 
 def _count_parameter_combinations(spacings: list[float], grid_counts: list[int], take_profits: list[float]) -> int:
