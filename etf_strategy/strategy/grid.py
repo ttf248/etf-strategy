@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from backtesting import Backtest, Strategy
 
@@ -352,6 +353,26 @@ def _compute_score(return_pct: float, max_drawdown_pct: float, cost_reduction_pc
     return return_pct - abs(max_drawdown_pct) * 0.7 + cost_reduction_pct * 0.5
 
 
+def _compute_robust_score(
+    walk_forward_score_mean: float,
+    walk_forward_score_min: float,
+    walk_forward_return_std_pct: float,
+    window_count: int,
+) -> float:
+    """基于多窗口结果给参数做稳健性评分。
+
+    当前项目不直接上随机搜索或外部优化器，
+    先在可解释性更强的穷举结果上叠加一层“时间顺序多窗口验证”：
+
+    - 平均分高，说明大多数窗口都不差
+    - 最差窗口分数不能太差，避免只在单一阶段好看
+    - 收益波动越大，说明参数越不稳定，需要扣分
+    """
+    if window_count <= 1:
+        return walk_forward_score_mean
+    return walk_forward_score_mean * 0.6 + walk_forward_score_min * 0.4 - walk_forward_return_std_pct * 0.25
+
+
 def _history_to_frame(history: list[dict[str, object]]) -> pd.DataFrame:
     """把策略内部快照列表转成统一 DataFrame。"""
     return pd.DataFrame(history) if history else pd.DataFrame()
@@ -360,6 +381,77 @@ def _history_to_frame(history: list[dict[str, object]]) -> pd.DataFrame:
 def _events_to_frame(events: list[dict[str, object]]) -> pd.DataFrame:
     """把事件流水转成统一 DataFrame。"""
     return pd.DataFrame(events) if events else pd.DataFrame()
+
+
+def build_walk_forward_windows(
+    data: pd.DataFrame,
+    window_count: int = 3,
+    min_window_size: int = 20,
+) -> list[pd.DataFrame]:
+    """把样本内区间按时间顺序拆成多个连续窗口。
+
+    这里不是机器学习里的训练/验证折，而是给固定参数做稳健性体检：
+    同一套参数如果只在一小段窗口表现突出，通常不值得直接拿去样本外验证。
+    """
+    if data.empty:
+        raise ValueError("样本为空，无法拆分稳健性窗口。")
+    if window_count < 1:
+        raise ValueError("window_count 至少为 1。")
+    if min_window_size < 5:
+        raise ValueError("min_window_size 过小，至少应保留 5 根 K 线。")
+    if len(data) < min_window_size * 2:
+        return [data.copy()]
+
+    max_window_count = max(1, len(data) // min_window_size)
+    effective_count = min(window_count, max_window_count)
+    if effective_count <= 1:
+        return [data.copy()]
+
+    split_points = np.linspace(0, len(data), effective_count + 1, dtype=int)
+    windows: list[pd.DataFrame] = []
+    for start_index, end_index in zip(split_points[:-1], split_points[1:]):
+        if end_index - start_index < min_window_size:
+            continue
+        windows.append(data.iloc[start_index:end_index].copy())
+
+    return windows or [data.copy()]
+
+
+def _summarize_walk_forward_runs(walk_forward_runs: list[dict[str, object]]) -> dict[str, float | int]:
+    """汇总多窗口回测结果。"""
+    summaries = [run_result["summary"] for run_result in walk_forward_runs]
+    score_values = [float(summary["Score"]) for summary in summaries]
+    return_values = [float(summary["ReturnPct"]) for summary in summaries]
+    drawdown_values = [float(summary["MaxDrawdownPct"]) for summary in summaries]
+    cost_values = [float(summary["CostReductionPct"]) for summary in summaries]
+    window_count = len(summaries)
+    positive_window_ratio = sum(1 for value in return_values if value > 0) / window_count * 100 if window_count else 0.0
+    walk_forward_score_mean = float(np.mean(score_values)) if score_values else 0.0
+    walk_forward_score_min = float(np.min(score_values)) if score_values else 0.0
+    walk_forward_return_std_pct = float(np.std(return_values, ddof=0)) if return_values else 0.0
+
+    return {
+        "WalkForwardWindowCount": window_count,
+        "WalkForwardScoreMean": walk_forward_score_mean,
+        "WalkForwardScoreMin": walk_forward_score_min,
+        "WalkForwardReturnMeanPct": float(np.mean(return_values)) if return_values else 0.0,
+        "WalkForwardReturnWorstPct": float(np.min(return_values)) if return_values else 0.0,
+        "WalkForwardDrawdownMeanPct": float(np.mean(drawdown_values)) if drawdown_values else 0.0,
+        "WalkForwardCostReductionMeanPct": float(np.mean(cost_values)) if cost_values else 0.0,
+        "WalkForwardReturnStdPct": walk_forward_return_std_pct,
+        "WalkForwardPositiveWindowRatio": positive_window_ratio,
+        "RobustScore": _compute_robust_score(
+            walk_forward_score_mean=walk_forward_score_mean,
+            walk_forward_score_min=walk_forward_score_min,
+            walk_forward_return_std_pct=walk_forward_return_std_pct,
+            window_count=window_count,
+        ),
+    }
+
+
+def _build_parameter_key(grid_spacing_pct: float, grid_count: int, take_profit_pct: float) -> tuple[float, int, float]:
+    """构造稳定的参数键，避免浮点比较误差影响最优结果回取。"""
+    return (round(float(grid_spacing_pct), 8), int(grid_count), round(float(take_profit_pct), 8))
 
 
 def build_intraday_sample_window(
@@ -493,11 +585,12 @@ def optimize_grid_parameters(
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """对网格参数做穷举搜索并返回最优结果。
 
-    当前项目故意使用穷举而不是随机搜索，优先保证结果可重复和可解释。
+    当前项目故意保留穷举，优先保证结果可重复和可解释；
+    但最终选参不再只看单个样本窗口里的最高分，而是叠加多窗口稳健性筛选。
     """
     rows: list[dict[str, object]] = []
-    best_run: dict[str, object] | None = None
-    best_score = float("-inf")
+    run_records: dict[tuple[float, int, float], dict[str, object]] = {}
+    walk_forward_windows = build_walk_forward_windows(data)
 
     for spacing in spacings:
         for grid_count in grid_counts:
@@ -513,15 +606,41 @@ def optimize_grid_parameters(
                     lot_size=lot_size,
                     lot_size_source=lot_size_source,
                 )
+                walk_forward_runs = [
+                    run_grid_backtest(
+                        data=window,
+                        scenario_name=f"{scenario_name}_wf_{index + 1}",
+                        grid_spacing_pct=spacing,
+                        grid_count=grid_count,
+                        take_profit_pct=take_profit,
+                        symbol=symbol,
+                        market=market,
+                        lot_size=lot_size,
+                        lot_size_source=lot_size_source,
+                    )
+                    for index, window in enumerate(walk_forward_windows)
+                ]
+                robust_summary = _summarize_walk_forward_runs(walk_forward_runs)
+                run_result["summary"].update(robust_summary)
+                parameter_key = _build_parameter_key(spacing, grid_count, take_profit)
+                run_records[parameter_key] = run_result
                 rows.append(run_result["summary"])
-                score = float(run_result["summary"]["Score"])
-                if score > best_score:
-                    best_score = score
-                    best_run = run_result
 
-    results = pd.DataFrame(rows).sort_values(["Score", "ReturnPct"], ascending=[False, False]).reset_index(drop=True)
-    if best_run is None:
+    results = pd.DataFrame(rows).sort_values(
+        ["RobustScore", "WalkForwardScoreMin", "WalkForwardPositiveWindowRatio", "Score", "ReturnPct"],
+        ascending=[False, False, False, False, False],
+    ).reset_index(drop=True)
+    if results.empty:
         raise ValueError("参数搜索未产生任何结果。")
+    best_row = results.iloc[0]
+    best_key = _build_parameter_key(
+        float(best_row["GridSpacingPct"]) / 100,
+        int(best_row["GridCount"]),
+        float(best_row["TakeProfitPct"]) / 100,
+    )
+    best_run = run_records.get(best_key)
+    if best_run is None:
+        raise ValueError("无法回取最优参数对应的回测结果。")
     return results, best_run
 
 

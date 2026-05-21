@@ -113,11 +113,14 @@ def _describe_run_in_plain_words(run_result: dict[str, object], total_capital: f
         base_only_equity = base_cash_left + base_units * end_price
     else:
         base_only_equity = total_capital
+    base_only_pnl = base_only_equity - total_capital
 
     return {
         "final_equity": final_equity,
         "total_pnl": total_pnl,
         "base_only_equity": base_only_equity,
+        "base_only_pnl": base_only_pnl,
+        "base_only_return_pct": base_only_pnl / total_capital * 100,
         "grid_vs_base_only": final_equity - base_only_equity,
         "triggered_entry": triggered_entry,
     }
@@ -147,6 +150,18 @@ def _build_markdown_table(frame: pd.DataFrame, columns: list[str], rename_map: d
     header_line = "| " + " | ".join(headers) + " |"
     separator_line = "| " + " | ".join(["---"] * len(headers)) + " |"
     row_lines = ["| " + " | ".join(row) + " |" for row in rows]
+    return "\n".join([header_line, separator_line, *row_lines])
+
+
+def _build_simple_markdown_table(headers: list[str], rows: list[list[object]]) -> str:
+    """生成简单 Markdown 表格，用于报告里的结论与对比区块。"""
+    if not rows:
+        return "暂无记录。"
+    header_line = "| " + " | ".join(headers) + " |"
+    separator_line = "| " + " | ".join(["---"] * len(headers)) + " |"
+    row_lines = []
+    for row in rows:
+        row_lines.append("| " + " | ".join(_format_markdown_value(value) for value in row) + " |")
     return "\n".join([header_line, separator_line, *row_lines])
 
 
@@ -212,9 +227,9 @@ def plot_grid_search(results: pd.DataFrame, output_path: str | Path) -> Path:
     """绘制参数搜索热力图。"""
     configure_matplotlib()
 
-    # 热力图只按“层数 x 间距”聚合，止盈维度通过取最大评分折叠，避免图表过于拥挤。
+    # 热力图只按“层数 x 间距”聚合，止盈维度通过取最大稳健评分折叠，避免图表过于拥挤。
     grid = (
-        results.pivot_table(index="GridCount", columns="GridSpacingPct", values="Score", aggfunc="max")
+        results.pivot_table(index="GridCount", columns="GridSpacingPct", values="RobustScore", aggfunc="max")
         .sort_index()
         .sort_index(axis=1)
     )
@@ -227,14 +242,14 @@ def plot_grid_search(results: pd.DataFrame, output_path: str | Path) -> Path:
     axis.set_yticklabels([str(value) for value in grid.index])
     axis.set_xlabel("网格间距")
     axis.set_ylabel("网格层数")
-    axis.set_title("样本内参数综合评分热力图")
+    axis.set_title("样本内参数稳健评分热力图")
 
     for row_index in range(len(grid.index)):
         for column_index in range(len(grid.columns)):
             value = grid.iloc[row_index, column_index]
             axis.text(column_index, row_index, f"{value:.1f}", ha="center", va="center", fontsize=9)
 
-    figure.colorbar(image, ax=axis, shrink=0.9, label="综合评分")
+    figure.colorbar(image, ax=axis, shrink=0.9, label="稳健评分")
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
     figure.tight_layout()
@@ -320,13 +335,19 @@ def _build_run_chart_summary(run_result: dict[str, object], run_words: dict[str,
 
 def _build_heatmap_summary(results: pd.DataFrame) -> str:
     """生成热力图结论，减少读者自己猜颜色和最优区间。"""
-    best_row = results.sort_values(["Score", "ReturnPct"], ascending=[False, False]).iloc[0]
-    best_score = float(best_row["Score"])
+    best_row = results.sort_values(
+        ["RobustScore", "WalkForwardScoreMin", "WalkForwardPositiveWindowRatio", "Score", "ReturnPct"],
+        ascending=[False, False, False, False, False],
+    ).iloc[0]
+    best_score = float(best_row["RobustScore"])
     best_spacing = float(best_row["GridSpacingPct"])
     best_count = int(best_row["GridCount"])
     best_take_profit = float(best_row["TakeProfitPct"])
-    top_candidates = results.sort_values(["Score", "ReturnPct"], ascending=[False, False]).head(5)
-    same_best_rows = results[(results["Score"] - best_score).abs() < 1e-9]
+    top_candidates = results.sort_values(
+        ["RobustScore", "WalkForwardScoreMin", "WalkForwardPositiveWindowRatio", "Score", "ReturnPct"],
+        ascending=[False, False, False, False, False],
+    ).head(5)
+    same_best_rows = results[(results["RobustScore"] - best_score).abs() < 1e-9]
 
     if same_best_rows["GridCount"].nunique() > 1:
         min_count = int(same_best_rows["GridCount"].min())
@@ -345,7 +366,7 @@ def _build_heatmap_summary(results: pd.DataFrame) -> str:
     top_count = int(top_candidates["GridCount"].mode().iloc[0])
     return "\n".join(
         [
-            "- 热力图横轴是网格间距，纵轴是网格层数，颜色越偏绿代表综合评分越高；每个格子里没有单独画出的止盈比例，已经折叠成该格子的最好结果。",
+            "- 热力图横轴是网格间距，纵轴是网格层数，颜色越偏绿代表稳健评分越高；每个格子里没有单独画出的止盈比例，已经折叠成该格子的最好结果。",
             (
                 f"- 当前样本里，最优参数落在“网格间距 `{best_spacing:.2f}%` / "
                 f"网格层数 `{best_count}` / 止盈比例 `{best_take_profit:.2f}%`”。"
@@ -408,6 +429,151 @@ def _build_exec_summary(
             f"- 再看样本外：{validation_conclusion}",
         ]
     )
+
+
+def _build_profit_judgement(best_summary: dict[str, object], validation_summary: dict[str, object]) -> str:
+    """给出面向小白的盈利结论。"""
+    in_sample_return = float(best_summary["ReturnPct"])
+    validation_return = float(validation_summary["ReturnPct"])
+    if in_sample_return > 0 and validation_return > 0:
+        return "当前样本内和样本外都为正收益，可以继续观察，但还不能直接等同于稳定实盘盈利。"
+    if validation_return > 0:
+        return "样本外已经转正，但样本内没有稳定赚钱，暂时只能说参数在新阶段有改善，不能证明长期稳定盈利。"
+    return "当前还不能证明这套网格能稳定盈利，它更像在下跌和震荡里帮助你摊低持仓成本。"
+
+
+def _build_quick_answer_table(
+    best_summary: dict[str, object],
+    validation_summary: dict[str, object],
+    in_sample_words: dict[str, float | bool],
+    validation_words: dict[str, float | bool],
+) -> str:
+    """用问答表格直接回答小白最关心的问题。"""
+    stability_text = (
+        f"{float(best_summary['WalkForwardPositiveWindowRatio']):.0f}% 窗口为正，"
+        f"最差窗口收益 `{float(best_summary['WalkForwardReturnWorstPct']):.2f}%`，"
+        f"收益波动 `{float(best_summary['WalkForwardReturnStdPct']):.2f}` 个百分点。"
+    )
+    rows = [
+        [
+            "这套策略能不能赚钱",
+            f"{float(best_summary['ReturnPct']):.2f}%",
+            f"{float(validation_summary['ReturnPct']):.2f}%",
+            _build_profit_judgement(best_summary, validation_summary),
+        ],
+        [
+            "比只拿底仓好不好",
+            f"{float(in_sample_words['grid_vs_base_only']):.2f}",
+            f"{float(validation_words['grid_vs_base_only']):.2f}",
+            "正数表示网格比只拿底仓更好，负数表示网格反而拖累了结果。",
+        ],
+        [
+            "最坏会亏到什么程度",
+            f"{float(best_summary['MaxDrawdownPct']):.2f}%",
+            f"{float(validation_summary['MaxDrawdownPct']):.2f}%",
+            "这是账户在样本期间相对阶段高点出现过的最大回撤。",
+        ],
+        [
+            "这组参数稳不稳",
+            f"稳健分 {float(best_summary['RobustScore']):.2f}",
+            f"沿用同一组参数",
+            f"不是只看一整段最高分，而是看多窗口表现是否稳定。当前结果：{stability_text}",
+        ],
+    ]
+    return _build_simple_markdown_table(["问题", "样本内", "样本外", "怎么理解"], rows)
+
+
+def _build_selection_method_table(best_summary: dict[str, object], optimization_results: pd.DataFrame) -> str:
+    """说明参数为什么是这样选出来的。"""
+    rows = [
+        ["候选组合数", len(optimization_results), "先把候选参数全部跑完，不做随机抽样。"],
+        [
+            "单窗综合分",
+            f"{float(best_summary['Score']):.2f}",
+            "这是整段样本内的收益、回撤、成本摊薄综合分。",
+        ],
+        [
+            "稳健窗口数",
+            int(best_summary["WalkForwardWindowCount"]),
+            "再把样本内按时间顺序拆成多个连续窗口，检查同一参数会不会只在一小段行情里好看。",
+        ],
+        [
+            "稳健分 RobustScore",
+            f"{float(best_summary['RobustScore']):.2f}",
+            "计算方式：0.6 x 窗口平均分 + 0.4 x 最差窗口分 - 0.25 x 窗口收益波动。",
+        ],
+        [
+            "最终入选参数",
+            (
+                f"间距 {float(best_summary['GridSpacingPct']):.2f}% / "
+                f"层数 {int(best_summary['GridCount'])} / 止盈 {float(best_summary['TakeProfitPct']):.2f}%"
+            ),
+            "优先挑多窗口更稳的组合，而不是只挑单窗最亮的孤点。",
+        ],
+    ]
+    return _build_simple_markdown_table(["筛选环节", "结果", "你该怎么理解"], rows)
+
+
+def _build_core_metric_table(
+    best_summary: dict[str, object],
+    validation_summary: dict[str, object],
+) -> str:
+    """给出最关键的对比指标，减少长段落重复解释。"""
+    rows = [
+        ["收益率", f"{float(best_summary['ReturnPct']):.2f}%", f"{float(validation_summary['ReturnPct']):.2f}%", "先看能不能赚钱。"],
+        [
+            "最大回撤",
+            f"{float(best_summary['MaxDrawdownPct']):.2f}%",
+            f"{float(validation_summary['MaxDrawdownPct']):.2f}%",
+            "再看亏起来最难受会到什么程度。",
+        ],
+        [
+            "有效持仓成本",
+            f"{float(best_summary['EffectiveCost']):.2f}",
+            f"{float(validation_summary['EffectiveCost']):.2f}",
+            "看网格有没有把手里剩余仓位的成本压低。",
+        ],
+        [
+            "已实现网格收益",
+            f"{float(best_summary['RealizedGridProfit']):.2f}",
+            f"{float(validation_summary['RealizedGridProfit']):.2f}",
+            "这是已经完成低买高卖、真正落袋的利润，不等于总账户收益。",
+        ],
+        [
+            "网格闭环次数",
+            int(best_summary["GridCyclesCompleted"]),
+            int(validation_summary["GridCyclesCompleted"]),
+            "次数越多，说明震荡里成交越频繁；但次数多不等于总账户一定赚钱。",
+        ],
+    ]
+    return _build_simple_markdown_table(["指标", "样本内", "样本外", "怎么读"], rows)
+
+
+def _build_base_comparison_table(
+    in_sample_words: dict[str, float | bool],
+    validation_words: dict[str, float | bool],
+    best_summary: dict[str, object],
+    validation_summary: dict[str, object],
+) -> str:
+    """展示网格相对“只拿底仓”的增益或拖累。"""
+    rows = [
+        [
+            "只拿底仓收益率",
+            f"{float(in_sample_words['base_only_return_pct']):.2f}%",
+            f"{float(validation_words['base_only_return_pct']):.2f}%",
+        ],
+        [
+            "网格策略收益率",
+            f"{float(best_summary['ReturnPct']):.2f}%",
+            f"{float(validation_summary['ReturnPct']):.2f}%",
+        ],
+        [
+            "网格相对底仓多赚/多亏",
+            f"{float(in_sample_words['grid_vs_base_only']):.2f}",
+            f"{float(validation_words['grid_vs_base_only']):.2f}",
+        ],
+    ]
+    return _build_simple_markdown_table(["对比项", "样本内", "样本外"], rows)
 
 
 def build_report_markdown(
@@ -492,41 +658,31 @@ def build_report_markdown(
 
     # 结论语句是报告层的解释模板，不参与回测结果计算。
     if best_summary["ReturnPct"] <= 0 and validation_summary["ReturnPct"] <= 0:
-        conclusion = "在这轮样本里，网格交易能摊薄持仓成本，但还没有把总账户稳定拉回正收益。"
+        conclusion = "这套网格当前更像摊薄成本工具，还不能证明它能稳定把总账户做成正收益。"
     elif best_summary["ReturnPct"] > 0 and validation_summary["ReturnPct"] > 0:
-        conclusion = "网格交易在本轮样本里同时改善了成本和总收益，参数延续性相对更强。"
+        conclusion = "这套网格在当前样本里样本内外都转正，说明它不仅能摊薄成本，也有继续观察的价值。"
     else:
-        conclusion = "这轮样本里，网格交易的效果呈现阶段性差异，需要结合样本内外所处行情阶段一起理解。"
-    validation_scope = "分钟线样本外区间" if workflow_type == "minute" else "2026 样本外区间"
-    if not validation_words["triggered_entry"]:
-        validation_comment = f"{validation_scope}未能完成样本起点建仓，因此这段结果不能直接用来证明参数有效或失效。"
-    elif validation_summary["ReturnPct"] < 0:
-        validation_comment = f"{validation_scope}延续了成本摊薄，但收益仍为负，说明策略更像风险缓冲而不是单独的反转信号。"
-    elif validation_summary["ReturnPct"] > 0:
-        validation_comment = f"{validation_scope}收益转正，说明最优参数在新阶段仍具一定延续性。"
-    else:
-        validation_comment = f"{validation_scope}最终回到盈亏平衡附近，说明这套参数至少没有在这段样本里造成新的损失。"
+        conclusion = "这套网格在不同阶段表现不一致，说明它对行情结构比较敏感，不能只看单段结果下结论。"
 
-    total_pnl_text = "盈利" if in_sample_words["total_pnl"] >= 0 else "亏损"
-    validation_total_pnl_text = "盈利" if validation_words["total_pnl"] >= 0 else "亏损"
-    grid_vs_base_text = "多赚了" if in_sample_words["grid_vs_base_only"] >= 0 else "多亏了"
+    if not validation_words["triggered_entry"]:
+        validation_comment = "样本外这段区间没有完成样本起点建仓，所以这里只能当作数据区间说明，不能据此判断参数是否有效。"
+    elif float(validation_summary["ReturnPct"]) > 0:
+        validation_comment = "样本外结果转正，说明这组参数在新阶段没有立刻失效。"
+    else:
+        validation_comment = "样本外没有转正，说明这组参数更像在帮你缓冲下跌，而不是独立制造稳定盈利。"
+
     in_sample_chart_summary = _build_run_chart_summary(optimization["best_run"], in_sample_words)
     validation_chart_summary = _build_run_chart_summary(validation["run"], validation_words)
     heatmap_summary = _build_heatmap_summary(optimization["results"])
-    exec_summary = _build_exec_summary(best_summary, validation_summary, optimization["results"])
-    if validation_words["triggered_entry"]:
-        # 验证段尽量复用结构化字段，避免在报告层二次推导造成口径漂移。
-        validation_extra_lines = f"""- 期末有效持仓成本：{validation_summary["EffectiveCost"]:.2f}
-- 把已经兑现的网格利润算进去后，当前剩余仓位的摊薄成本大约是 `{validation_summary["EffectiveCost"]:.2f}`。
-- 相对样本外首笔建仓成本下降：{validation_summary["CostReductionPct"]:.2f}%
-- 和样本外首笔底仓买入价相比，当前持仓成本被压低了 `{validation_summary["CostReductionPct"]:.2f}%`。
-- 网格已实现收益：{validation_summary["RealizedGridProfit"]:.2f}
-- 这部分是已经完成低买高卖、真正落袋的利润，样本外累计为 `{validation_summary["RealizedGridProfit"]:.2f}`。
-- 完成网格循环次数：{int(validation_summary["GridCyclesCompleted"])}
-- 这段样本外区间里，网格实际完成了 `{int(validation_summary["GridCyclesCompleted"])}` 轮买入后反弹卖出的闭环。"""
-    else:
-        validation_extra_lines = """- 本段样本外没有成功建立底仓，因此没有发生任何网格成交。
-- 没有持仓、也没有成交时，收益率停在原地是正常结果。"""
+    selection_method_table = _build_selection_method_table(best_summary, optimization["results"])
+    quick_answer_table = _build_quick_answer_table(best_summary, validation_summary, in_sample_words, validation_words)
+    core_metric_table = _build_core_metric_table(best_summary, validation_summary)
+    base_comparison_table = _build_base_comparison_table(
+        in_sample_words=in_sample_words,
+        validation_words=validation_words,
+        best_summary=best_summary,
+        validation_summary=validation_summary,
+    )
     in_sample_event_table = _build_event_table(optimization["best_run"])
     in_sample_trade_table = _build_trade_table(optimization["best_run"])
     validation_event_table = _build_event_table(validation["run"])
@@ -541,87 +697,65 @@ def build_report_markdown(
 
 ## 第一层：先看结论
 
-### 老板一眼看懂版
+### 先回答 4 个问题
 
-{exec_summary}
+{quick_answer_table}
 
-### 怎么使用这份报告
+### 一句话判断
 
-- 如果你只想判断这套参数值不值得继续研究，看完上面 3 条就够了。
-- 如果你想知道为什么会得出这个结论，再往下看“第二层：展开细节”。
+- {conclusion}
+- 当前正式拿去实盘的证据还不够，更合理的定位是：先把它当成“网格摊成本策略”，不是“已经验证可稳定盈利的策略”。
+- 如果你只想知道现在值不值得继续研究，看完上面这张表就够了。
 
 ## 第二层：展开细节
 
-### 样本内寻参结果
+### 参数是怎么选的
 
-- 样本内首笔建仓日：{decline_window.entry_date}
-- 样本内建仓价：{decline_window.entry_price:.2f}
-- 最小交易单位：{int(best_summary["LotSize"])} 股
-- 固定底仓数量：{int(best_summary["BaseUnits"])} 股
-- 单层网格固定数量：{int(best_summary["GridUnitsPerLevel"])} 股
-- 网格层数含义：最多允许开启 {int(best_summary["GridCount"])} 层“固定股数”网格仓位，不再是“每层分多少钱”
-- 样本内收益率：{best_summary["ReturnPct"]:.2f}%
-  - 按这套策略跑完样本内区间，账户从 `200000` 走到 `{in_sample_words["final_equity"]:.2f}`，合计{total_pnl_text} `{abs(in_sample_words["total_pnl"]):.2f}`。
-- 样本内年化收益率：{best_summary["AnnualReturnPct"]:.2f}%
-  - 这个数主要拿来和别的策略横向比较，表示把当前样本期收益折算成年化后的结果。
-- 样本内最大回撤：{best_summary["MaxDrawdownPct"]:.2f}%
-  - 这段样本里最难受的时候，账户相对阶段高点最多回撤了 `{best_summary["MaxDrawdownPct"]:.2f}%`。
-- 期末有效持仓成本：{best_summary["EffectiveCost"]:.2f}
-  - 把已经兑现的网格利润算进去后，当前剩余仓位的摊薄成本大约是 `{best_summary["EffectiveCost"]:.2f}`。
-- 相对初始建仓成本下降：{best_summary["CostReductionPct"]:.2f}%
-  - 和最初底仓买入价 `{decline_window.entry_price:.2f}` 相比，当前持仓成本被压低了 `{best_summary["CostReductionPct"]:.2f}%`。
-- 网格已实现收益：{best_summary["RealizedGridProfit"]:.2f}
-  - 这部分是已经完成低买高卖、真正落袋的利润，样本内累计为 `{best_summary["RealizedGridProfit"]:.2f}`。
-- 完成网格循环次数：{int(best_summary["GridCyclesCompleted"])}
-  - 这段样本里，网格实际完成了 `{int(best_summary["GridCyclesCompleted"])}` 轮买入后反弹卖出的闭环。
+{selection_method_table}
 
-### 样本内怎么看懂
+### 关键结果对照
 
-- 如果你只按规则先买 `50%` 底仓，后面完全不做网格，到样本结束时账户大约是 `{in_sample_words["base_only_equity"]:.2f}`。
-- 当前这版网格策略的最终账户是 `{in_sample_words["final_equity"]:.2f}`，收益率 `{best_summary["ReturnPct"]:.2f}%`。
-- 这里每次网格买入的不是固定金额，而是固定 `{int(best_summary["GridUnitsPerLevel"])}` 股；只要跌到下一层，就按同样股数再买一层。
-- 也就是说：网格本身虽然已经落袋赚了 `{best_summary["RealizedGridProfit"]:.2f}`，但额外接进来的下跌仓位浮盈浮亏也会影响总账户，所以整套策略相对“只拿底仓不做网格”{grid_vs_base_text} `{abs(in_sample_words["grid_vs_base_only"]):.2f}`。
-- 所以这里不能把“网格已实现收益”直接理解成“整个策略赚了这么多钱”；它只代表网格来回滚动已经兑现的那部分利润。
+{core_metric_table}
 
-### 关于收益曲线为什么看起来像 0
+### 网格到底有没有帮忙
 
-- 图里的收益曲线不是全程为 0。
-- 现在这版策略在样本开始时就直接建仓，所以收益曲线会从首笔底仓建立后立即开始波动。
-- 如果你肉眼看图时觉得它“贴着 0”，通常是因为整体盈亏波动幅度不大，或者样本后半段虽然有网格利润，但总账户仍在盈亏平衡附近徘徊。
+{base_comparison_table}
+
+补一句最重要的解释：
+
+- “网格已实现收益”只代表已经完成低买高卖、真正落袋的那部分利润。
+- 真正决定你账户最后赚没赚钱的，是“底仓浮盈浮亏 + 未平仓网格浮盈浮亏 + 已实现网格收益”三者一起的结果。
+- 所以完全可能出现“网格已经落袋赚钱，但总账户还是亏钱”的情况。
 
 ### 图表速读总结
 
+#### 样本内回测图
+
 {in_sample_chart_summary}
-
-### 热力图速读总结
-
-{heatmap_summary}
 
 ![样本内回测图](figures/{in_sample_chart.name})
 
+#### 热力图
+
+{heatmap_summary}
+
 ![样本内参数热力图](figures/{search_chart.name})
 
-### {validation_title}
+#### {validation_title}
 
-- 样本外收益率：{validation_summary["ReturnPct"]:.2f}%
-  - 按同一套参数跑完样本外区间，账户从 `200000` 走到 `{validation_words["final_equity"]:.2f}`，合计{validation_total_pnl_text} `{abs(validation_words["total_pnl"]):.2f}`。
-- 样本外年化收益率：{validation_summary["AnnualReturnPct"]:.2f}%
-  - 这个数主要拿来和别的策略横向比较，表示把当前样本外收益折算成年化后的结果。
-- 样本外最大回撤：{validation_summary["MaxDrawdownPct"]:.2f}%
-  - 样本外这段时间里，账户相对阶段高点最多回撤了 `{validation_summary["MaxDrawdownPct"]:.2f}%`。
-- 样本外沿用最小交易单位：{int(validation_summary["LotSize"])} 股
-- 样本外单层网格固定数量：{int(validation_summary["GridUnitsPerLevel"])} 股
-{validation_extra_lines}
+- 样本外账户最终从 `200000` 走到 `{validation_words["final_equity"]:.2f}`，总盈亏 `{validation_words["total_pnl"]:.2f}`。
+- 样本外固定底仓仍按最小交易单位 `{int(validation_summary["LotSize"])}` 股执行，单层网格固定数量是 `{int(validation_summary["GridUnitsPerLevel"])}` 股。
+- {validation_comment}
 
-{validation_comment}
-
-### 样本外图表速读总结
+#### 样本外回测图
 
 {validation_chart_summary}
 
 ![样本外回测图](figures/{validation_chart.name})
 
-### 交易记录
+### 交易记录和明细
+
+如果你只是想判断策略值不值得继续，到这里通常已经够了；下面这些表主要用于追交易过程和排查归因。
 
 ### 样本内事件流水
 
@@ -641,9 +775,9 @@ def build_report_markdown(
 
 ## 最终结论
 
-- 这套参数更适合“先急跌、后震荡修复”的行情，能够通过来回做网格降低持仓成本。
-- 如果行情持续单边下跌，网格收益只能部分对冲亏损，不能替代趋势止损或更强的择时规则。
-- 当前样本下，成本摊薄效果稳定存在：样本内下降 {best_summary["CostReductionPct"]:.2f}%，样本外下降 {validation_summary["CostReductionPct"]:.2f}%。
+- 这套参数更适合“先跌一段、再进入震荡或反弹”的行情，因为它依赖反弹来兑现网格利润。
+- 如果行情持续单边下跌，网格只能帮你部分摊低成本，不能替代止损、趋势过滤或停手机制。
+- 当前样本下，成本摊薄效果是存在的：样本内下降 {best_summary["CostReductionPct"]:.2f}%，样本外下降 {validation_summary["CostReductionPct"]:.2f}%。
 - {conclusion_tail}
 """
     report_path.write_text(report_content, encoding="utf-8")

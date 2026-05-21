@@ -8,6 +8,8 @@ from etf_strategy.config import DEFAULT_DATA_PATH, DEFAULT_OUTPUT_DIR
 from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
 from etf_strategy.strategy.grid import (
     build_sample_window,
+    build_walk_forward_windows,
+    optimize_grid_parameters,
     run_grid_backtest,
     split_intraday_in_sample_and_validation,
     split_in_sample_and_validation,
@@ -316,6 +318,85 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(window.entry_date, "2026-04-01 09:30:00")
         self.assertFalse(in_sample.empty)
         self.assertFalse(validation.empty)
+
+    def test_build_walk_forward_windows_splits_data_in_time_order(self) -> None:
+        frame = build_test_frame([20.0 + index for index in range(60)], start="2025-01-01")
+
+        windows = build_walk_forward_windows(frame, window_count=3, min_window_size=15)
+
+        self.assertEqual(len(windows), 3)
+        self.assertEqual(len(windows[0]), 20)
+        self.assertEqual(len(windows[1]), 20)
+        self.assertEqual(len(windows[2]), 20)
+        self.assertLess(windows[0].index.max(), windows[1].index.min())
+        self.assertLess(windows[1].index.max(), windows[2].index.min())
+
+    @patch("etf_strategy.strategy.grid.run_grid_backtest")
+    def test_optimize_grid_parameters_prefers_robust_candidate(self, mock_run_grid_backtest: Mock) -> None:
+        frame = build_test_frame([20.0 + index * 0.1 for index in range(60)], start="2025-01-01")
+        candidate_metrics = {
+            (0.03, 4, 0.03): {
+                "full": {"Score": 8.0, "ReturnPct": 4.0, "MaxDrawdownPct": 6.0, "CostReductionPct": 3.0},
+                "wf": [
+                    {"Score": 6.0, "ReturnPct": 4.0, "MaxDrawdownPct": 5.0, "CostReductionPct": 2.5},
+                    {"Score": 5.0, "ReturnPct": 3.0, "MaxDrawdownPct": 5.5, "CostReductionPct": 2.0},
+                    {"Score": 4.0, "ReturnPct": 2.0, "MaxDrawdownPct": 6.0, "CostReductionPct": 1.5},
+                ],
+            },
+            (0.04, 4, 0.03): {
+                "full": {"Score": 10.0, "ReturnPct": 7.0, "MaxDrawdownPct": 7.0, "CostReductionPct": 3.5},
+                "wf": [
+                    {"Score": 12.0, "ReturnPct": 10.0, "MaxDrawdownPct": 4.0, "CostReductionPct": 4.0},
+                    {"Score": -1.0, "ReturnPct": -5.0, "MaxDrawdownPct": 11.0, "CostReductionPct": 1.0},
+                    {"Score": -2.0, "ReturnPct": -6.0, "MaxDrawdownPct": 12.0, "CostReductionPct": 0.5},
+                ],
+            },
+        }
+
+        def fake_run_grid_backtest(*args: object, **kwargs: object) -> dict[str, object]:
+            key = (
+                round(float(kwargs["grid_spacing_pct"]), 2),
+                int(kwargs["grid_count"]),
+                round(float(kwargs["take_profit_pct"]), 2),
+            )
+            scenario_name = str(kwargs["scenario_name"])
+            metrics_group = candidate_metrics[key]
+            if "_wf_" in scenario_name:
+                window_index = int(scenario_name.rsplit("_wf_", maxsplit=1)[1]) - 1
+                metrics = metrics_group["wf"][window_index]
+            else:
+                metrics = metrics_group["full"]
+            return {
+                "summary": {
+                    "GridSpacingPct": float(kwargs["grid_spacing_pct"]) * 100,
+                    "GridCount": int(kwargs["grid_count"]),
+                    "TakeProfitPct": float(kwargs["take_profit_pct"]) * 100,
+                    "Score": metrics["Score"],
+                    "ReturnPct": metrics["ReturnPct"],
+                    "MaxDrawdownPct": metrics["MaxDrawdownPct"],
+                    "CostReductionPct": metrics["CostReductionPct"],
+                }
+            }
+
+        mock_run_grid_backtest.side_effect = fake_run_grid_backtest
+
+        results, best_run = optimize_grid_parameters(
+            data=frame,
+            spacings=[0.03, 0.04],
+            grid_counts=[4],
+            take_profits=[0.03],
+            scenario_name="in_sample",
+            symbol="1810.HK",
+            market="HK",
+            lot_size=200,
+            lot_size_source="unit test",
+        )
+
+        self.assertEqual(results.iloc[0]["GridSpacingPct"], 3.0)
+        self.assertIn("RobustScore", results.columns)
+        self.assertIn("WalkForwardScoreMin", results.columns)
+        self.assertIn("WalkForwardPositiveWindowRatio", results.columns)
+        self.assertAlmostEqual(float(best_run["summary"]["GridSpacingPct"]), 3.0)
 
 
 if __name__ == "__main__":
