@@ -287,7 +287,7 @@ def generate_filename(stock_code: str, start_date: str, end_date: str, frequency
     freq_str = freq_map.get(frequency, frequency)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     
-    filename = f"{clean_code}_{freq_str}_{start_date}_{end_date}_{timestamp}.csv"
+    filename = f"{clean_code}_{freq_str}_{start_date}_{end_date}.csv"
     return filename
 
 
@@ -323,8 +323,8 @@ def main():
   分钟线数据: 不包含指数，字段包括开高低收、成交量额、时间信息
 
 示例:
-  python download_data.py -c sh.600000 -s 2024-01-01 -e 2024-12-31
-  python download_data.py -c sz.000001 -s 2024-01-01 -e 2024-12-31 -f 5 -a 1
+  python baostock_download.py -c sh.600000 -s 2024-01-01 -e 2024-12-31
+  python baostock_download.py -c sz.000001 -s 2024-01-01 -e 2024-12-31 -f 5 -a 1
         """
     )
     

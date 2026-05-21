@@ -8,7 +8,7 @@
             "name": "main",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/main.py",
+            "program": "${workspaceFolder}/strategy_backtest.py",
             "console": "integratedTerminal"
         }
     ]
