@@ -1,2 +1,6 @@
 log
 __pycache__
+.pytest_cache
+.venv
+outputs
+*.pyc
