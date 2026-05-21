@@ -242,6 +242,95 @@ def plot_grid_search(results: pd.DataFrame, output_path: str | Path) -> Path:
     return target
 
 
+def _build_run_chart_summary(run_result: dict[str, object], run_words: dict[str, float | bool]) -> str:
+    """生成单次回测图的速读总结。"""
+    summary = run_result["summary"]
+    history = run_result["history"]
+    end_price = float(history.iloc[-1]["Close"])
+    entry_price = float(summary["EntryPrice"])
+    effective_cost = float(summary["EffectiveCost"])
+    price_change_pct = (end_price / entry_price - 1) * 100 if entry_price else 0.0
+    cost_gap_pct = (end_price / effective_cost - 1) * 100 if effective_cost else 0.0
+    cycles = int(summary["GridCyclesCompleted"])
+    realized_profit = float(summary["RealizedGridProfit"])
+    if end_price >= effective_cost:
+        cost_comment = (
+            f"样本结束时收盘价 `{end_price:.2f}` 已经回到有效成本 `{effective_cost:.2f}` 之上，"
+            f"剩余持仓按摊薄口径已经转回浮盈区。"
+        )
+    else:
+        cost_comment = (
+            f"样本结束时收盘价 `{end_price:.2f}` 仍低于有效成本 `{effective_cost:.2f}`，"
+            f"剩余持仓按摊薄口径还处在约 `{abs(cost_gap_pct):.2f}%` 的浮亏区。"
+        )
+
+    if cycles > 0:
+        cycle_comment = (
+            f"图里的买卖点一共完成了 `{cycles}` 轮网格闭环，"
+            f"已经落袋的网格利润累计 `{realized_profit:.2f}`。"
+        )
+    else:
+        cycle_comment = "这段区间里没有完成任何网格闭环，所以图上即使有持仓波动，也还没有形成已落袋的网格利润。"
+
+    if float(summary["ReturnPct"]) >= 0:
+        account_comment = (
+            f"总账户最终是盈利状态，期末权益 `{run_words['final_equity']:.2f}`，"
+            f"说明底仓浮盈浮亏加上网格利润后，整体结果已经转正。"
+        )
+    else:
+        account_comment = (
+            f"总账户最终仍是亏损状态，期末权益 `{run_words['final_equity']:.2f}`；"
+            f"也就是说，网格已实现利润还没完全覆盖底仓和未平仓仓位的回撤。"
+        )
+
+    return "\n".join(
+        [
+            f"- 这一段价格从 `{entry_price:.2f}` 走到 `{end_price:.2f}`，区间涨跌幅约 `{price_change_pct:.2f}%`。",
+            f"- {cost_comment}",
+            f"- {cycle_comment}",
+            f"- {account_comment}",
+        ]
+    )
+
+
+def _build_heatmap_summary(results: pd.DataFrame) -> str:
+    """生成热力图结论，减少读者自己猜颜色和最优区间。"""
+    best_row = results.sort_values(["Score", "ReturnPct"], ascending=[False, False]).iloc[0]
+    best_score = float(best_row["Score"])
+    best_spacing = float(best_row["GridSpacingPct"])
+    best_count = int(best_row["GridCount"])
+    best_take_profit = float(best_row["TakeProfitPct"])
+    top_candidates = results.sort_values(["Score", "ReturnPct"], ascending=[False, False]).head(5)
+    same_best_rows = results[(results["Score"] - best_score).abs() < 1e-9]
+
+    if same_best_rows["GridCount"].nunique() > 1:
+        min_count = int(same_best_rows["GridCount"].min())
+        max_count = int(same_best_rows["GridCount"].max())
+        plateau_comment = (
+            f"最亮的区域不是单个点，而是网格层数 `{min_count}` 到 `{max_count}` 的一段平台，"
+            "说明继续把层数加深，并没有明显抬高综合得分。"
+        )
+    else:
+        plateau_comment = (
+            f"最优点比较集中在网格间距 `{best_spacing:.2f}%`、网格层数 `{best_count}` 附近，"
+            "说明这组参数不是完全随机撞出来的。"
+        )
+
+    top_spacing = float(top_candidates["GridSpacingPct"].mode().iloc[0])
+    top_count = int(top_candidates["GridCount"].mode().iloc[0])
+    return "\n".join(
+        [
+            "- 热力图横轴是网格间距，纵轴是网格层数，颜色越偏绿代表综合评分越高；每个格子里没有单独画出的止盈比例，已经折叠成该格子的最好结果。",
+            (
+                f"- 当前样本里，最优参数落在“网格间距 `{best_spacing:.2f}%` / "
+                f"网格层数 `{best_count}` / 止盈比例 `{best_take_profit:.2f}%`”。"
+            ),
+            f"- 从前几名结果看，高分区域主要集中在网格间距 `{top_spacing:.2f}%`、网格层数 `{top_count}` 附近。",
+            f"- {plateau_comment}",
+        ]
+    )
+
+
 def build_report_markdown(
     workflow_result: dict[str, object],
     report_dir: str | Path = DEFAULT_REPORT_DIR,
@@ -340,6 +429,9 @@ def build_report_markdown(
     total_pnl_text = "盈利" if in_sample_words["total_pnl"] >= 0 else "亏损"
     validation_total_pnl_text = "盈利" if validation_words["total_pnl"] >= 0 else "亏损"
     grid_vs_base_text = "多赚了" if in_sample_words["grid_vs_base_only"] >= 0 else "多亏了"
+    in_sample_chart_summary = _build_run_chart_summary(optimization["best_run"], in_sample_words)
+    validation_chart_summary = _build_run_chart_summary(validation["run"], validation_words)
+    heatmap_summary = _build_heatmap_summary(optimization["results"])
     if validation_words["triggered_entry"]:
         # 验证段尽量复用结构化字段，避免在报告层二次推导造成口径漂移。
         validation_extra_lines = f"""- 期末有效持仓成本：{validation_summary["EffectiveCost"]:.2f}
@@ -402,6 +494,14 @@ def build_report_markdown(
 - 现在这版策略在样本开始时就直接建仓，所以收益曲线会从首笔底仓建立后立即开始波动。
 - 如果你肉眼看图时觉得它“贴着 0”，通常是因为整体盈亏波动幅度不大，或者样本后半段虽然有网格利润，但总账户仍在盈亏平衡附近徘徊。
 
+### 图表速读总结
+
+{in_sample_chart_summary}
+
+### 热力图速读总结
+
+{heatmap_summary}
+
 ![样本内回测图](figures/{in_sample_chart.name})
 
 ![样本内参数热力图](figures/{search_chart.name})
@@ -419,6 +519,10 @@ def build_report_markdown(
 {validation_extra_lines}
 
 {validation_comment}
+
+### 样本外图表速读总结
+
+{validation_chart_summary}
 
 ![样本外回测图](figures/{validation_chart.name})
 
