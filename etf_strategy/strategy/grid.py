@@ -9,12 +9,11 @@ from backtesting import Backtest, Strategy
 
 TOTAL_CAPITAL = 200000.0
 INITIAL_CASH_RATIO = 0.5
-ENTRY_DRAWDOWN_RATIO = 0.10
 
 
 @dataclass
 class DeclineWindow:
-    """样本内下跌窗口定位结果。"""
+    """样本窗口摘要。"""
 
     peak_date: str
     peak_price: float
@@ -34,11 +33,10 @@ def format_timestamp(timestamp: pd.Timestamp) -> str:
 
 
 class XiaomiGridStrategy(Strategy):
-    """小米港股左侧建仓 + 双向网格策略。"""
+    """小米港股样本起点建仓 + 双向网格策略。"""
 
     total_capital = TOTAL_CAPITAL
     initial_cash_ratio = INITIAL_CASH_RATIO
-    entry_drawdown_pct = ENTRY_DRAWDOWN_RATIO
     grid_spacing_pct = 0.05
     grid_count = 5
     take_profit_pct = 0.05
@@ -49,37 +47,32 @@ class XiaomiGridStrategy(Strategy):
 
         self.high_water_mark = first_close
         self.peak_date = first_date
-        self.entry_trigger_price = first_close * (1 - self.entry_drawdown_pct)
+
+        self.base_cash_budget = self.total_capital * self.initial_cash_ratio
+        self.reserve_cash_budget = self.total_capital * (1 - self.initial_cash_ratio)
 
         self.base_entered = False
         self.base_entry_date: pd.Timestamp | None = None
         self.base_entry_price = 0.0
         self.base_units = 0
-        self.base_cash_budget = self.total_capital * self.initial_cash_ratio
-        self.reserve_cash_budget = self.total_capital * (1 - self.initial_cash_ratio)
-
         self.grid_levels: list[dict[str, float | int | bool]] = []
         self.realized_grid_profit = 0.0
         self.grid_cycles_completed = 0
         self.event_log: list[dict[str, object]] = []
         self.history: list[dict[str, object]] = []
+        self._enter_base_position(first_date, first_close)
+        self._record_snapshot(first_date, first_close)
 
     def next(self) -> None:
         current_date = pd.Timestamp(self.data.index[-1])
         close_price = float(self.data.Close[-1])
 
-        if not self.base_entered and close_price > self.high_water_mark:
+        if close_price > self.high_water_mark:
             self.high_water_mark = close_price
             self.peak_date = current_date
 
-        self.entry_trigger_price = self.high_water_mark * (1 - self.entry_drawdown_pct)
-
-        if not self.base_entered and close_price <= self.entry_trigger_price:
-            self._enter_base_position(current_date, close_price)
-
-        if self.base_entered:
-            self._handle_grid_exits(current_date, close_price)
-            self._handle_grid_entries(current_date, close_price)
+        self._handle_grid_exits(current_date, close_price)
+        self._handle_grid_entries(current_date, close_price)
 
         self._record_snapshot(current_date, close_price)
 
@@ -101,7 +94,7 @@ class XiaomiGridStrategy(Strategy):
                 "Price": close_price,
                 "Units": units,
                 "CashFlow": units * close_price,
-                "Note": "高点回撤 10% 后初始建仓",
+                "Note": "样本开始时初始建仓",
             }
         )
 
@@ -213,7 +206,6 @@ class XiaomiGridStrategy(Strategy):
                 "Date": format_timestamp(current_date),
                 "Close": close_price,
                 "PeakClose": self.high_water_mark,
-                "EntryTriggerPrice": self.entry_trigger_price,
                 "PositionUnits": total_units,
                 "OpenGridLevels": open_grid_levels,
                 "GrossCost": gross_cost,
@@ -251,44 +243,32 @@ def load_price_frame(data_path: str | Path) -> pd.DataFrame:
     return frame
 
 
-def locate_recent_decline_window(
+def build_sample_window(
     data: pd.DataFrame,
     validation_start: str = "2026-01-01",
     lookback_days: int = 120,
-    entry_drawdown_pct: float = ENTRY_DRAWDOWN_RATIO,
 ) -> DeclineWindow:
-    """定位最近一轮满足 10% 回撤触发条件的样本内区间。"""
+    """构建日线样本内/样本外窗口摘要。"""
     validation_timestamp = pd.Timestamp(validation_start)
     sample_end_ts = validation_timestamp - pd.Timedelta(days=1)
-    lookback_candidates = [lookback_days, 365, 730]
+    sample_start_ts = sample_end_ts - pd.Timedelta(days=lookback_days)
+    window = data.loc[sample_start_ts:sample_end_ts]
+    if window.empty:
+        raise ValueError("样本内区间为空，无法构建样本窗口。")
 
-    for days in lookback_candidates:
-        window_start_ts = sample_end_ts - pd.Timedelta(days=days)
-        window = data.loc[window_start_ts:sample_end_ts]
-        if window.empty:
-            continue
-
-        peak_date = window["Close"].idxmax()
-        peak_price = float(window.loc[peak_date, "Close"])
-        after_peak = window.loc[peak_date:]
-        entry_threshold = peak_price * (1 - entry_drawdown_pct)
-        entry_rows = after_peak[after_peak["Close"] <= entry_threshold]
-        if entry_rows.empty:
-            continue
-
-        entry_date = entry_rows.index[0]
-        entry_price = float(entry_rows.iloc[0]["Close"])
-        return DeclineWindow(
-            peak_date=format_timestamp(peak_date),
-            peak_price=peak_price,
-            entry_date=format_timestamp(entry_date),
-            entry_price=entry_price,
-            sample_start=format_timestamp(peak_date),
-            sample_end=format_timestamp(sample_end_ts),
-            validation_start=format_timestamp(validation_timestamp),
-        )
-
-    raise ValueError("未能在样本内区间定位到满足 10% 回撤条件的下跌窗口。")
+    first_date = window.index.min()
+    first_price = float(window.iloc[0]["Close"])
+    peak_date = window["Close"].idxmax()
+    peak_price = float(window.loc[peak_date, "Close"])
+    return DeclineWindow(
+        peak_date=format_timestamp(peak_date),
+        peak_price=peak_price,
+        entry_date=format_timestamp(first_date),
+        entry_price=first_price,
+        sample_start=format_timestamp(first_date),
+        sample_end=format_timestamp(window.index.max()),
+        validation_start=format_timestamp(validation_timestamp),
+    )
 
 
 def _compute_score(return_pct: float, max_drawdown_pct: float, cost_reduction_pct: float) -> float:
@@ -304,32 +284,25 @@ def _events_to_frame(events: list[dict[str, object]]) -> pd.DataFrame:
     return pd.DataFrame(events) if events else pd.DataFrame()
 
 
-def locate_intraday_decline_window(
+def build_intraday_sample_window(
     data: pd.DataFrame,
     validation_start: pd.Timestamp,
-    entry_drawdown_pct: float = ENTRY_DRAWDOWN_RATIO,
 ) -> DeclineWindow:
-    """在分钟样本内定位一轮满足回撤条件的下跌窗口。"""
+    """构建分钟线样本内/样本外窗口摘要。"""
     if data.empty:
-        raise ValueError("分钟样本内区间为空，无法定位下跌窗口。")
+        raise ValueError("分钟样本内区间为空，无法构建样本窗口。")
 
+    first_date = data.index.min()
+    first_price = float(data.iloc[0]["Close"])
     peak_date = data["Close"].idxmax()
     peak_price = float(data.loc[peak_date, "Close"])
-    after_peak = data.loc[peak_date:]
-    entry_threshold = peak_price * (1 - entry_drawdown_pct)
-    entry_rows = after_peak[after_peak["Close"] <= entry_threshold]
-    if entry_rows.empty:
-        raise ValueError("分钟样本内区间未出现 10% 回撤，无法定位建仓窗口。")
-
-    entry_date = entry_rows.index[0]
-    entry_price = float(entry_rows.iloc[0]["Close"])
     sample_end = data.index.max()
     return DeclineWindow(
         peak_date=format_timestamp(peak_date),
         peak_price=peak_price,
-        entry_date=format_timestamp(entry_date),
-        entry_price=entry_price,
-        sample_start=format_timestamp(peak_date),
+        entry_date=format_timestamp(first_date),
+        entry_price=first_price,
+        sample_start=format_timestamp(first_date),
         sample_end=format_timestamp(sample_end),
         validation_start=format_timestamp(validation_start),
     )
@@ -356,7 +329,6 @@ def run_grid_backtest(
     stats = backtest.run(
         total_capital=total_capital,
         initial_cash_ratio=INITIAL_CASH_RATIO,
-        entry_drawdown_pct=ENTRY_DRAWDOWN_RATIO,
         grid_spacing_pct=grid_spacing_pct,
         grid_count=grid_count,
         take_profit_pct=take_profit_pct,
@@ -450,7 +422,7 @@ def split_in_sample_and_validation(
     lookback_days: int = 120,
 ) -> tuple[DeclineWindow, pd.DataFrame, pd.DataFrame]:
     """拆分样本内和样本外数据。"""
-    decline_window = locate_recent_decline_window(
+    decline_window = build_sample_window(
         data,
         validation_start=validation_start,
         lookback_days=lookback_days,
@@ -474,11 +446,10 @@ def split_intraday_in_sample_and_validation(
 
     split_index = int(len(data) * (1 - validation_ratio))
     split_index = min(max(split_index, 1), len(data) - 1)
-    raw_in_sample = data.iloc[:split_index].copy()
+    in_sample = data.iloc[:split_index].copy()
     validation = data.iloc[split_index:].copy()
     validation_start = pd.Timestamp(validation.index.min())
-    decline_window = locate_intraday_decline_window(raw_in_sample, validation_start=validation_start)
-    in_sample = raw_in_sample.loc[pd.Timestamp(decline_window.sample_start) : raw_in_sample.index.max()].copy()
+    decline_window = build_intraday_sample_window(in_sample, validation_start=validation_start)
     if validation.empty:
         raise ValueError("分钟样本外区间为空，无法验证表现。")
     return decline_window, in_sample, validation

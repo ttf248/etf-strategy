@@ -4,9 +4,10 @@ import pandas as pd
 
 from etf_strategy.cli import build_parser
 from etf_strategy.strategy.grid import (
-    locate_recent_decline_window,
+    build_sample_window,
     run_grid_backtest,
     split_intraday_in_sample_and_validation,
+    split_in_sample_and_validation,
 )
 
 
@@ -99,23 +100,36 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(args.validation_start, "2026-01-01")
         self.assertEqual(args.lookback_days, 120)
 
-    def test_locate_recent_decline_window_finds_peak_and_entry(self) -> None:
+    def test_build_sample_window_uses_sample_start_as_entry(self) -> None:
         prices = [20.0, 21.2, 22.5, 21.8, 20.9, 20.1, 19.5]
         frame = build_test_frame(prices, start="2025-11-03")
 
-        window = locate_recent_decline_window(
+        window = build_sample_window(
             frame,
             validation_start="2025-12-01",
             lookback_days=30,
-            entry_drawdown_pct=0.10,
         )
 
         self.assertEqual(window.peak_date, "2025-11-05")
-        self.assertEqual(window.entry_date, "2025-11-10")
-        self.assertEqual(window.sample_start, "2025-11-05")
+        self.assertEqual(window.entry_date, "2025-11-03")
+        self.assertEqual(window.sample_start, "2025-11-03")
         self.assertEqual(window.validation_start, "2025-12-01")
 
-    def test_run_grid_backtest_executes_grid_cycle(self) -> None:
+    def test_split_in_sample_and_validation_no_longer_requires_drawdown_trigger(self) -> None:
+        prices = [20.0, 20.5, 21.0, 21.3, 21.6, 21.9, 22.1]
+        frame = build_test_frame(prices, start="2025-11-03")
+
+        window, in_sample, validation = split_in_sample_and_validation(
+            frame,
+            validation_start="2025-11-10",
+            lookback_days=30,
+        )
+
+        self.assertEqual(window.entry_date, "2025-11-03")
+        self.assertFalse(in_sample.empty)
+        self.assertFalse(validation.empty)
+
+    def test_run_grid_backtest_enters_on_first_bar(self) -> None:
         prices = [20.0, 19.0, 18.0, 17.0, 18.2, 19.1, 20.0, 18.0, 19.3, 20.2]
         frame = build_test_frame(prices, start="2025-10-01")
 
@@ -132,9 +146,12 @@ class GridStrategyTests(unittest.TestCase):
         events = result["events"]
 
         self.assertTrue(summary["TriggeredEntry"])
-        self.assertNotEqual(summary["EntryDate"], "")
+        self.assertEqual(summary["EntryDate"], "2025-10-01")
+        self.assertAlmostEqual(summary["EntryPrice"], 20.0)
         self.assertFalse(events.empty)
         self.assertTrue({"base_buy", "grid_buy"}.issubset(set(events["EventType"])))
+        self.assertEqual(events.iloc[0]["Date"], "2025-10-01")
+        self.assertEqual(events.iloc[0]["EventType"], "base_buy")
 
     def test_split_intraday_in_sample_and_validation(self) -> None:
         dates = pd.date_range(start="2026-04-01 09:30:00", periods=40, freq="15min")
@@ -154,7 +171,7 @@ class GridStrategyTests(unittest.TestCase):
         window, in_sample, validation = split_intraday_in_sample_and_validation(frame, validation_ratio=0.25)
 
         self.assertEqual(window.peak_date, "2026-04-01 10:45:00")
-        self.assertEqual(window.entry_date, "2026-04-01 11:45:00")
+        self.assertEqual(window.entry_date, "2026-04-01 09:30:00")
         self.assertFalse(in_sample.empty)
         self.assertFalse(validation.empty)
 
