@@ -19,6 +19,7 @@ from loguru import logger
 STANDARD_COLUMNS = ["Date", "Open", "High", "Low", "Close", "Volume"]
 CHART_API_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 INTRADAY_INTERVALS = {"1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h"}
+DEFAULT_DAILY_PERIOD = "max"
 
 
 def _flatten_columns(frame: pd.DataFrame) -> pd.DataFrame:
@@ -121,18 +122,31 @@ def _apply_adjustment(frame: pd.DataFrame, adj_close: list[float] | None) -> pd.
     return adjusted.drop(columns=["Adj Close"])
 
 
-def _load_from_chart_api(symbol: str, start_date: str, end_date: str, proxy: str | None = None) -> pd.DataFrame:
+def _load_from_chart_api(
+    symbol: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    proxy: str | None = None,
+) -> pd.DataFrame:
     """使用 Yahoo Chart API 下载数据，支持显式代理。
 
     当前只作为日线回退链路使用，分钟线仍依赖 yfinance。
     """
     params = {
-        "period1": _to_epoch_seconds(start_date),
-        "period2": _to_epoch_seconds(end_date, inclusive_end=True),
         "interval": "1d",
         "includePrePost": "false",
         "events": "div,splits",
     }
+    if start_date and end_date:
+        params.update(
+            {
+                "period1": _to_epoch_seconds(start_date),
+                "period2": _to_epoch_seconds(end_date, inclusive_end=True),
+            }
+        )
+    else:
+        # 日线默认口径改成尽量保留 Yahoo 能提供的全历史，回退链路也保持一致。
+        params["range"] = DEFAULT_DAILY_PERIOD
     logger.info("yfinance 不可用，改用 Yahoo Chart API。")
     response = requests.get(
         CHART_API_URL.format(symbol=symbol),
@@ -185,6 +199,27 @@ def is_intraday_interval(interval: str) -> bool:
     return interval in INTRADAY_INTERVALS
 
 
+def merge_price_bars(existing_frame: pd.DataFrame, new_frame: pd.DataFrame, interval: str = "1d") -> pd.DataFrame:
+    """按时间戳合并两份标准化行情，重复记录以新数据覆盖旧数据。"""
+    existing = existing_frame.loc[:, STANDARD_COLUMNS].copy()
+    incoming = new_frame.loc[:, STANDARD_COLUMNS].copy()
+    existing["Date"] = pd.to_datetime(existing["Date"])
+    incoming["Date"] = pd.to_datetime(incoming["Date"])
+
+    merged = (
+        pd.concat([existing, incoming], ignore_index=True)
+        .drop_duplicates(subset=["Date"], keep="last")
+        .sort_values("Date")
+        .reset_index(drop=True)
+    )
+    if interval in INTRADAY_INTERVALS:
+        merged["Date"] = merged["Date"].dt.strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        merged["Date"] = merged["Date"].dt.strftime("%Y-%m-%d")
+    merged["Volume"] = merged["Volume"].fillna(0).astype("int64")
+    return merged[STANDARD_COLUMNS]
+
+
 def download_price_bars(
     symbol: str,
     interval: str = "1d",
@@ -196,6 +231,8 @@ def download_price_bars(
     """下载 Yahoo Finance 行情并返回标准化结果。"""
     if is_intraday_interval(interval) and not period:
         raise ValueError("分钟 K 线请通过 period 参数下载，例如 5d 或 60d。")
+    if not is_intraday_interval(interval) and not period and not start_date and not end_date:
+        period = DEFAULT_DAILY_PERIOD
 
     logger.info(
         "开始下载 {} 的 Yahoo 行情，interval={}，start={}，end={}，period={}",
@@ -224,19 +261,29 @@ def download_price_bars(
     if is_intraday_interval(interval):
         raise ValueError("分钟 K 线当前仅支持通过 yfinance 下载，请检查代理和 period 参数。")
 
-    if not start_date or not end_date:
-        raise ValueError("日线回退到 Yahoo Chart API 时必须提供 start_date 和 end_date。")
-
     normalized = _load_from_chart_api(symbol, start_date, end_date, proxy=proxy)
     logger.info("通过 Yahoo Chart API 下载完成，共 {} 条记录。", len(normalized))
     return normalized
 
 
-def save_price_bars(frame: pd.DataFrame, output_path: str | Path) -> Path:
-    """保存标准化数据到 CSV。"""
+def save_price_bars(
+    frame: pd.DataFrame,
+    output_path: str | Path,
+    interval: str = "1d",
+    merge_with_existing: bool = False,
+) -> Path:
+    """保存标准化数据到 CSV。
+
+    分钟线默认支持和本地历史做增量合并；
+    日线也允许在已有全历史样本上继续并入新的重叠或新增日期。
+    """
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    frame.to_csv(target, index=False, encoding="utf-8-sig")
+    output_frame = frame.loc[:, STANDARD_COLUMNS].copy()
+    if merge_with_existing and target.exists():
+        existing = pd.read_csv(target, encoding="utf-8-sig")
+        output_frame = merge_price_bars(existing, output_frame, interval=interval)
+    output_frame.to_csv(target, index=False, encoding="utf-8-sig")
     logger.info("标准化数据已写入 {}", target)
     return target
 
@@ -248,4 +295,4 @@ def download_daily_bars(symbol: str, start_date: str, end_date: str, proxy: str 
 
 def save_daily_bars(frame: pd.DataFrame, output_path: str | Path) -> Path:
     """兼容旧接口的保存封装。"""
-    return save_price_bars(frame, output_path)
+    return save_price_bars(frame, output_path, interval="1d")
