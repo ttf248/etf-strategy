@@ -16,6 +16,13 @@ from loguru import logger
 from etf_strategy.config import DEFAULT_OUTPUT_DIR
 from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
 from etf_strategy.settings import (
+    DAILY_REBOUND_DEVIATIONS,
+    DAILY_REBOUND_MA_WINDOWS,
+    DAILY_REBOUND_MAX_HOLD_BARS,
+    DAILY_REBOUND_RSI_ENTRIES,
+    DAILY_REBOUND_RSI_WINDOWS,
+    DAILY_REBOUND_STOP_LOSS_ATRS,
+    DAILY_REBOUND_TAKE_PROFITS,
     DAILY_GRID_COUNTS,
     DAILY_SPACINGS,
     DAILY_TAKE_PROFITS,
@@ -26,13 +33,23 @@ from etf_strategy.settings import (
     DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     DEFAULT_WALK_FORWARD_WINDOW_COUNT,
     INTRADAY_GRID_COUNTS,
+    MINUTE_REBOUND_DROP_ENTRIES,
+    MINUTE_REBOUND_FADE_BLOCK_BARS,
+    MINUTE_REBOUND_FADE_UPPER_SHADOWS,
+    MINUTE_REBOUND_LOOKBACK_BARS,
+    MINUTE_REBOUND_MAX_HOLD_BARS,
+    MINUTE_REBOUND_RSI_ENTRIES,
+    MINUTE_REBOUND_STOP_LOSSES,
+    MINUTE_REBOUND_TAKE_PROFITS,
     INTRADAY_SPACINGS,
     INTRADAY_TAKE_PROFITS,
     ExecutionConfig,
+    StrategyKind,
     build_execution_config,
 )
 from etf_strategy.strategy.artifacts import load_price_frame, save_decline_window, save_run_artifacts
 from etf_strategy.strategy.grid import optimize_grid_parameters
+from etf_strategy.strategy.rebound import optimize_rebound_parameters, run_rebound_backtest
 from etf_strategy.strategy.sampling import split_intraday_in_sample_and_validation, split_in_sample_and_validation
 
 
@@ -41,12 +58,70 @@ def _count_parameter_combinations(spacings: list[float], grid_counts: list[int],
     return len(spacings) * len(grid_counts) * len(take_profits)
 
 
+def _rebound_parameter_space(strategy_kind: StrategyKind) -> dict[str, list[object]]:
+    if strategy_kind == "daily_rebound":
+        return {
+            "rsi_window": list(DAILY_REBOUND_RSI_WINDOWS),
+            "rsi_entry": list(DAILY_REBOUND_RSI_ENTRIES),
+            "ma_window": list(DAILY_REBOUND_MA_WINDOWS),
+            "deviation_entry_pct": list(DAILY_REBOUND_DEVIATIONS),
+            "take_profit_pct": list(DAILY_REBOUND_TAKE_PROFITS),
+            "stop_loss_atr": list(DAILY_REBOUND_STOP_LOSS_ATRS),
+            "max_hold_bars": list(DAILY_REBOUND_MAX_HOLD_BARS),
+        }
+    parameter_space: dict[str, list[object]] = {
+        "lookback_bars": list(MINUTE_REBOUND_LOOKBACK_BARS),
+        "drop_entry_pct": list(MINUTE_REBOUND_DROP_ENTRIES),
+        "rsi_entry": list(MINUTE_REBOUND_RSI_ENTRIES),
+        "take_profit_pct": list(MINUTE_REBOUND_TAKE_PROFITS),
+        "stop_loss_pct": list(MINUTE_REBOUND_STOP_LOSSES),
+        "max_hold_bars": list(MINUTE_REBOUND_MAX_HOLD_BARS),
+    }
+    if strategy_kind == "minute_rebound_with_fade_filter":
+        parameter_space["fade_filter_upper_shadow_pct"] = list(MINUTE_REBOUND_FADE_UPPER_SHADOWS)
+        parameter_space["fade_filter_block_bars"] = list(MINUTE_REBOUND_FADE_BLOCK_BARS)
+    return parameter_space
+
+
+def _count_parameter_space_candidates(parameter_space: dict[str, list[object]]) -> int:
+    total = 1
+    for values in parameter_space.values():
+        total *= max(1, len(values))
+    return total
+
+
+def _extract_rebound_params(summary: dict[str, object], strategy_kind: StrategyKind) -> dict[str, object]:
+    if strategy_kind == "daily_rebound":
+        keys = [
+            "rsi_window",
+            "rsi_entry",
+            "ma_window",
+            "deviation_entry_pct",
+            "take_profit_pct",
+            "stop_loss_atr",
+            "max_hold_bars",
+        ]
+    else:
+        keys = [
+            "lookback_bars",
+            "drop_entry_pct",
+            "rsi_entry",
+            "take_profit_pct",
+            "stop_loss_pct",
+            "max_hold_bars",
+        ]
+        if strategy_kind == "minute_rebound_with_fade_filter":
+            keys.extend(["fade_filter_upper_shadow_pct", "fade_filter_block_bars"])
+    return {key: summary[key] for key in keys if key in summary}
+
+
 def run_optimization_workflow(
     data_path: str | Path,
     symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "optimize",
     validation_start: str = DEFAULT_VALIDATION_START,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
+    strategy_kind: StrategyKind = "grid",
     spacings: list[float] | None = None,
     grid_counts: list[int] | None = None,
     take_profits: list[float] | None = None,
@@ -58,60 +133,85 @@ def run_optimization_workflow(
 ) -> dict[str, object]:
     """执行样本内参数搜索并保存结果。"""
     started_at = perf_counter()
-    spacings = spacings or list(DAILY_SPACINGS)
-    grid_counts = grid_counts or list(DAILY_GRID_COUNTS)
-    take_profits = take_profits or list(DAILY_TAKE_PROFITS)
     execution = execution_config or build_execution_config("research")
-
-    # 先解析 symbol 和 lot rule，避免回测跑到一半才发现交易单位不支持。
     resolved_symbol = _resolve_symbol(symbol, data_path)
     lot_rule = resolve_lot_size_rule(resolved_symbol)
     data = load_price_frame(data_path)
-    logger.info(
-        "[1/2] 开始执行日线样本内寻参: symbol={} data={} rows={} combinations={}",
-        lot_rule.symbol,
-        data_path,
-        len(data),
-        _count_parameter_combinations(spacings, grid_counts, take_profits),
-    )
     decline_window, in_sample, _ = split_in_sample_and_validation(
         data=data,
         validation_start=validation_start,
         lookback_days=lookback_days,
     )
-
-    results, best_run = optimize_grid_parameters(
-        data=in_sample,
-        spacings=spacings,
-        grid_counts=grid_counts,
-        take_profits=take_profits,
-        scenario_name="in_sample",
-        symbol=lot_rule.symbol,
-        market=lot_rule.market,
-        lot_size=lot_rule.lot_size,
-        lot_size_source=lot_rule.source,
-        execution_config=execution,
-        wf_window_count=wf_window_count,
-        wf_min_window_size=wf_min_window_size,
-        jobs=jobs,
-        cache_dir=cache_dir,
-    )
+    if strategy_kind == "grid":
+        spacings = spacings or list(DAILY_SPACINGS)
+        grid_counts = grid_counts or list(DAILY_GRID_COUNTS)
+        take_profits = take_profits or list(DAILY_TAKE_PROFITS)
+        logger.info(
+            "[1/2] 开始执行日线样本内寻参: strategy={} symbol={} data={} rows={} combinations={}",
+            strategy_kind,
+            lot_rule.symbol,
+            data_path,
+            len(data),
+            _count_parameter_combinations(spacings, grid_counts, take_profits),
+        )
+        results, best_run = optimize_grid_parameters(
+            data=in_sample,
+            spacings=spacings,
+            grid_counts=grid_counts,
+            take_profits=take_profits,
+            scenario_name="in_sample",
+            symbol=lot_rule.symbol,
+            market=lot_rule.market,
+            lot_size=lot_rule.lot_size,
+            lot_size_source=lot_rule.source,
+            execution_config=execution,
+            wf_window_count=wf_window_count,
+            wf_min_window_size=wf_min_window_size,
+            jobs=jobs,
+            cache_dir=cache_dir,
+        )
+    else:
+        parameter_space = _rebound_parameter_space(strategy_kind)
+        logger.info(
+            "[1/2] 开始执行日线样本内寻参: strategy={} symbol={} data={} rows={} combinations={}",
+            strategy_kind,
+            lot_rule.symbol,
+            data_path,
+            len(data),
+            _count_parameter_space_candidates(parameter_space),
+        )
+        results, best_run = optimize_rebound_parameters(
+            data=in_sample,
+            strategy_kind=strategy_kind,
+            parameter_space=parameter_space,
+            scenario_name="in_sample",
+            symbol=lot_rule.symbol,
+            market=lot_rule.market,
+            lot_size=lot_rule.lot_size,
+            lot_size_source=lot_rule.source,
+            execution_config=execution,
+            wf_window_count=wf_window_count,
+            wf_min_window_size=wf_min_window_size,
+            jobs=jobs,
+            cache_dir=cache_dir,
+        )
 
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
-    results_path = target_dir / "in_sample_grid_search.csv"
+    prefix = "in_sample_grid" if strategy_kind == "grid" else f"in_sample_{strategy_kind}"
+    results_path = target_dir / f"{prefix}_search.csv"
     results.to_csv(results_path, index=False, encoding="utf-8-sig")
     window_path = save_decline_window(target_dir, decline_window)
-    best_paths = save_run_artifacts(target_dir, "in_sample_best", best_run)
+    best_paths = save_run_artifacts(target_dir, f"{prefix}_best", best_run)
     logger.info(
-        "[1/2] 日线样本内寻参完成: best_spacing={:.2f}% best_count={} best_take_profit={:.2f}% elapsed={:.2f}s",
-        float(best_run["summary"]["GridSpacingPct"]),
-        int(best_run["summary"]["GridCount"]),
-        float(best_run["summary"]["TakeProfitPct"]),
+        "[1/2] 日线样本内寻参完成: strategy={} score={:.2f} elapsed={:.2f}s",
+        strategy_kind,
+        float(best_run["summary"]["Score"]),
         perf_counter() - started_at,
     )
 
     return {
+        "strategy_kind": strategy_kind,
         "decline_window": decline_window,
         "results": results,
         "results_path": results_path,
@@ -130,6 +230,8 @@ def run_validation_workflow(
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "validation",
     validation_start: str = DEFAULT_VALIDATION_START,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
+    strategy_kind: StrategyKind = "grid",
+    strategy_params: dict[str, object] | None = None,
     execution_config: ExecutionConfig | None = None,
 ) -> dict[str, object]:
     """执行 2026 样本外验证。"""
@@ -153,26 +255,43 @@ def run_validation_workflow(
         validation_start=validation_start,
         lookback_days=lookback_days,
     )
-    validation_run = run_grid_backtest(
-        data=validation,
-        scenario_name="validation_2026",
-        grid_spacing_pct=grid_spacing_pct,
-        grid_count=grid_count,
-        take_profit_pct=take_profit_pct,
-        symbol=lot_rule.symbol,
-        market=lot_rule.market,
-        lot_size=lot_rule.lot_size,
-        lot_size_source=lot_rule.source,
-        execution_config=execution,
-    )
-    paths = save_run_artifacts(output_dir, "validation_2026", validation_run)
+    if strategy_kind == "grid":
+        validation_run = run_grid_backtest(
+            data=validation,
+            scenario_name="validation_2026",
+            grid_spacing_pct=grid_spacing_pct,
+            grid_count=grid_count,
+            take_profit_pct=take_profit_pct,
+            symbol=lot_rule.symbol,
+            market=lot_rule.market,
+            lot_size=lot_rule.lot_size,
+            lot_size_source=lot_rule.source,
+            execution_config=execution,
+        )
+        prefix = "validation_2026"
+    else:
+        if strategy_params is None:
+            raise ValueError("非网格策略验证缺少 strategy_params。")
+        validation_run = run_rebound_backtest(
+            data=validation,
+            scenario_name="validation_2026",
+            strategy_kind=strategy_kind,
+            symbol=lot_rule.symbol,
+            market=lot_rule.market,
+            lot_size=lot_rule.lot_size,
+            lot_size_source=lot_rule.source,
+            params=strategy_params,
+            execution_config=execution,
+        )
+        prefix = f"validation_{strategy_kind}"
+    paths = save_run_artifacts(output_dir, prefix, validation_run)
     logger.info(
         "[2/2] 日线样本外验证完成: return={:.2f}% max_drawdown={:.2f}% elapsed={:.2f}s",
         float(validation_run["summary"]["ReturnPct"]),
         float(validation_run["summary"]["MaxDrawdownPct"]),
         perf_counter() - started_at,
     )
-    return {"run": validation_run, "paths": paths}
+    return {"strategy_kind": strategy_kind, "run": validation_run, "paths": paths}
 
 
 def run_full_workflow(
@@ -181,6 +300,7 @@ def run_full_workflow(
     output_dir: str | Path = DEFAULT_OUTPUT_DIR,
     validation_start: str = DEFAULT_VALIDATION_START,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
+    strategy_kind: StrategyKind = "grid",
     spacings: list[float] | None = None,
     grid_counts: list[int] | None = None,
     take_profits: list[float] | None = None,
@@ -203,6 +323,7 @@ def run_full_workflow(
         output_dir=Path(output_dir) / "optimize",
         validation_start=validation_start,
         lookback_days=lookback_days,
+        strategy_kind=strategy_kind,
         spacings=spacings,
         grid_counts=grid_counts,
         take_profits=take_profits,
@@ -222,6 +343,8 @@ def run_full_workflow(
         output_dir=Path(output_dir) / "validation",
         validation_start=validation_start,
         lookback_days=lookback_days,
+        strategy_kind=strategy_kind,
+        strategy_params=None if strategy_kind == "grid" else _extract_rebound_params(best_summary, strategy_kind),
         execution_config=execution_config,
     )
 
@@ -237,6 +360,7 @@ def run_full_workflow(
     logger.info("日线完整工作流完成: summary={} elapsed={:.2f}s", combined_path, perf_counter() - started_at)
 
     return {
+        "strategy_kind": strategy_kind,
         "optimization": optimization,
         "validation": validation,
         "combined_summary_path": combined_path,
@@ -248,6 +372,7 @@ def run_minute_optimization_workflow(
     symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "minute" / "optimize",
     validation_ratio: float = DEFAULT_VALIDATION_RATIO,
+    strategy_kind: StrategyKind = "grid",
     spacings: list[float] | None = None,
     grid_counts: list[int] | None = None,
     take_profits: list[float] | None = None,
@@ -259,58 +384,85 @@ def run_minute_optimization_workflow(
 ) -> dict[str, object]:
     """执行分钟线样本内参数搜索并保存结果。"""
     started_at = perf_counter()
-    spacings = spacings or list(INTRADAY_SPACINGS)
-    grid_counts = grid_counts or list(INTRADAY_GRID_COUNTS)
-    take_profits = take_profits or list(INTRADAY_TAKE_PROFITS)
     execution = execution_config or build_execution_config("research")
 
     resolved_symbol = _resolve_symbol(symbol, data_path)
     lot_rule = resolve_lot_size_rule(resolved_symbol)
     data = load_price_frame(data_path)
-    logger.info(
-        "[1/2] 开始执行分钟线样本内寻参: symbol={} data={} rows={} combinations={}",
-        lot_rule.symbol,
-        data_path,
-        len(data),
-        _count_parameter_combinations(spacings, grid_counts, take_profits),
-    )
     decline_window, in_sample, _ = split_intraday_in_sample_and_validation(
         data=data,
         validation_ratio=validation_ratio,
     )
-
-    results, best_run = optimize_grid_parameters(
-        data=in_sample,
-        spacings=spacings,
-        grid_counts=grid_counts,
-        take_profits=take_profits,
-        scenario_name="minute_in_sample",
-        symbol=lot_rule.symbol,
-        market=lot_rule.market,
-        lot_size=lot_rule.lot_size,
-        lot_size_source=lot_rule.source,
-        execution_config=execution,
-        wf_window_count=wf_window_count,
-        wf_min_window_size=wf_min_window_size,
-        jobs=jobs,
-        cache_dir=cache_dir,
-    )
+    if strategy_kind == "grid":
+        spacings = spacings or list(INTRADAY_SPACINGS)
+        grid_counts = grid_counts or list(INTRADAY_GRID_COUNTS)
+        take_profits = take_profits or list(INTRADAY_TAKE_PROFITS)
+        logger.info(
+            "[1/2] 开始执行分钟线样本内寻参: strategy={} symbol={} data={} rows={} combinations={}",
+            strategy_kind,
+            lot_rule.symbol,
+            data_path,
+            len(data),
+            _count_parameter_combinations(spacings, grid_counts, take_profits),
+        )
+        results, best_run = optimize_grid_parameters(
+            data=in_sample,
+            spacings=spacings,
+            grid_counts=grid_counts,
+            take_profits=take_profits,
+            scenario_name="minute_in_sample",
+            symbol=lot_rule.symbol,
+            market=lot_rule.market,
+            lot_size=lot_rule.lot_size,
+            lot_size_source=lot_rule.source,
+            execution_config=execution,
+            wf_window_count=wf_window_count,
+            wf_min_window_size=wf_min_window_size,
+            jobs=jobs,
+            cache_dir=cache_dir,
+        )
+    else:
+        parameter_space = _rebound_parameter_space(strategy_kind)
+        logger.info(
+            "[1/2] 开始执行分钟线样本内寻参: strategy={} symbol={} data={} rows={} combinations={}",
+            strategy_kind,
+            lot_rule.symbol,
+            data_path,
+            len(data),
+            _count_parameter_space_candidates(parameter_space),
+        )
+        results, best_run = optimize_rebound_parameters(
+            data=in_sample,
+            strategy_kind=strategy_kind,
+            parameter_space=parameter_space,
+            scenario_name="minute_in_sample",
+            symbol=lot_rule.symbol,
+            market=lot_rule.market,
+            lot_size=lot_rule.lot_size,
+            lot_size_source=lot_rule.source,
+            execution_config=execution,
+            wf_window_count=wf_window_count,
+            wf_min_window_size=wf_min_window_size,
+            jobs=jobs,
+            cache_dir=cache_dir,
+        )
 
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
-    results_path = target_dir / "minute_in_sample_grid_search.csv"
+    prefix = "minute_in_sample_grid" if strategy_kind == "grid" else f"minute_in_sample_{strategy_kind}"
+    results_path = target_dir / f"{prefix}_search.csv"
     results.to_csv(results_path, index=False, encoding="utf-8-sig")
     window_path = save_decline_window(target_dir, decline_window)
-    best_paths = save_run_artifacts(target_dir, "minute_in_sample_best", best_run)
+    best_paths = save_run_artifacts(target_dir, f"{prefix}_best", best_run)
     logger.info(
-        "[1/2] 分钟线样本内寻参完成: best_spacing={:.2f}% best_count={} best_take_profit={:.2f}% elapsed={:.2f}s",
-        float(best_run["summary"]["GridSpacingPct"]),
-        int(best_run["summary"]["GridCount"]),
-        float(best_run["summary"]["TakeProfitPct"]),
+        "[1/2] 分钟线样本内寻参完成: strategy={} score={:.2f} elapsed={:.2f}s",
+        strategy_kind,
+        float(best_run["summary"]["Score"]),
         perf_counter() - started_at,
     )
 
     return {
+        "strategy_kind": strategy_kind,
         "decline_window": decline_window,
         "results": results,
         "results_path": results_path,
@@ -328,6 +480,8 @@ def run_minute_validation_workflow(
     symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "minute" / "validation",
     validation_ratio: float = DEFAULT_VALIDATION_RATIO,
+    strategy_kind: StrategyKind = "grid",
+    strategy_params: dict[str, object] | None = None,
     execution_config: ExecutionConfig | None = None,
 ) -> dict[str, object]:
     """执行分钟线样本外验证。"""
@@ -350,26 +504,43 @@ def run_minute_validation_workflow(
         data=data,
         validation_ratio=validation_ratio,
     )
-    validation_run = run_grid_backtest(
-        data=validation,
-        scenario_name="minute_validation",
-        grid_spacing_pct=grid_spacing_pct,
-        grid_count=grid_count,
-        take_profit_pct=take_profit_pct,
-        symbol=lot_rule.symbol,
-        market=lot_rule.market,
-        lot_size=lot_rule.lot_size,
-        lot_size_source=lot_rule.source,
-        execution_config=execution,
-    )
-    paths = save_run_artifacts(output_dir, "minute_validation", validation_run)
+    if strategy_kind == "grid":
+        validation_run = run_grid_backtest(
+            data=validation,
+            scenario_name="minute_validation",
+            grid_spacing_pct=grid_spacing_pct,
+            grid_count=grid_count,
+            take_profit_pct=take_profit_pct,
+            symbol=lot_rule.symbol,
+            market=lot_rule.market,
+            lot_size=lot_rule.lot_size,
+            lot_size_source=lot_rule.source,
+            execution_config=execution,
+        )
+        prefix = "minute_validation"
+    else:
+        if strategy_params is None:
+            raise ValueError("非网格分钟线验证缺少 strategy_params。")
+        validation_run = run_rebound_backtest(
+            data=validation,
+            scenario_name="minute_validation",
+            strategy_kind=strategy_kind,
+            symbol=lot_rule.symbol,
+            market=lot_rule.market,
+            lot_size=lot_rule.lot_size,
+            lot_size_source=lot_rule.source,
+            params=strategy_params,
+            execution_config=execution,
+        )
+        prefix = f"minute_validation_{strategy_kind}"
+    paths = save_run_artifacts(output_dir, prefix, validation_run)
     logger.info(
         "[2/2] 分钟线样本外验证完成: return={:.2f}% max_drawdown={:.2f}% elapsed={:.2f}s",
         float(validation_run["summary"]["ReturnPct"]),
         float(validation_run["summary"]["MaxDrawdownPct"]),
         perf_counter() - started_at,
     )
-    return {"run": validation_run, "paths": paths}
+    return {"strategy_kind": strategy_kind, "run": validation_run, "paths": paths}
 
 
 def run_minute_full_workflow(
@@ -377,6 +548,7 @@ def run_minute_full_workflow(
     symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "minute",
     validation_ratio: float = DEFAULT_VALIDATION_RATIO,
+    strategy_kind: StrategyKind = "grid",
     spacings: list[float] | None = None,
     grid_counts: list[int] | None = None,
     take_profits: list[float] | None = None,
@@ -394,6 +566,7 @@ def run_minute_full_workflow(
         symbol=symbol,
         output_dir=Path(output_dir) / "optimize",
         validation_ratio=validation_ratio,
+        strategy_kind=strategy_kind,
         spacings=spacings,
         grid_counts=grid_counts,
         take_profits=take_profits,
@@ -412,6 +585,8 @@ def run_minute_full_workflow(
         symbol=symbol,
         output_dir=Path(output_dir) / "validation",
         validation_ratio=validation_ratio,
+        strategy_kind=strategy_kind,
+        strategy_params=None if strategy_kind == "grid" else _extract_rebound_params(best_summary, strategy_kind),
         execution_config=execution_config,
     )
 
@@ -429,6 +604,7 @@ def run_minute_full_workflow(
     return {
         "workflow_type": "minute",
         "interval": "15m",
+        "strategy_kind": strategy_kind,
         "validation_ratio": validation_ratio,
         "optimization": optimization,
         "validation": validation,

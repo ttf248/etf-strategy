@@ -24,6 +24,7 @@ WorkflowMode = Literal["daily", "intraday"]
 ExecutionProfile = Literal["research", "realistic"]
 GridMode = Literal["cash"]
 LeftSidePolicy = Literal["hold", "force_exit", "both"]
+StrategyKind = Literal["grid", "daily_rebound", "minute_rebound", "minute_rebound_with_fade_filter"]
 
 DEFAULT_VALIDATION_START = "2026-01-01"
 DEFAULT_LOOKBACK_DAYS = 120
@@ -39,6 +40,23 @@ DAILY_TAKE_PROFITS = (0.03, 0.05, 0.07)
 INTRADAY_SPACINGS = (0.01, 0.015, 0.02, 0.03, 0.04)
 INTRADAY_GRID_COUNTS = (4, 5, 6, 7)
 INTRADAY_TAKE_PROFITS = (0.01, 0.015, 0.02, 0.03)
+
+DAILY_REBOUND_RSI_WINDOWS = (6, 8, 10, 14)
+DAILY_REBOUND_RSI_ENTRIES = (20.0, 25.0, 30.0, 35.0)
+DAILY_REBOUND_MA_WINDOWS = (10, 20)
+DAILY_REBOUND_DEVIATIONS = (-8.0, -6.0, -4.0)
+DAILY_REBOUND_TAKE_PROFITS = (3.0, 5.0, 8.0)
+DAILY_REBOUND_STOP_LOSS_ATRS = (1.5, 2.0, 2.5)
+DAILY_REBOUND_MAX_HOLD_BARS = (5, 8, 10)
+
+MINUTE_REBOUND_LOOKBACK_BARS = (8, 12, 16)
+MINUTE_REBOUND_DROP_ENTRIES = (-2.0, -1.5, -1.0)
+MINUTE_REBOUND_RSI_ENTRIES = (20.0, 25.0, 30.0)
+MINUTE_REBOUND_TAKE_PROFITS = (0.6, 0.8, 1.0, 1.2)
+MINUTE_REBOUND_STOP_LOSSES = (0.8, 1.0, 1.2)
+MINUTE_REBOUND_MAX_HOLD_BARS = (4, 8, 12)
+MINUTE_REBOUND_FADE_UPPER_SHADOWS = (1.0, 1.5)
+MINUTE_REBOUND_FADE_BLOCK_BARS = (2, 4)
 
 
 @dataclass(frozen=True)

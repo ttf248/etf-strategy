@@ -33,13 +33,14 @@ from etf_strategy.data.yahoo import (
     save_price_bars,
 )
 from etf_strategy.logging_utils import configure_logging
-from etf_strategy.reporting import build_minute_report_markdown, build_report_markdown
+from etf_strategy.reporting import build_minute_report_markdown, build_report_markdown, build_strategy_comparison_report
 from etf_strategy.settings import (
     DEFAULT_LOOKBACK_DAYS,
     DEFAULT_VALIDATION_RATIO,
     DEFAULT_VALIDATION_START,
     DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     DEFAULT_WALK_FORWARD_WINDOW_COUNT,
+    StrategyKind,
     build_execution_config,
 )
 from etf_strategy.symbols import SYMBOL_SETS, SymbolSpec
@@ -94,6 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     optimize_parser.add_argument("--wf-min-window-size", type=int, default=DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE, help="单个稳健性窗口最少 K 线数")
     optimize_parser.add_argument("--jobs", default="1", help="寻参并行线程数；可传整数或 auto")
     optimize_parser.add_argument("--cache-dir", default=None, help="候选参数回测缓存目录")
+    _add_strategy_arguments(optimize_parser)
     _add_execution_arguments(optimize_parser)
 
     backtest_parser = subparsers.add_parser("backtest", help="执行样本外验证")
@@ -122,6 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
     backtest_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
     backtest_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="样本内回看天数")
     backtest_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
+    _add_strategy_arguments(backtest_parser)
     _add_execution_arguments(backtest_parser)
 
     report_parser = subparsers.add_parser("report", help="生成图表与中文报告")
@@ -137,6 +140,8 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser.add_argument("--wf-min-window-size", type=int, default=DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE, help="单个稳健性窗口最少 K 线数")
     report_parser.add_argument("--jobs", default="1", help="寻参并行线程数；可传整数或 auto")
     report_parser.add_argument("--cache-dir", default=None, help="候选参数回测缓存目录")
+    _add_strategy_arguments(report_parser)
+    report_parser.add_argument("--compare-strategies", action="store_true", help="同时输出当前周期下多策略对比报告")
     _add_execution_arguments(report_parser)
 
     run_parser = subparsers.add_parser("run", help="串联下载、寻参、验证和报告生成")
@@ -159,6 +164,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--wf-min-window-size", type=int, default=DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE, help="单个稳健性窗口最少 K 线数")
     run_parser.add_argument("--jobs", default="1", help="寻参并行线程数；可传整数或 auto")
     run_parser.add_argument("--cache-dir", default=None, help="候选参数回测缓存目录")
+    _add_strategy_arguments(run_parser)
+    run_parser.add_argument("--compare-strategies", action="store_true", help="同时输出当前周期下多策略对比报告")
     _add_execution_arguments(run_parser)
 
     batch_parser = subparsers.add_parser("batch", help="批量执行多个标的的完整研究流程")
@@ -177,6 +184,7 @@ def build_parser() -> argparse.ArgumentParser:
     batch_parser.add_argument("--wf-min-window-size", type=int, default=DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE, help="单个稳健性窗口最少 K 线数")
     batch_parser.add_argument("--jobs", default="1", help="单标的寻参并行线程数；可传整数或 auto")
     batch_parser.add_argument("--cache-dir", default=None, help="候选参数回测缓存目录")
+    _add_strategy_arguments(batch_parser)
     _add_execution_arguments(batch_parser)
 
     return parser
@@ -221,6 +229,15 @@ def _add_execution_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_strategy_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--strategy",
+        choices=["grid", "daily_rebound", "minute_rebound", "minute_rebound_with_fade_filter"],
+        default="grid",
+        help="策略类型：grid 为现有网格；其余为反转类策略",
+    )
+
+
 def _build_execution_from_args(args: argparse.Namespace):
     """从命令行参数构造执行口径配置。"""
     return build_execution_config(
@@ -247,6 +264,96 @@ def _resolve_jobs(value: str | int) -> int:
     if parsed <= 0:
         raise ValueError("--jobs 必须是正整数或 auto。")
     return parsed
+
+
+def _default_compare_strategy_kinds(interval: str) -> list[StrategyKind]:
+    if is_intraday_interval(interval):
+        return ["grid", "minute_rebound", "minute_rebound_with_fade_filter"]
+    return ["grid", "daily_rebound"]
+
+
+def _format_best_parameter_summary(summary: dict[str, object]) -> str:
+    strategy_kind = str(summary.get("StrategyKind", "grid"))
+    score = float(summary.get("Score", 0.0))
+    if strategy_kind == "grid":
+        return (
+            f"grid_spacing={float(summary['GridSpacingPct']):.2f}% "
+            f"grid_count={int(summary['GridCount'])} "
+            f"take_profit={float(summary['TakeProfitPct']):.2f}% "
+            f"score={score:.2f}"
+        )
+    parameter_fields = [
+        key
+        for key in [
+            "rsi_window",
+            "rsi_entry",
+            "ma_window",
+            "deviation_entry_pct",
+            "lookback_bars",
+            "drop_entry_pct",
+            "stop_loss_atr",
+            "stop_loss_pct",
+            "max_hold_bars",
+            "fade_filter_upper_shadow_pct",
+            "fade_filter_block_bars",
+        ]
+        if key in summary
+    ]
+    details = " ".join(f"{field}={summary[field]}" for field in parameter_fields)
+    return (
+        f"strategy={strategy_kind} "
+        f"{details} "
+        f"take_profit={float(summary['TakeProfitPct']):.2f}% "
+        f"score={score:.2f}"
+    ).strip()
+
+
+def _run_full_workflow_from_args(
+    data_path: str | Path,
+    args: argparse.Namespace,
+    execution_config,
+) -> dict[str, object]:
+    intraday_mode = is_intraday_interval(args.interval)
+    jobs = _resolve_jobs(args.jobs)
+    if intraday_mode:
+        return run_minute_full_workflow(
+            data_path=data_path,
+            symbol=args.symbol,
+            output_dir=args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR),
+            validation_ratio=args.validation_ratio,
+            strategy_kind=args.strategy,
+            execution_config=execution_config,
+            wf_window_count=args.wf_window_count,
+            wf_min_window_size=args.wf_min_window_size,
+            jobs=jobs,
+            cache_dir=args.cache_dir,
+        )
+    return run_full_workflow(
+        data_path=data_path,
+        symbol=args.symbol,
+        output_dir=args.output_dir or str(DEFAULT_OUTPUT_DIR),
+        validation_start=args.validation_start,
+        lookback_days=args.lookback_days,
+        strategy_kind=args.strategy,
+        execution_config=execution_config,
+        wf_window_count=args.wf_window_count,
+        wf_min_window_size=args.wf_min_window_size,
+        jobs=jobs,
+        cache_dir=args.cache_dir,
+    )
+
+
+def _run_comparison_workflows(data_path: str | Path, args: argparse.Namespace, execution_config) -> dict[str, dict[str, object]]:
+    original_output_dir = args.output_dir
+    results: dict[str, dict[str, object]] = {}
+    for strategy_kind in _default_compare_strategy_kinds(args.interval):
+        args.strategy = strategy_kind
+        strategy_slug = strategy_kind.replace("minute_", "").replace("daily_", "")
+        base_output_dir = Path(original_output_dir or (DEFAULT_MINUTE_OUTPUT_DIR if is_intraday_interval(args.interval) else DEFAULT_OUTPUT_DIR))
+        args.output_dir = str(base_output_dir / strategy_slug)
+        results[strategy_kind] = _run_full_workflow_from_args(data_path, args, execution_config)
+    args.output_dir = original_output_dir
+    return results
 
 
 def _validate_daily_date_range(args: argparse.Namespace, command_name: str) -> None:
@@ -304,7 +411,7 @@ def handle_placeholder(args: argparse.Namespace) -> int:
 def handle_optimize(args: argparse.Namespace) -> int:
     """执行样本内参数搜索，并按周期选择对应工作流。"""
     started_at = perf_counter()
-    logger.info("收到 optimize 命令: data={} interval={}", args.data, args.interval)
+    logger.info("收到 optimize 命令: data={} interval={} strategy={}", args.data, args.interval, args.strategy)
     execution_config = _build_execution_from_args(args)
     if is_intraday_interval(args.interval):
         output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR / "optimize")
@@ -313,6 +420,7 @@ def handle_optimize(args: argparse.Namespace) -> int:
             symbol=args.symbol,
             output_dir=output_dir,
             validation_ratio=args.validation_ratio,
+            strategy_kind=args.strategy,
             execution_config=execution_config,
             wf_window_count=args.wf_window_count,
             wf_min_window_size=args.wf_min_window_size,
@@ -327,6 +435,7 @@ def handle_optimize(args: argparse.Namespace) -> int:
             output_dir=output_dir,
             validation_start=args.validation_start,
             lookback_days=args.lookback_days,
+            strategy_kind=args.strategy,
             execution_config=execution_config,
             wf_window_count=args.wf_window_count,
             wf_min_window_size=args.wf_min_window_size,
@@ -335,13 +444,7 @@ def handle_optimize(args: argparse.Namespace) -> int:
         )
     best_summary = result["best_run"]["summary"]
     print(f"样本内最优参数已生成: {result['results_path']}")
-    print(
-        "最优参数: "
-        f"grid_spacing={best_summary['GridSpacingPct']:.2f}% "
-        f"grid_count={best_summary['GridCount']} "
-        f"take_profit={best_summary['TakeProfitPct']:.2f}% "
-        f"score={best_summary['Score']:.2f}"
-    )
+    print(f"最优参数: {_format_best_parameter_summary(best_summary)}")
     logger.info("optimize 命令完成: results={} elapsed={:.2f}s", result["results_path"], perf_counter() - started_at)
     return 0
 
@@ -349,10 +452,13 @@ def handle_optimize(args: argparse.Namespace) -> int:
 def handle_backtest(args: argparse.Namespace) -> int:
     """执行样本外验证。"""
     started_at = perf_counter()
+    if args.strategy != "grid":
+        raise ValueError("backtest 命令当前仅支持 grid；反转类策略请使用 optimize/report/run 自动选参与验证。")
     logger.info(
-        "收到 backtest 命令: data={} interval={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
+        "收到 backtest 命令: data={} interval={} strategy={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
         args.data,
         args.interval,
+        args.strategy,
         args.grid_spacing * 100,
         args.grid_count,
         args.take_profit * 100,
@@ -403,9 +509,11 @@ def handle_run(args: argparse.Namespace) -> int:
     report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR if intraday_mode else DEFAULT_REPORT_DIR)
     data_path = _resolve_download_output_path(args.symbol, args.interval, args.period, output=None)
     logger.info(
-        "收到 run 命令: symbol={} interval={} data_path={} output_dir={} report_dir={}",
+        "收到 run 命令: symbol={} interval={} strategy={} compare={} data_path={} output_dir={} report_dir={}",
         args.symbol,
         args.interval,
+        args.strategy,
+        args.compare_strategies,
         data_path,
         output_dir,
         report_dir,
@@ -425,34 +533,24 @@ def handle_run(args: argparse.Namespace) -> int:
 
     # `run` 总是先把最新下载结果和本地样本合并落盘，再交给统一工作流和报告层复用。
     logger.info("[2/3] 开始执行完整回测工作流")
-    if intraday_mode:
-        result = run_minute_full_workflow(
-            data_path=data_path,
-            symbol=args.symbol,
-            output_dir=output_dir,
-            validation_ratio=args.validation_ratio,
-            execution_config=execution_config,
-            wf_window_count=args.wf_window_count,
-            wf_min_window_size=args.wf_min_window_size,
-            jobs=_resolve_jobs(args.jobs),
-            cache_dir=args.cache_dir,
-        )
+    args.output_dir = str(output_dir)
+    if args.compare_strategies:
+        comparison_results = _run_comparison_workflows(data_path, args, execution_config)
+        result = comparison_results[args.strategy] if args.strategy in comparison_results else next(iter(comparison_results.values()))
+        logger.info("[2/3] 多策略工作流完成: strategies={}", list(comparison_results))
     else:
-        result = run_full_workflow(
-            data_path=data_path,
-            symbol=args.symbol,
-            output_dir=output_dir,
-            validation_start=args.validation_start,
-            lookback_days=args.lookback_days,
-            execution_config=execution_config,
-            wf_window_count=args.wf_window_count,
-            wf_min_window_size=args.wf_min_window_size,
-            jobs=_resolve_jobs(args.jobs),
-            cache_dir=args.cache_dir,
-        )
-    logger.info("[2/3] 完整回测工作流完成: summary={}", result["combined_summary_path"])
+        result = _run_full_workflow_from_args(data_path, args, execution_config)
+        comparison_results = None
+        logger.info("[2/3] 完整回测工作流完成: summary={}", result["combined_summary_path"])
     logger.info("[3/3] 开始生成正式报告")
-    if intraday_mode:
+    if comparison_results is not None:
+        report_path = build_strategy_comparison_report(
+            strategy_results=comparison_results,
+            interval=args.interval,
+            symbol=args.symbol,
+            report_dir=report_dir,
+        )
+    elif intraday_mode:
         report_path = build_minute_report_markdown(result, report_dir=report_dir)
     else:
         report_path = build_report_markdown(result, report_dir=report_dir)
@@ -461,12 +559,7 @@ def handle_run(args: argparse.Namespace) -> int:
     validation_summary = result["validation"]["run"]["summary"]
     print(f"完整工作流已完成，汇总文件: {result['combined_summary_path']}")
     print(f"中文报告: {report_path}")
-    print(
-        "样本内最优参数: "
-        f"grid_spacing={best_summary['GridSpacingPct']:.2f}% "
-        f"grid_count={best_summary['GridCount']} "
-        f"take_profit={best_summary['TakeProfitPct']:.2f}%"
-    )
+    print(f"样本内最优参数: {_format_best_parameter_summary(best_summary)}")
     print(
         f"{'分钟线样本外表现' if intraday_mode else '2026 样本外表现'}: "
         f"return={validation_summary['ReturnPct']:.2f}% "
@@ -480,40 +573,27 @@ def handle_run(args: argparse.Namespace) -> int:
 def handle_report(args: argparse.Namespace) -> int:
     """基于已有 CSV 重跑工作流并生成正式报告。"""
     started_at = perf_counter()
-    logger.info("收到 report 命令: data={} interval={}", args.data, args.interval)
+    logger.info("收到 report 命令: data={} interval={} strategy={} compare={}", args.data, args.interval, args.strategy, args.compare_strategies)
     logger.info("[1/2] 开始重跑工作流并准备报告数据")
     execution_config = _build_execution_from_args(args)
-    if is_intraday_interval(args.interval):
-        output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR)
-        report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR)
-        result = run_minute_full_workflow(
-            data_path=args.data,
-            symbol=args.symbol,
-            output_dir=output_dir,
-            validation_ratio=args.validation_ratio,
-            execution_config=execution_config,
-            wf_window_count=args.wf_window_count,
-            wf_min_window_size=args.wf_min_window_size,
-            jobs=_resolve_jobs(args.jobs),
-            cache_dir=args.cache_dir,
-        )
+    output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR if is_intraday_interval(args.interval) else DEFAULT_OUTPUT_DIR)
+    report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR if is_intraday_interval(args.interval) else DEFAULT_REPORT_DIR)
+    args.output_dir = output_dir
+    if args.compare_strategies:
+        comparison_results = _run_comparison_workflows(args.data, args, execution_config)
+        result = comparison_results[args.strategy] if args.strategy in comparison_results else next(iter(comparison_results.values()))
     else:
-        output_dir = args.output_dir or str(DEFAULT_OUTPUT_DIR)
-        report_dir = args.report_dir or str(DEFAULT_REPORT_DIR)
-        result = run_full_workflow(
-            data_path=args.data,
-            symbol=args.symbol,
-            output_dir=output_dir,
-            validation_start=args.validation_start,
-            lookback_days=args.lookback_days,
-            execution_config=execution_config,
-            wf_window_count=args.wf_window_count,
-            wf_min_window_size=args.wf_min_window_size,
-            jobs=_resolve_jobs(args.jobs),
-            cache_dir=args.cache_dir,
-        )
+        comparison_results = None
+        result = _run_full_workflow_from_args(args.data, args, execution_config)
     logger.info("[2/2] 工作流数据准备完成，开始写正式报告")
-    if is_intraday_interval(args.interval):
+    if comparison_results is not None:
+        report_path = build_strategy_comparison_report(
+            strategy_results=comparison_results,
+            interval=args.interval,
+            symbol=args.symbol or DEFAULT_SYMBOL,
+            report_dir=report_dir,
+        )
+    elif is_intraday_interval(args.interval):
         report_path = build_minute_report_markdown(result, report_dir=report_dir)
     else:
         report_path = build_report_markdown(result, report_dir=report_dir)
@@ -690,6 +770,8 @@ def _write_failed_batch_report(
 def handle_batch(args: argparse.Namespace) -> int:
     """批量执行多个标的的完整研究流程。"""
     started_at = perf_counter()
+    if args.strategy != "grid":
+        raise ValueError("batch 命令当前仅支持 grid；多策略对比先围绕单标的正式报告使用。")
     symbols, specs_by_symbol = _resolve_batch_symbols(args)
 
     intraday_mode = is_intraday_interval(args.interval)

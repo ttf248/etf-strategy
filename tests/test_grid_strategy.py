@@ -17,6 +17,7 @@ from etf_strategy.strategy.grid import (
     split_intraday_in_sample_and_validation,
     split_in_sample_and_validation,
 )
+from etf_strategy.strategy.rebound import run_rebound_backtest
 
 
 def build_test_frame(close_prices: list[float], start: str = "2025-09-01") -> pd.DataFrame:
@@ -123,6 +124,25 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(execution.grid_mode, "cash")
         self.assertEqual(execution.left_side_policy, "force_exit")
         self.assertAlmostEqual(execution.force_exit_loss_pct, 0.03)
+
+    def test_report_parser_reads_strategy_compare_arguments(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "report",
+                "--data",
+                "data/processed/1810_hk_15m.csv",
+                "--interval",
+                "15m",
+                "--strategy",
+                "minute_rebound_with_fade_filter",
+                "--compare-strategies",
+            ]
+        )
+
+        self.assertEqual(args.strategy, "minute_rebound_with_fade_filter")
+        self.assertTrue(args.compare_strategies)
 
     def test_handle_download_defaults_to_intraday_and_merges_existing(self) -> None:
         parser = build_parser()
@@ -250,8 +270,9 @@ class GridStrategyTests(unittest.TestCase):
         mock_workflow.assert_called_once_with(
             data_path=DEFAULT_MINUTE_DATA_PATH,
             symbol="1810.HK",
-            output_dir=DEFAULT_MINUTE_OUTPUT_DIR,
+            output_dir=str(DEFAULT_MINUTE_OUTPUT_DIR),
             validation_ratio=0.25,
+            strategy_kind="grid",
             execution_config=ANY,
             wf_window_count=3,
             wf_min_window_size=20,
@@ -643,6 +664,89 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(window.entry_date, "2026-04-01 09:30:00")
         self.assertFalse(in_sample.empty)
         self.assertFalse(validation.empty)
+
+    def test_run_daily_rebound_backtest_generates_buy_and_sell(self) -> None:
+        prices = [100.0, 99.0, 97.0, 94.0, 92.0, 95.0, 98.0, 101.0, 100.0, 99.0]
+        frame = build_test_frame(prices, start="2025-01-01")
+
+        result = run_rebound_backtest(
+            data=frame,
+            scenario_name="daily_rebound_unit_test",
+            strategy_kind="daily_rebound",
+            symbol="1810.HK",
+            market="HK",
+            lot_size=200,
+            lot_size_source="unit test",
+            params={
+                "rsi_window": 3,
+                "rsi_entry": 35.0,
+                "ma_window": 3,
+                "deviation_entry_pct": -2.0,
+                "take_profit_pct": 3.0,
+                "stop_loss_atr": 5.0,
+                "max_hold_bars": 5,
+            },
+            execution_config=build_execution_config(
+                "research",
+                commission_bps=0,
+                slippage_bps=0,
+                max_position_ratio=0.8,
+            ),
+        )
+
+        summary = result["summary"]
+        events = result["events"]
+        self.assertEqual(summary["StrategyKind"], "daily_rebound")
+        self.assertTrue(summary["TriggeredEntry"])
+        self.assertGreaterEqual(summary["ClosedTrades"], 1)
+        self.assertIn("rebound_buy", set(events["EventType"]))
+        self.assertTrue({"take_profit_sell", "max_hold_sell", "stop_loss_sell"}.intersection(set(events["EventType"])))
+
+    def test_run_minute_rebound_fade_filter_blocks_entry(self) -> None:
+        dates = pd.date_range(start="2026-04-01 09:30:00", periods=8, freq="15min")
+        frame = pd.DataFrame(
+            {
+                "Open": [10.0, 10.4, 10.8, 10.5, 10.1, 9.9, 9.8, 9.9],
+                "High": [10.5, 11.1, 11.5, 10.8, 10.2, 10.0, 9.9, 10.0],
+                "Low": [9.9, 10.2, 10.4, 9.8, 9.7, 9.6, 9.7, 9.8],
+                "Close": [10.4, 10.9, 10.5, 10.0, 9.8, 9.7, 9.85, 9.95],
+                "Volume": [1000] * 8,
+            },
+            index=dates,
+        )
+        frame.index.name = "Date"
+
+        result = run_rebound_backtest(
+            data=frame,
+            scenario_name="minute_rebound_filter_unit_test",
+            strategy_kind="minute_rebound_with_fade_filter",
+            symbol="1810.HK",
+            market="HK",
+            lot_size=200,
+            lot_size_source="unit test",
+            params={
+                "lookback_bars": 3,
+                "drop_entry_pct": -3.0,
+                "rsi_entry": 60.0,
+                "take_profit_pct": 1.0,
+                "stop_loss_pct": 5.0,
+                "max_hold_bars": 4,
+                "fade_filter_upper_shadow_pct": 2.5,
+                "fade_filter_block_bars": 2,
+            },
+            execution_config=build_execution_config(
+                "research",
+                commission_bps=0,
+                slippage_bps=0,
+                max_position_ratio=0.5,
+            ),
+        )
+
+        summary = result["summary"]
+        events = result["events"]
+        self.assertEqual(summary["StrategyKind"], "minute_rebound_with_fade_filter")
+        self.assertGreaterEqual(summary["FilterBlockedEvents"], 1)
+        self.assertIn("filter_block", set(events["EventType"]))
 
     def test_build_walk_forward_windows_splits_data_in_time_order(self) -> None:
         frame = build_test_frame([20.0 + index for index in range(60)], start="2025-01-01")

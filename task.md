@@ -1409,3 +1409,47 @@
 - `5a70d07` 实现行情增量合并与日线全历史下载
 - `a1677f0` 调整CLI下载与合并行为
 - `8844f4f` 同步全历史与增量下载文档
+
+## 小米多策略对比框架
+
+### 状态
+
+已完成第一阶段核心实现。
+
+### 修改方案
+
+在保留现有网格链路的前提下，新增反转类策略内核和按策略种类分发的工作流，让 `1810.HK` 的日线/分钟线都可以跑“网格 vs 非网格”研究。
+
+### 修改内容
+
+- 配置层：
+  - `etf_strategy/settings.py` 新增 `StrategyKind`
+  - 增加日线超跌反弹、分钟急跌反抽、分钟反抽+冲高回落过滤的默认参数空间
+- 策略层：
+  - 新增 `etf_strategy/strategy/rebound.py`
+  - 实现长仓反转策略回测、事件流水、交易明细、权益曲线与参数搜索
+  - 增加反转策略专用评分函数
+- 工作流：
+  - `etf_strategy/workflow.py` 支持按 `strategy_kind` 在网格与反转策略之间分发
+  - 日线和分钟线都能复用现有样本切分、walk-forward 稳健性和产物落盘
+- CLI：
+  - `optimize/report/run/batch/backtest` 增加 `--strategy`
+  - `report/run` 增加 `--compare-strategies`
+  - `backtest`、`batch` 先明确限制为仅支持 `grid`
+- 报告层：
+  - `etf_strategy/reporting.py` 新增多策略对比报告生成器和样本外净值对比图
+- 测试：
+  - `tests/test_grid_strategy.py` 补充新参数解析
+  - 增加日线反转入场/离场与分钟过滤阻止追高的单元测试
+
+### 设计取舍
+
+- 非网格策略先使用手写撮合，不强行塞进 `backtesting.py` 的网格策略类，避免把单仓反转逻辑和多层网格状态搅在一起。
+- 反转策略当前只做多，不引入港股做空、融券成本和额外合规假设。
+- 多策略正式报告先做成“当前周期内的对比报告”；批量多标的入口保持 `grid`，避免一次性扩大改造面。
+
+### 验证
+
+- `py -3.13 -m unittest tests.test_grid_strategy tests.test_repo_contracts`
+- `py -3.13 -m compileall etf_strategy tests`
+- `git diff --check`

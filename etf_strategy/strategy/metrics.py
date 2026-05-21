@@ -9,6 +9,12 @@ def compute_score(return_pct: float, max_drawdown_pct: float, closed_grid_return
     return return_pct - abs(max_drawdown_pct) * 0.7 + closed_grid_return_pct * 0.5
 
 
+def compute_rebound_score(return_pct: float, max_drawdown_pct: float, win_rate_pct: float, trade_count: int) -> float:
+    """给反转类策略使用的通用评分。"""
+    entry_weight = min(max(trade_count, 0), 10) / 10
+    return return_pct - abs(max_drawdown_pct) * 0.7 + win_rate_pct * 0.05 * entry_weight
+
+
 def compute_robust_score(
     walk_forward_score_mean: float,
     walk_forward_score_min: float,

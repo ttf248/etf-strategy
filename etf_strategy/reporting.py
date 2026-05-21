@@ -998,3 +998,184 @@ def build_minute_report_markdown(
 ) -> Path:
     """生成分钟线专用报告。"""
     return build_report_markdown(workflow_result, report_dir=report_dir)
+
+
+def plot_strategy_comparison(
+    strategy_results: dict[str, dict[str, object]],
+    output_path: str | Path,
+    title: str,
+) -> Path:
+    """绘制多策略样本外净值对比。"""
+    configure_matplotlib()
+    figure, axis = plt.subplots(figsize=(14, 7))
+
+    for strategy_kind, workflow_result in strategy_results.items():
+        validation_run = workflow_result["validation"]["run"]
+        summary = validation_run["summary"]
+        curve = validation_run["equity_curve"].copy().reset_index()
+        if curve.empty:
+            continue
+        date_column = curve.columns[0]
+        curve.rename(columns={date_column: "Date"}, inplace=True)
+        curve["Date"] = pd.to_datetime(curve["Date"])
+        capital = float(summary.get("TotalCapital", 200000.0))
+        curve["NetValue"] = curve["Equity"] / capital
+        axis.plot(curve["Date"], curve["NetValue"], linewidth=1.6, label=str(summary.get("StrategyName", strategy_kind)))
+
+    axis.set_title(title)
+    axis.set_ylabel("净值")
+    axis.set_xlabel("日期")
+    axis.legend(loc="best")
+    target = Path(output_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    figure.tight_layout()
+    figure.savefig(target, dpi=180, bbox_inches="tight")
+    plt.close(figure)
+    return target
+
+
+def _comparison_rows(strategy_results: dict[str, dict[str, object]]) -> list[list[object]]:
+    rows: list[list[object]] = []
+    for workflow_result in strategy_results.values():
+        best_summary = workflow_result["optimization"]["best_run"]["summary"]
+        validation_summary = workflow_result["validation"]["run"]["summary"]
+        rows.append(
+            [
+                str(best_summary.get("StrategyName", best_summary.get("StrategyKind", "strategy"))),
+                str(best_summary.get("StrategyKind", "grid")),
+                f"{float(best_summary.get('NetReturnPct', best_summary.get('ReturnPct', 0.0))):.2f}%",
+                f"{float(best_summary.get('MaxDrawdownPct', 0.0)):.2f}%",
+                f"{float(validation_summary.get('NetReturnPct', validation_summary.get('ReturnPct', 0.0))):.2f}%",
+                f"{float(validation_summary.get('MaxDrawdownPct', 0.0)):.2f}%",
+                f"{float(validation_summary.get('TransactionCost', 0.0)):.2f}",
+                f"{float(validation_summary.get('ClosedTrades', 0)):.0f}",
+                _format_markdown_value(best_summary.get("TakeProfitPct", 0.0)),
+            ]
+        )
+    return rows
+
+
+def _pick_recommended_strategy(strategy_results: dict[str, dict[str, object]]) -> dict[str, object]:
+    ranked = sorted(
+        strategy_results.values(),
+        key=lambda workflow_result: (
+            float(workflow_result["validation"]["run"]["summary"].get("NetReturnPct", workflow_result["validation"]["run"]["summary"].get("ReturnPct", 0.0))),
+            -float(workflow_result["validation"]["run"]["summary"].get("MaxDrawdownPct", 0.0)),
+            float(workflow_result["optimization"]["best_run"]["summary"].get("RobustScore", workflow_result["optimization"]["best_run"]["summary"].get("Score", 0.0))),
+        ),
+        reverse=True,
+    )
+    return ranked[0]
+
+
+def build_strategy_comparison_report(
+    strategy_results: dict[str, dict[str, object]],
+    interval: str,
+    symbol: str,
+    report_dir: str | Path,
+) -> Path:
+    """生成小米默认使用的多策略对比报告。"""
+    started_at = perf_counter()
+    target_dir = Path(report_dir)
+    figure_dir = target_dir / "figures"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    slug = _symbol_to_slug(symbol)
+    interval_slug = interval if interval != "1d" else "daily"
+    report_path = target_dir / f"{slug}_{interval_slug}_strategy_compare_report.md"
+    comparison_chart = plot_strategy_comparison(
+        strategy_results=strategy_results,
+        output_path=figure_dir / f"{slug}_{interval_slug}_strategy_compare.png",
+        title=f"{symbol} 多策略样本外净值对比",
+    )
+
+    recommended = _pick_recommended_strategy(strategy_results)
+    recommended_best = recommended["optimization"]["best_run"]["summary"]
+    recommended_validation = recommended["validation"]["run"]["summary"]
+    quick_rows = _comparison_rows(strategy_results)
+    quick_table = _build_simple_markdown_table(
+        ["策略名称", "策略代码", "样本内净收益率", "样本内最大回撤", "样本外净收益率", "样本外最大回撤", "样本外手续费", "样本外成交笔数", "止盈参数(%)"],
+        quick_rows,
+    )
+
+    recommended_text = (
+        f"当前更推荐 `{recommended_best.get('StrategyName', recommended_best.get('StrategyKind', 'strategy'))}`，"
+        f"因为它在样本外给出了 `{float(recommended_validation.get('NetReturnPct', recommended_validation.get('ReturnPct', 0.0))):.2f}%` 的净收益率，"
+        f"同时最大回撤控制在 `{float(recommended_validation.get('MaxDrawdownPct', 0.0)):.2f}%`。"
+    )
+    notes: list[str] = []
+    for workflow_result in strategy_results.values():
+        best_summary = workflow_result["optimization"]["best_run"]["summary"]
+        validation_summary = workflow_result["validation"]["run"]["summary"]
+        strategy_name = str(best_summary.get("StrategyName", best_summary.get("StrategyKind", "strategy")))
+        parameter_bits = []
+        for key in [
+            "rsi_window",
+            "rsi_entry",
+            "ma_window",
+            "deviation_entry_pct",
+            "lookback_bars",
+            "drop_entry_pct",
+            "stop_loss_atr",
+            "stop_loss_pct",
+            "max_hold_bars",
+            "fade_filter_upper_shadow_pct",
+            "fade_filter_block_bars",
+        ]:
+            if key in best_summary:
+                parameter_bits.append(f"{key}={best_summary[key]}")
+        if not parameter_bits and float(best_summary.get("GridCount", 0)) > 0:
+            parameter_bits = [
+                f"grid_spacing={float(best_summary.get('GridSpacingPct', 0.0)):.2f}%",
+                f"grid_count={int(best_summary.get('GridCount', 0))}",
+                f"take_profit={float(best_summary.get('TakeProfitPct', 0.0)):.2f}%",
+            ]
+        notes.append(
+            f"- `{strategy_name}`：样本内最优参数为 `{', '.join(parameter_bits)}`；样本外净收益率 `{float(validation_summary.get('NetReturnPct', validation_summary.get('ReturnPct', 0.0))):.2f}%`，最大回撤 `{float(validation_summary.get('MaxDrawdownPct', 0.0)):.2f}%`。"
+        )
+
+    report_content = "\n".join(
+        [
+            f"# {symbol} 多策略对比报告",
+            "",
+            "## 摘要",
+            "",
+            f"- 标的：`{symbol}`",
+            f"- 周期：`{interval}`",
+            f"- 策略集合：{', '.join(str(workflow_result['optimization']['best_run']['summary'].get('StrategyName', key)) for key, workflow_result in strategy_results.items())}",
+            f"- 推荐结论：{recommended_text}",
+            "- 报告重点回答：在左侧下跌、偶尔反抽和日内冲高回落的结构下，是否有比网格更契合的做多策略。",
+            "",
+            "## 第一层：先看结论",
+            "",
+            quick_table,
+            "",
+            f"- {recommended_text}",
+            "- 如果样本外净收益接近，但新策略显著降低回撤，也视为比网格更契合当前结构。",
+            "",
+            "## 第二层：展开细节",
+            "",
+            "### 各策略样本外净值对比",
+            "",
+            f"![多策略样本外净值对比](figures/{comparison_chart.name})",
+            "",
+            "### 各策略参数与结论",
+            "",
+            *notes,
+            "",
+            "### 结果怎么读",
+            "",
+            "- 网格更依赖价格在下跌后进入震荡，已经落袋的闭环利润不代表总账户一定转正。",
+            "- 日线超跌反弹更偏向少做、等极端价差后出手，适合减少左侧持续下跌中的反复接刀。",
+            "- 分钟急跌反抽更偏向抓短促回补；叠加冲高回落过滤后，目标是减少日内追高后被砸回来的无效交易。",
+            "",
+            "## 最终结论",
+            "",
+            f"- 推荐策略：`{recommended_best.get('StrategyName', recommended_best.get('StrategyKind', 'strategy'))}`。",
+            f"- 推荐依据：样本外净收益率 `{float(recommended_validation.get('NetReturnPct', recommended_validation.get('ReturnPct', 0.0))):.2f}%`，最大回撤 `{float(recommended_validation.get('MaxDrawdownPct', 0.0)):.2f}%`。",
+            "- 这份报告只基于仓库当前小米样本，不构成实盘建议；后续若扩到更多港股，应继续做跨标的稳健性检验。",
+            "",
+        ]
+    )
+    report_path.write_text(report_content, encoding="utf-8")
+    logger.info("多策略对比报告生成完成: report={} elapsed={:.2f}s", report_path, perf_counter() - started_at)
+    return report_path
