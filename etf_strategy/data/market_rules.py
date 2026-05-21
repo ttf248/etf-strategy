@@ -1,4 +1,11 @@
 from __future__ import annotations
+"""最小交易单位解析规则。
+
+当前项目的固定股数网格依赖真实交易单位，因此这里负责把标的代码映射成：
+- 所属市场
+- 最小交易单位
+- 数据来源说明
+"""
 
 import re
 from dataclasses import dataclass
@@ -23,7 +30,11 @@ class LotSizeRule:
 
 
 def infer_symbol_from_data_path(data_path: str | Path) -> str | None:
-    """尝试从标准化 CSV 文件名推断 Yahoo 标的代码。"""
+    """尝试从标准化 CSV 文件名推断 Yahoo 标的代码。
+
+    推断逻辑只覆盖当前项目常见命名，不追求支持所有随意文件名；
+    推断失败时让上层显式要求 `--symbol`，比静默猜错更安全。
+    """
     stem = Path(data_path).stem
     normalized_stem = stem.lower()
 
@@ -41,7 +52,13 @@ def infer_symbol_from_data_path(data_path: str | Path) -> str | None:
 
 
 def resolve_lot_size_rule(symbol: str) -> LotSizeRule:
-    """按市场规则解析最小交易单位。"""
+    """按市场规则解析最小交易单位。
+
+    当前实现是“通用接口 + 按交易所分层支持”：
+    - 港股实时抓公开页面里的每手股数
+    - 美股等 1 股市场直接返回 1
+    - 其他市场显式报错，避免回测结果看似能跑却不符合交易规则
+    """
     normalized_symbol = symbol.strip().upper()
     if not normalized_symbol:
         raise ValueError("标的代码不能为空。")
@@ -67,6 +84,7 @@ def resolve_lot_size_rule(symbol: str) -> LotSizeRule:
 
 
 def _fetch_hk_lot_size(symbol: str) -> int:
+    """从公开快照页抓取港股每手股数。"""
     code = symbol.removesuffix(".HK")
     if not code.isdigit():
         raise ValueError(f"港股代码格式不正确，无法查询每手股数: {symbol}")
@@ -83,6 +101,7 @@ def _fetch_hk_lot_size(symbol: str) -> int:
     )
     response.raise_for_status()
 
+    # 页面结构当前比较稳定，直接按 “Lot Size -> 数值” 的 HTML 结构提取。
     match = re.search(
         r"<td[^>]*>\s*Lot Size\s*</td>\s*<td[^>]*>\s*([0-9,]+)\s*</td>",
         response.text,

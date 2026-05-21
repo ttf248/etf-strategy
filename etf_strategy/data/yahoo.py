@@ -1,3 +1,11 @@
+"""Yahoo 行情下载与标准化。
+
+这里把下载链路统一封装成：
+- 优先走 yfinance
+- 日线失败时回退到 Yahoo Chart API
+- 最终都转换成项目内部统一的 OHLCV CSV 结构
+"""
+
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -32,6 +40,7 @@ def normalize_ohlcv(frame: pd.DataFrame, interval: str = "1d") -> pd.DataFrame:
         raise ValueError(f"缺少必要字段: {missing_columns}")
 
     normalized = normalized[["Open", "High", "Low", "Close", "Volume"]]
+    # 回测层统一使用无时区索引，避免不同下载链路带来混合时区数据。
     normalized.index = pd.to_datetime(normalized.index).tz_localize(None)
     normalized = normalized.sort_index()
     normalized = normalized.loc[~normalized.index.duplicated(keep="last")]
@@ -40,6 +49,7 @@ def normalize_ohlcv(frame: pd.DataFrame, interval: str = "1d") -> pd.DataFrame:
     normalized["Volume"] = normalized["Volume"].fillna(0).astype("int64")
     normalized.reset_index(inplace=True)
     normalized.rename(columns={"index": "Date", "Datetime": "Date"}, inplace=True)
+    # 分钟线和日线用不同字符串格式，保证后续 parse_dates 时能还原粒度。
     if interval in INTRADAY_INTERVALS:
         normalized["Date"] = normalized["Date"].dt.strftime("%Y-%m-%d %H:%M:%S")
     else:
@@ -92,7 +102,11 @@ def _load_from_yfinance(
 
 
 def _apply_adjustment(frame: pd.DataFrame, adj_close: list[float] | None) -> pd.DataFrame:
-    """使用 Adj Close 比例近似复权 OHLC。"""
+    """使用 Adj Close 比例近似复权 OHLC。
+
+    Yahoo Chart API 在不同市场上未必直接给出完整复权 OHLC，
+    这里用 Adj Close / Close 的比例做近似，优先统一项目口径。
+    """
     if not adj_close:
         return frame
 
@@ -108,7 +122,10 @@ def _apply_adjustment(frame: pd.DataFrame, adj_close: list[float] | None) -> pd.
 
 
 def _load_from_chart_api(symbol: str, start_date: str, end_date: str, proxy: str | None = None) -> pd.DataFrame:
-    """使用 Yahoo Chart API 下载数据，支持显式代理。"""
+    """使用 Yahoo Chart API 下载数据，支持显式代理。
+
+    当前只作为日线回退链路使用，分钟线仍依赖 yfinance。
+    """
     params = {
         "period1": _to_epoch_seconds(start_date),
         "period2": _to_epoch_seconds(end_date, inclusive_end=True),
@@ -201,6 +218,7 @@ def download_price_bars(
         logger.info("通过 yfinance 下载完成，共 {} 条记录。", len(normalized))
         return normalized
     except Exception as exc:
+        # 这里不直接吞错返回空数据，而是仅在明确存在日线回退链路时继续尝试。
         logger.warning("yfinance 下载失败: {}", exc)
 
     if is_intraday_interval(interval):

@@ -1,3 +1,11 @@
+"""命令行入口实现。
+
+CLI 层只负责三件事：
+- 解析用户参数
+- 根据周期选择日线或分钟线工作流
+- 把结果转换成适合终端阅读的中文输出
+"""
+
 import argparse
 import os
 from pathlib import Path
@@ -40,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    # 子命令保持扁平结构，避免用户为了跑一次回测需要记忆多层嵌套命令。
     download_parser = subparsers.add_parser("download", help="下载并标准化历史行情")
     download_parser.add_argument("--symbol", default=DEFAULT_SYMBOL, help="Yahoo Finance 标的代码")
     download_parser.add_argument("--start", help="开始日期，格式 YYYY-MM-DD，日线必填")
@@ -134,6 +143,7 @@ def handle_download(args: argparse.Namespace) -> int:
 
     output = args.output
     if output is None:
+        # 常用研究路径给固定默认文件名，其余标的和周期自动拼接输出路径。
         if args.interval == DEFAULT_MINUTE_INTERVAL and args.period == DEFAULT_MINUTE_PERIOD:
             output = str(DEFAULT_MINUTE_DATA_PATH)
         elif args.interval == "1d":
@@ -162,6 +172,7 @@ def handle_placeholder(args: argparse.Namespace) -> int:
 
 
 def handle_optimize(args: argparse.Namespace) -> int:
+    """执行样本内参数搜索，并按周期选择对应工作流。"""
     if is_intraday_interval(args.interval):
         output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR / "optimize")
         result = run_minute_optimization_workflow(
@@ -192,6 +203,7 @@ def handle_optimize(args: argparse.Namespace) -> int:
 
 
 def handle_backtest(args: argparse.Namespace) -> int:
+    """执行样本外验证。"""
     if is_intraday_interval(args.interval):
         output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR / "validation")
         result = run_minute_validation_workflow(
@@ -226,6 +238,7 @@ def handle_backtest(args: argparse.Namespace) -> int:
 
 
 def handle_run(args: argparse.Namespace) -> int:
+    """执行“下载 -> 寻参 -> 验证 -> 报告”的完整链路。"""
     intraday_mode = is_intraday_interval(args.interval)
     if not is_intraday_interval(args.interval) and (not args.start or not args.end):
         raise ValueError("日线完整流程必须提供 --start 和 --end。")
@@ -243,6 +256,7 @@ def handle_run(args: argparse.Namespace) -> int:
     )
     save_price_bars(bars, data_path)
 
+    # `run` 总是先把最新下载结果落盘，再交给统一工作流和报告层复用。
     if intraday_mode:
         result = run_minute_full_workflow(
             data_path=data_path,
@@ -280,6 +294,7 @@ def handle_run(args: argparse.Namespace) -> int:
 
 
 def handle_report(args: argparse.Namespace) -> int:
+    """基于已有 CSV 重跑工作流并生成正式报告。"""
     if is_intraday_interval(args.interval):
         output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR)
         report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR)

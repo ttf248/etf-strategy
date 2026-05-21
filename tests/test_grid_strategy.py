@@ -14,6 +14,7 @@ from etf_strategy.strategy.grid import (
 
 
 def build_test_frame(close_prices: list[float], start: str = "2025-09-01") -> pd.DataFrame:
+    """构造最小可回测 OHLCV 测试样本。"""
     dates = pd.date_range(start=start, periods=len(close_prices), freq="B")
     frame = pd.DataFrame(
         {
@@ -30,6 +31,8 @@ def build_test_frame(close_prices: list[float], start: str = "2025-09-01") -> pd
 
 
 class GridStrategyTests(unittest.TestCase):
+    """覆盖 CLI 解析、样本切分和固定股数网格的核心口径。"""
+
     def test_download_parser_reads_intraday_parameters(self) -> None:
         parser = build_parser()
 
@@ -165,6 +168,7 @@ class GridStrategyTests(unittest.TestCase):
         self.assertFalse(validation.empty)
 
     def test_run_grid_backtest_enters_on_first_bar(self) -> None:
+        # 这组价格同时覆盖：样本起点建仓、下跌补仓、反弹止盈三类关键路径。
         prices = [20.0, 19.0, 18.0, 17.0, 18.2, 19.1, 20.0, 18.0, 19.3, 20.2]
         frame = build_test_frame(prices, start="2025-10-01")
 

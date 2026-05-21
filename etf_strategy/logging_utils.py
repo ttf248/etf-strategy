@@ -14,11 +14,13 @@ def configure_logging(log_dir: str = "log") -> None:
     log_path = Path(log_dir)
     log_path.mkdir(parents=True, exist_ok=True)
 
+    # 终端日志以可读性优先，只保留用户最关心的信息。
     logger.add(
         sys.stderr,
         level="INFO",
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}",
     )
+    # 文件日志保留更详细的定位信息，便于排查下载异常或回测口径问题。
     logger.add(
         log_path / "etf_strategy_{time:YYYY-MM-DD}.log",
         rotation="00:00",
