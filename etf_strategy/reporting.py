@@ -596,7 +596,7 @@ def build_report_markdown(
     best_summary = optimization["best_run"]["summary"]
     validation_summary = validation["run"]["summary"]
     symbol = str(best_summary["Symbol"])
-    logger.info("开始生成正式报告: symbol={} workflow_type={} report_dir={}", symbol, workflow_type, report_dir)
+    logger.info("[2/2] 开始生成正式报告: symbol={} workflow_type={} report_dir={}", symbol, workflow_type, report_dir)
     in_sample_words = _describe_run_in_plain_words(optimization["best_run"])
     validation_words = _describe_run_in_plain_words(validation["run"])
     artifact_names = _build_report_artifact_names(symbol, workflow_type, interval)
@@ -785,7 +785,7 @@ def build_report_markdown(
 - {conclusion_tail}
 """
     report_path.write_text(report_content, encoding="utf-8")
-    logger.info("正式报告生成完成: report={} elapsed={:.2f}s", report_path, perf_counter() - started_at)
+    logger.info("[2/2] 正式报告生成完成: report={} elapsed={:.2f}s", report_path, perf_counter() - started_at)
     return report_path
 
 

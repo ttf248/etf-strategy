@@ -336,6 +336,7 @@ def handle_report(args: argparse.Namespace) -> int:
     """基于已有 CSV 重跑工作流并生成正式报告。"""
     started_at = perf_counter()
     logger.info("收到 report 命令: data={} interval={}", args.data, args.interval)
+    logger.info("[1/2] 开始重跑工作流并准备报告数据")
     if is_intraday_interval(args.interval):
         output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR)
         report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR)
@@ -345,7 +346,6 @@ def handle_report(args: argparse.Namespace) -> int:
             output_dir=output_dir,
             validation_ratio=args.validation_ratio,
         )
-        report_path = build_minute_report_markdown(result, report_dir=report_dir)
     else:
         output_dir = args.output_dir or str(DEFAULT_OUTPUT_DIR)
         report_dir = args.report_dir or str(DEFAULT_REPORT_DIR)
@@ -356,6 +356,10 @@ def handle_report(args: argparse.Namespace) -> int:
             validation_start=args.validation_start,
             lookback_days=args.lookback_days,
         )
+    logger.info("[2/2] 工作流数据准备完成，开始写正式报告")
+    if is_intraday_interval(args.interval):
+        report_path = build_minute_report_markdown(result, report_dir=report_dir)
+    else:
         report_path = build_report_markdown(result, report_dir=report_dir)
     print(f"报告已生成: {report_path}")
     logger.info("report 命令完成: report={} elapsed={:.2f}s", report_path, perf_counter() - started_at)

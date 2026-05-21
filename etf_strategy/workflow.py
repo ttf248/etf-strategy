@@ -25,6 +25,11 @@ from etf_strategy.strategy.grid import (
 )
 
 
+def _count_parameter_combinations(spacings: list[float], grid_counts: list[int], take_profits: list[float]) -> int:
+    """统计当前穷举参数组合数，便于在控制台提示当前搜索规模。"""
+    return len(spacings) * len(grid_counts) * len(take_profits)
+
+
 def run_optimization_workflow(
     data_path: str | Path,
     symbol: str | None = None,
@@ -45,7 +50,13 @@ def run_optimization_workflow(
     resolved_symbol = _resolve_symbol(symbol, data_path)
     lot_rule = resolve_lot_size_rule(resolved_symbol)
     data = load_price_frame(data_path)
-    logger.info("开始执行日线样本内寻参: symbol={} data={} rows={}", lot_rule.symbol, data_path, len(data))
+    logger.info(
+        "[1/2] 开始执行日线样本内寻参: symbol={} data={} rows={} combinations={}",
+        lot_rule.symbol,
+        data_path,
+        len(data),
+        _count_parameter_combinations(spacings, grid_counts, take_profits),
+    )
     decline_window, in_sample, _ = split_in_sample_and_validation(
         data=data,
         validation_start=validation_start,
@@ -71,7 +82,7 @@ def run_optimization_workflow(
     window_path = save_decline_window(target_dir, decline_window)
     best_paths = save_run_artifacts(target_dir, "in_sample_best", best_run)
     logger.info(
-        "日线样本内寻参完成: best_spacing={:.2f}% best_count={} best_take_profit={:.2f}% elapsed={:.2f}s",
+        "[1/2] 日线样本内寻参完成: best_spacing={:.2f}% best_count={} best_take_profit={:.2f}% elapsed={:.2f}s",
         float(best_run["summary"]["GridSpacingPct"]),
         int(best_run["summary"]["GridCount"]),
         float(best_run["summary"]["TakeProfitPct"]),
@@ -106,7 +117,7 @@ def run_validation_workflow(
     lot_rule = resolve_lot_size_rule(resolved_symbol)
     data = load_price_frame(data_path)
     logger.info(
-        "开始执行日线样本外验证: symbol={} data={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
+        "[2/2] 开始执行日线样本外验证: symbol={} data={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
         lot_rule.symbol,
         data_path,
         grid_spacing_pct * 100,
@@ -131,7 +142,7 @@ def run_validation_workflow(
     )
     paths = save_run_artifacts(output_dir, "validation_2026", validation_run)
     logger.info(
-        "日线样本外验证完成: return={:.2f}% max_drawdown={:.2f}% elapsed={:.2f}s",
+        "[2/2] 日线样本外验证完成: return={:.2f}% max_drawdown={:.2f}% elapsed={:.2f}s",
         float(validation_run["summary"]["ReturnPct"]),
         float(validation_run["summary"]["MaxDrawdownPct"]),
         perf_counter() - started_at,
@@ -214,7 +225,13 @@ def run_minute_optimization_workflow(
     resolved_symbol = _resolve_symbol(symbol, data_path)
     lot_rule = resolve_lot_size_rule(resolved_symbol)
     data = load_price_frame(data_path)
-    logger.info("开始执行分钟线样本内寻参: symbol={} data={} rows={}", lot_rule.symbol, data_path, len(data))
+    logger.info(
+        "[1/2] 开始执行分钟线样本内寻参: symbol={} data={} rows={} combinations={}",
+        lot_rule.symbol,
+        data_path,
+        len(data),
+        _count_parameter_combinations(spacings, grid_counts, take_profits),
+    )
     decline_window, in_sample, _ = split_intraday_in_sample_and_validation(
         data=data,
         validation_ratio=validation_ratio,
@@ -239,7 +256,7 @@ def run_minute_optimization_workflow(
     window_path = save_decline_window(target_dir, decline_window)
     best_paths = save_run_artifacts(target_dir, "minute_in_sample_best", best_run)
     logger.info(
-        "分钟线样本内寻参完成: best_spacing={:.2f}% best_count={} best_take_profit={:.2f}% elapsed={:.2f}s",
+        "[1/2] 分钟线样本内寻参完成: best_spacing={:.2f}% best_count={} best_take_profit={:.2f}% elapsed={:.2f}s",
         float(best_run["summary"]["GridSpacingPct"]),
         int(best_run["summary"]["GridCount"]),
         float(best_run["summary"]["TakeProfitPct"]),
@@ -273,7 +290,7 @@ def run_minute_validation_workflow(
     lot_rule = resolve_lot_size_rule(resolved_symbol)
     data = load_price_frame(data_path)
     logger.info(
-        "开始执行分钟线样本外验证: symbol={} data={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
+        "[2/2] 开始执行分钟线样本外验证: symbol={} data={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
         lot_rule.symbol,
         data_path,
         grid_spacing_pct * 100,
@@ -297,7 +314,7 @@ def run_minute_validation_workflow(
     )
     paths = save_run_artifacts(output_dir, "minute_validation", validation_run)
     logger.info(
-        "分钟线样本外验证完成: return={:.2f}% max_drawdown={:.2f}% elapsed={:.2f}s",
+        "[2/2] 分钟线样本外验证完成: return={:.2f}% max_drawdown={:.2f}% elapsed={:.2f}s",
         float(validation_run["summary"]["ReturnPct"]),
         float(validation_run["summary"]["MaxDrawdownPct"]),
         perf_counter() - started_at,

@@ -784,6 +784,7 @@
 - `etf_strategy/cli.py`、`etf_strategy/workflow.py`、`etf_strategy/reporting.py`：
   - 补充更明确的运行期 `INFO` 日志
   - 控制台现在会显示收到哪个命令、当前处理哪份数据、进入哪个阶段、产物写到哪里、每个大步骤耗时多久
+  - 日常执行会带上 `[1/2]`、`[2/2]` 这类分步骤进度提示，更容易判断当前卡在哪一段
 - `doc/development_guide.md`：
   - 补充“修改默认调试入口”一节
   - 明确要求：影响默认命令、默认样本或报告入口时，必须同步改 `.vscode/launch.json`
