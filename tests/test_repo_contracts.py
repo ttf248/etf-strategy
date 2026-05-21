@@ -55,6 +55,7 @@ class RepoContractTests(unittest.TestCase):
         for config in configurations:
             self.assertEqual(config["program"], "${workspaceFolder}/main.py")
             self.assertEqual(config["args"][0], "report")
+            self.assertEqual(config["console"], "externalTerminal")
 
     def test_reports_keep_two_layer_structure(self) -> None:
         report_files = [

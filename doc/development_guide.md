@@ -122,6 +122,11 @@
 - 基于 `data/processed/1810_hk_daily.csv` 的日线正式报告重算
 - 基于 `data/processed/1810_hk_15m.csv` 的 15 分钟正式报告重算
 
+这两条配置当前统一使用外部终端窗口执行：
+
+- 运行时可以直接看控制台里的 `INFO` 级别提示
+- 更详细的定位日志仍写入 `log/etf_strategy_YYYY-MM-DD.log`
+
 如果代码改动会影响：
 
 - 运行命令

@@ -776,9 +776,11 @@
   - 只保留两条一键配置，并统一指向当前正式样本：
     - 日线：`py main.py report --data data/processed/1810_hk_daily.csv --symbol 1810.HK`
     - 15 分钟：`py main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK --interval 15m`
+  - 调试终端从 VS Code 内置终端改成系统外部终端，避免用户误以为“没有弹出执行窗口”
 - `README.md`：
   - 重写 VS Code 调试说明，明确现在只保留 2 个一键入口
   - 解释为什么选择“正式报告重算”而不是下载或完整流程
+  - 补充说明运行时“控制台实时提示 + `log/` 目录详细日志”的双通道输出方式
 - `doc/development_guide.md`：
   - 补充“修改默认调试入口”一节
   - 明确要求：影响默认命令、默认样本或报告入口时，必须同步改 `.vscode/launch.json`
