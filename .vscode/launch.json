@@ -7,6 +7,10 @@
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "console": "externalTerminal",
+            "env": {
+                "PYTHONUTF8": "1",
+                "PYTHONIOENCODING": "utf-8"
+            },
             "args": [
                 "report",
                 "--data",
@@ -21,6 +25,10 @@
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "console": "externalTerminal",
+            "env": {
+                "PYTHONUTF8": "1",
+                "PYTHONIOENCODING": "utf-8"
+            },
             "args": [
                 "report",
                 "--data",

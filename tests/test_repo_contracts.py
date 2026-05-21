@@ -56,6 +56,8 @@ class RepoContractTests(unittest.TestCase):
             self.assertEqual(config["program"], "${workspaceFolder}/main.py")
             self.assertEqual(config["args"][0], "report")
             self.assertEqual(config["console"], "externalTerminal")
+            self.assertEqual(config["env"]["PYTHONUTF8"], "1")
+            self.assertEqual(config["env"]["PYTHONIOENCODING"], "utf-8")
 
     def test_reports_keep_two_layer_structure(self) -> None:
         report_files = [
