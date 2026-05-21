@@ -331,6 +331,60 @@ def _build_heatmap_summary(results: pd.DataFrame) -> str:
     )
 
 
+def _build_exec_summary(
+    in_sample_summary: dict[str, object],
+    validation_summary: dict[str, object],
+    optimization_results: pd.DataFrame,
+) -> str:
+    """生成放在报告前部的极简结论。"""
+    best_row = optimization_results.sort_values(["Score", "ReturnPct"], ascending=[False, False]).iloc[0]
+    same_best_rows = optimization_results[
+        (optimization_results["Score"] - float(best_row["Score"])).abs() < 1e-9
+    ]
+    best_spacing = float(best_row["GridSpacingPct"])
+    best_count = int(best_row["GridCount"])
+    best_take_profit = float(best_row["TakeProfitPct"])
+    count_platform = ""
+    if same_best_rows["GridCount"].nunique() > 1:
+        count_platform = (
+            f"，而且网格层数 `{int(same_best_rows['GridCount'].min())}` 到 "
+            f"`{int(same_best_rows['GridCount'].max())}` 的表现差别不大"
+        )
+
+    if float(in_sample_summary["ReturnPct"]) >= 0:
+        in_sample_conclusion = (
+            f"样本内这套参数最终赚钱，收益率 `{float(in_sample_summary['ReturnPct']):.2f}%`，"
+            f"但中途最大回撤也到了 `{float(in_sample_summary['MaxDrawdownPct']):.2f}%`。"
+        )
+    else:
+        in_sample_conclusion = (
+            f"样本内虽然通过网格把成本压低了 `{float(in_sample_summary['CostReductionPct']):.2f}%`，"
+            f"但总账户最终还是亏损 `{abs(float(in_sample_summary['ReturnPct'])):.2f}%`。"
+        )
+
+    if float(validation_summary["ReturnPct"]) >= 0:
+        validation_conclusion = (
+            f"样本外结果转正，收益率 `{float(validation_summary['ReturnPct']):.2f}%`，"
+            "说明这组参数在新阶段还有一定延续性。"
+        )
+    else:
+        validation_conclusion = (
+            f"样本外依然没有转正，收益率 `{float(validation_summary['ReturnPct']):.2f}%`，"
+            "说明它更像摊薄成本工具，而不是独立盈利策略。"
+        )
+
+    return "\n".join(
+        [
+            f"- 先看结论：{in_sample_conclusion}",
+            (
+                f"- 最值得关注的参数组合是“网格间距 `{best_spacing:.2f}%` / 网格层数 `{best_count}` / "
+                f"止盈比例 `{best_take_profit:.2f}%`”{count_platform}。"
+            ),
+            f"- 再看样本外：{validation_conclusion}",
+        ]
+    )
+
+
 def build_report_markdown(
     workflow_result: dict[str, object],
     report_dir: str | Path = DEFAULT_REPORT_DIR,
@@ -432,6 +486,7 @@ def build_report_markdown(
     in_sample_chart_summary = _build_run_chart_summary(optimization["best_run"], in_sample_words)
     validation_chart_summary = _build_run_chart_summary(validation["run"], validation_words)
     heatmap_summary = _build_heatmap_summary(optimization["results"])
+    exec_summary = _build_exec_summary(best_summary, validation_summary, optimization["results"])
     if validation_words["triggered_entry"]:
         # 验证段尽量复用结构化字段，避免在报告层二次推导造成口径漂移。
         validation_extra_lines = f"""- 期末有效持仓成本：{validation_summary["EffectiveCost"]:.2f}
@@ -456,6 +511,10 @@ def build_report_markdown(
 {chr(10).join(summary_lines)}
 
 {conclusion}
+
+## 老板一眼看懂版
+
+{exec_summary}
 
 ## 样本内寻参结果
 
