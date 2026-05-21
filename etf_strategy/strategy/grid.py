@@ -40,6 +40,7 @@ class XiaomiGridStrategy(Strategy):
     grid_spacing_pct = 0.05
     grid_count = 5
     take_profit_pct = 0.05
+    lot_size = 1
 
     def init(self) -> None:
         first_close = float(self.data.Close[0])
@@ -55,6 +56,7 @@ class XiaomiGridStrategy(Strategy):
         self.base_entry_date: pd.Timestamp | None = None
         self.base_entry_price = 0.0
         self.base_units = 0
+        self.grid_units_per_level = 0
         self.grid_levels: list[dict[str, float | int | bool]] = []
         self.realized_grid_profit = 0.0
         self.grid_cycles_completed = 0
@@ -77,13 +79,14 @@ class XiaomiGridStrategy(Strategy):
         self._record_snapshot(current_date, close_price)
 
     def _enter_base_position(self, current_date: pd.Timestamp, close_price: float) -> None:
-        units = max(int(self.base_cash_budget / close_price), 1)
+        units = self._build_base_units(close_price)
         self.buy(size=units, tag="base")
 
         self.base_entered = True
         self.base_entry_date = current_date
         self.base_entry_price = close_price
         self.base_units = units
+        self.grid_units_per_level = self._build_grid_units_per_level(close_price)
         self.grid_levels = self._build_grid_levels(close_price)
 
         self.event_log.append(
@@ -98,18 +101,35 @@ class XiaomiGridStrategy(Strategy):
             }
         )
 
-    def _build_grid_levels(self, base_price: float) -> list[dict[str, float | int | bool]]:
+    def _build_base_units(self, close_price: float) -> int:
+        raw_units = int(self.base_cash_budget / close_price)
+        units = self._round_down_to_lot(raw_units)
+        if units <= 0:
+            raise ValueError(
+                f"初始资金不足以买入 1 手，无法建底仓: lot_size={self.lot_size}, price={close_price:.2f}"
+            )
+        return units
+
+    def _build_grid_units_per_level(self, base_price: float) -> int:
         per_level_budget = self.reserve_cash_budget / self.grid_count
+        raw_units = int(per_level_budget / base_price)
+        units = self._round_down_to_lot(raw_units)
+        if units <= 0:
+            raise ValueError(
+                f"单层网格预算不足以买入 1 手，无法执行固定股数网格: lot_size={self.lot_size}, price={base_price:.2f}"
+            )
+        return units
+
+    def _build_grid_levels(self, base_price: float) -> list[dict[str, float | int | bool]]:
         levels: list[dict[str, float | int | bool]] = []
 
         for level_index in range(1, self.grid_count + 1):
             entry_threshold = base_price * (1 - self.grid_spacing_pct * level_index)
-            units = max(int(per_level_budget / entry_threshold), 1)
             levels.append(
                 {
                     "level": level_index,
                     "entry_threshold": entry_threshold,
-                    "units": units,
+                    "units": self.grid_units_per_level,
                     "active": False,
                     "entry_price": 0.0,
                 }
@@ -220,6 +240,11 @@ class XiaomiGridStrategy(Strategy):
     def _grid_tag(level: int) -> str:
         return f"grid_{level}"
 
+    def _round_down_to_lot(self, units: int) -> int:
+        if self.lot_size <= 0:
+            raise ValueError(f"lot_size 必须大于 0，当前值为 {self.lot_size}")
+        return units // self.lot_size * self.lot_size
+
 
 def load_price_frame(data_path: str | Path) -> pd.DataFrame:
     """加载标准化 CSV 并转成 backtesting 需要的结构。"""
@@ -314,6 +339,10 @@ def run_grid_backtest(
     grid_spacing_pct: float,
     grid_count: int,
     take_profit_pct: float,
+    symbol: str,
+    market: str,
+    lot_size: int,
+    lot_size_source: str,
     total_capital: float = TOTAL_CAPITAL,
 ) -> dict[str, object]:
     """运行单次网格回测。"""
@@ -332,6 +361,7 @@ def run_grid_backtest(
         grid_spacing_pct=grid_spacing_pct,
         grid_count=grid_count,
         take_profit_pct=take_profit_pct,
+        lot_size=lot_size,
     )
     strategy: XiaomiGridStrategy = stats["_strategy"]
     history = _history_to_frame(strategy.history)
@@ -345,6 +375,8 @@ def run_grid_backtest(
     cost_reduction_pct = float(latest_snapshot.get("CostReductionPct", 0.0))
 
     summary = {
+        "Symbol": symbol,
+        "Market": market,
         "Scenario": scenario_name,
         "StartDate": format_timestamp(data.index.min()),
         "EndDate": format_timestamp(data.index.max()),
@@ -352,6 +384,10 @@ def run_grid_backtest(
         "PeakPrice": strategy.high_water_mark,
         "EntryDate": base_entry_date,
         "EntryPrice": strategy.base_entry_price,
+        "LotSize": lot_size,
+        "LotSizeSource": lot_size_source,
+        "BaseUnits": strategy.base_units,
+        "GridUnitsPerLevel": strategy.grid_units_per_level,
         "GridSpacingPct": grid_spacing_pct * 100,
         "GridCount": grid_count,
         "TakeProfitPct": take_profit_pct * 100,
@@ -361,6 +397,7 @@ def run_grid_backtest(
         "ClosedTrades": int(stats["# Trades"]),
         "WinRatePct": float(stats["Win Rate [%]"]) if pd.notna(stats["Win Rate [%]"]) else 0.0,
         "FinalEquity": float(stats["Equity Final [$]"]),
+        "TotalCapital": total_capital,
         "PositionUnits": int(latest_snapshot.get("PositionUnits", 0)),
         "EffectiveCost": float(latest_snapshot.get("EffectiveCost", 0.0)),
         "CostReductionPct": cost_reduction_pct,
@@ -388,6 +425,10 @@ def optimize_grid_parameters(
     grid_counts: list[int],
     take_profits: list[float],
     scenario_name: str,
+    symbol: str,
+    market: str,
+    lot_size: int,
+    lot_size_source: str,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """对网格参数做穷举搜索并返回最优结果。"""
     rows: list[dict[str, object]] = []
@@ -403,6 +444,10 @@ def optimize_grid_parameters(
                     grid_spacing_pct=spacing,
                     grid_count=grid_count,
                     take_profit_pct=take_profit,
+                    symbol=symbol,
+                    market=market,
+                    lot_size=lot_size,
+                    lot_size_source=lot_size_source,
                 )
                 rows.append(run_result["summary"])
                 score = float(run_result["summary"]["Score"])

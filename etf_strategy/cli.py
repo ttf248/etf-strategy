@@ -63,6 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     optimize_parser = subparsers.add_parser("optimize", help="执行样本内参数搜索")
     optimize_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
+    optimize_parser.add_argument("--symbol", default=None, help="Yahoo Finance 标的代码；不传时尝试从文件名推断")
     optimize_parser.add_argument("--interval", default="1d", help="数据周期，决定使用日线还是分钟线工作流")
     optimize_parser.add_argument("--output-dir", default=None, help="参数搜索结果输出目录")
     optimize_parser.add_argument("--validation-start", default="2026-01-01", help="样本外起始日期")
@@ -71,6 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     backtest_parser = subparsers.add_parser("backtest", help="执行样本外验证")
     backtest_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
+    backtest_parser.add_argument("--symbol", default=None, help="Yahoo Finance 标的代码；不传时尝试从文件名推断")
     backtest_parser.add_argument("--interval", default="1d", help="数据周期，决定使用日线还是分钟线工作流")
     backtest_parser.add_argument(
         "--grid-spacing",
@@ -82,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--grid-count",
         type=int,
         required=True,
-        help="网格层数，例如 7 表示把剩余网格资金拆成 7 层预算",
+        help="网格层数，例如 7 表示最多允许开启 7 层固定股数网格仓位",
     )
     backtest_parser.add_argument(
         "--take-profit",
@@ -97,6 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     report_parser = subparsers.add_parser("report", help="生成图表与中文报告")
     report_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
+    report_parser.add_argument("--symbol", default=None, help="Yahoo Finance 标的代码；不传时尝试从文件名推断")
     report_parser.add_argument("--interval", default="1d", help="数据周期，决定使用日线还是分钟线工作流")
     report_parser.add_argument("--output-dir", default=None, help="工作流中间文件目录")
     report_parser.add_argument("--report-dir", default=None, help="图表与 Markdown 报告输出目录")
@@ -163,6 +166,7 @@ def handle_optimize(args: argparse.Namespace) -> int:
         output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR / "optimize")
         result = run_minute_optimization_workflow(
             data_path=args.data,
+            symbol=args.symbol,
             output_dir=output_dir,
             validation_ratio=args.validation_ratio,
         )
@@ -170,6 +174,7 @@ def handle_optimize(args: argparse.Namespace) -> int:
         output_dir = args.output_dir or str(DEFAULT_OUTPUT_DIR / "optimize")
         result = run_optimization_workflow(
             data_path=args.data,
+            symbol=args.symbol,
             output_dir=output_dir,
             validation_start=args.validation_start,
             lookback_days=args.lookback_days,
@@ -194,6 +199,7 @@ def handle_backtest(args: argparse.Namespace) -> int:
             grid_spacing_pct=args.grid_spacing,
             grid_count=args.grid_count,
             take_profit_pct=args.take_profit,
+            symbol=args.symbol,
             output_dir=output_dir,
             validation_ratio=args.validation_ratio,
         )
@@ -204,6 +210,7 @@ def handle_backtest(args: argparse.Namespace) -> int:
             grid_spacing_pct=args.grid_spacing,
             grid_count=args.grid_count,
             take_profit_pct=args.take_profit,
+            symbol=args.symbol,
             output_dir=output_dir,
             validation_start=args.validation_start,
             lookback_days=args.lookback_days,
@@ -239,6 +246,7 @@ def handle_run(args: argparse.Namespace) -> int:
     if intraday_mode:
         result = run_minute_full_workflow(
             data_path=data_path,
+            symbol=args.symbol,
             output_dir=output_dir,
             validation_ratio=args.validation_ratio,
         )
@@ -246,6 +254,7 @@ def handle_run(args: argparse.Namespace) -> int:
     else:
         result = run_full_workflow(
             data_path=data_path,
+            symbol=args.symbol,
             output_dir=output_dir,
             validation_start=args.validation_start,
             lookback_days=args.lookback_days,
@@ -276,6 +285,7 @@ def handle_report(args: argparse.Namespace) -> int:
         report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR)
         result = run_minute_full_workflow(
             data_path=args.data,
+            symbol=args.symbol,
             output_dir=output_dir,
             validation_ratio=args.validation_ratio,
         )
@@ -285,6 +295,7 @@ def handle_report(args: argparse.Namespace) -> int:
         report_dir = args.report_dir or str(DEFAULT_REPORT_DIR)
         result = run_full_workflow(
             data_path=args.data,
+            symbol=args.symbol,
             output_dir=output_dir,
             validation_start=args.validation_start,
             lookback_days=args.lookback_days,

@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from etf_strategy.config import DEFAULT_OUTPUT_DIR
+from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
 from etf_strategy.strategy.grid import (
     load_price_frame,
     optimize_grid_parameters,
@@ -17,6 +18,7 @@ from etf_strategy.strategy.grid import (
 
 def run_optimization_workflow(
     data_path: str | Path,
+    symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "optimize",
     validation_start: str = "2026-01-01",
     lookback_days: int = 120,
@@ -29,6 +31,8 @@ def run_optimization_workflow(
     grid_counts = grid_counts or [4, 5, 6, 7]
     take_profits = take_profits or [0.03, 0.05, 0.07]
 
+    resolved_symbol = _resolve_symbol(symbol, data_path)
+    lot_rule = resolve_lot_size_rule(resolved_symbol)
     data = load_price_frame(data_path)
     decline_window, in_sample, _ = split_in_sample_and_validation(
         data=data,
@@ -42,6 +46,10 @@ def run_optimization_workflow(
         grid_counts=grid_counts,
         take_profits=take_profits,
         scenario_name="in_sample",
+        symbol=lot_rule.symbol,
+        market=lot_rule.market,
+        lot_size=lot_rule.lot_size,
+        lot_size_source=lot_rule.source,
     )
 
     target_dir = Path(output_dir)
@@ -66,6 +74,7 @@ def run_validation_workflow(
     grid_spacing_pct: float,
     grid_count: int,
     take_profit_pct: float,
+    symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "validation",
     validation_start: str = "2026-01-01",
     lookback_days: int = 120,
@@ -73,6 +82,8 @@ def run_validation_workflow(
     """执行 2026 样本外验证。"""
     from etf_strategy.strategy.grid import run_grid_backtest
 
+    resolved_symbol = _resolve_symbol(symbol, data_path)
+    lot_rule = resolve_lot_size_rule(resolved_symbol)
     data = load_price_frame(data_path)
     _, _, validation = split_in_sample_and_validation(
         data=data,
@@ -85,6 +96,10 @@ def run_validation_workflow(
         grid_spacing_pct=grid_spacing_pct,
         grid_count=grid_count,
         take_profit_pct=take_profit_pct,
+        symbol=lot_rule.symbol,
+        market=lot_rule.market,
+        lot_size=lot_rule.lot_size,
+        lot_size_source=lot_rule.source,
     )
     paths = save_run_artifacts(output_dir, "validation_2026", validation_run)
     return {"run": validation_run, "paths": paths}
@@ -92,6 +107,7 @@ def run_validation_workflow(
 
 def run_full_workflow(
     data_path: str | Path,
+    symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR,
     validation_start: str = "2026-01-01",
     lookback_days: int = 120,
@@ -102,6 +118,7 @@ def run_full_workflow(
     """串联样本内寻参和样本外验证。"""
     optimization = run_optimization_workflow(
         data_path=data_path,
+        symbol=symbol,
         output_dir=Path(output_dir) / "optimize",
         validation_start=validation_start,
         lookback_days=lookback_days,
@@ -115,6 +132,7 @@ def run_full_workflow(
         grid_spacing_pct=float(best_summary["GridSpacingPct"]) / 100,
         grid_count=int(best_summary["GridCount"]),
         take_profit_pct=float(best_summary["TakeProfitPct"]) / 100,
+        symbol=symbol,
         output_dir=Path(output_dir) / "validation",
         validation_start=validation_start,
         lookback_days=lookback_days,
@@ -139,6 +157,7 @@ def run_full_workflow(
 
 def run_minute_optimization_workflow(
     data_path: str | Path,
+    symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "minute" / "optimize",
     validation_ratio: float = 0.25,
     spacings: list[float] | None = None,
@@ -150,6 +169,8 @@ def run_minute_optimization_workflow(
     grid_counts = grid_counts or [4, 5, 6, 7]
     take_profits = take_profits or [0.01, 0.015, 0.02, 0.03]
 
+    resolved_symbol = _resolve_symbol(symbol, data_path)
+    lot_rule = resolve_lot_size_rule(resolved_symbol)
     data = load_price_frame(data_path)
     decline_window, in_sample, _ = split_intraday_in_sample_and_validation(
         data=data,
@@ -162,6 +183,10 @@ def run_minute_optimization_workflow(
         grid_counts=grid_counts,
         take_profits=take_profits,
         scenario_name="minute_in_sample",
+        symbol=lot_rule.symbol,
+        market=lot_rule.market,
+        lot_size=lot_rule.lot_size,
+        lot_size_source=lot_rule.source,
     )
 
     target_dir = Path(output_dir)
@@ -186,12 +211,15 @@ def run_minute_validation_workflow(
     grid_spacing_pct: float,
     grid_count: int,
     take_profit_pct: float,
+    symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "minute" / "validation",
     validation_ratio: float = 0.25,
 ) -> dict[str, object]:
     """执行分钟线样本外验证。"""
     from etf_strategy.strategy.grid import run_grid_backtest
 
+    resolved_symbol = _resolve_symbol(symbol, data_path)
+    lot_rule = resolve_lot_size_rule(resolved_symbol)
     data = load_price_frame(data_path)
     _, _, validation = split_intraday_in_sample_and_validation(
         data=data,
@@ -203,6 +231,10 @@ def run_minute_validation_workflow(
         grid_spacing_pct=grid_spacing_pct,
         grid_count=grid_count,
         take_profit_pct=take_profit_pct,
+        symbol=lot_rule.symbol,
+        market=lot_rule.market,
+        lot_size=lot_rule.lot_size,
+        lot_size_source=lot_rule.source,
     )
     paths = save_run_artifacts(output_dir, "minute_validation", validation_run)
     return {"run": validation_run, "paths": paths}
@@ -210,6 +242,7 @@ def run_minute_validation_workflow(
 
 def run_minute_full_workflow(
     data_path: str | Path,
+    symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "minute",
     validation_ratio: float = 0.25,
     spacings: list[float] | None = None,
@@ -219,6 +252,7 @@ def run_minute_full_workflow(
     """串联分钟线样本内寻参和样本外验证。"""
     optimization = run_minute_optimization_workflow(
         data_path=data_path,
+        symbol=symbol,
         output_dir=Path(output_dir) / "optimize",
         validation_ratio=validation_ratio,
         spacings=spacings,
@@ -231,6 +265,7 @@ def run_minute_full_workflow(
         grid_spacing_pct=float(best_summary["GridSpacingPct"]) / 100,
         grid_count=int(best_summary["GridCount"]),
         take_profit_pct=float(best_summary["TakeProfitPct"]) / 100,
+        symbol=symbol,
         output_dir=Path(output_dir) / "validation",
         validation_ratio=validation_ratio,
     )
@@ -253,3 +288,14 @@ def run_minute_full_workflow(
         "validation": validation,
         "combined_summary_path": combined_path,
     }
+
+
+def _resolve_symbol(symbol: str | None, data_path: str | Path) -> str:
+    if symbol:
+        return symbol.strip().upper()
+
+    inferred_symbol = infer_symbol_from_data_path(data_path)
+    if inferred_symbol:
+        return inferred_symbol
+
+    raise ValueError("无法从数据文件名推断标的代码，请显式传入 --symbol。")

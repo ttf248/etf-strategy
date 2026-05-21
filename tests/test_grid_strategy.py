@@ -1,8 +1,10 @@
 import unittest
+from unittest.mock import Mock, patch
 
 import pandas as pd
 
 from etf_strategy.cli import build_parser
+from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
 from etf_strategy.strategy.grid import (
     build_sample_window,
     run_grid_backtest,
@@ -83,6 +85,8 @@ class GridStrategyTests(unittest.TestCase):
                 "backtest",
                 "--data",
                 "data/processed/xiaomi_1810_hk_daily.csv",
+                "--symbol",
+                "1810.HK",
                 "--grid-spacing",
                 "0.06",
                 "--grid-count",
@@ -94,11 +98,42 @@ class GridStrategyTests(unittest.TestCase):
 
         self.assertEqual(args.command, "backtest")
         self.assertEqual(args.data, "data/processed/xiaomi_1810_hk_daily.csv")
+        self.assertEqual(args.symbol, "1810.HK")
         self.assertAlmostEqual(args.grid_spacing, 0.06)
         self.assertEqual(args.grid_count, 7)
         self.assertAlmostEqual(args.take_profit, 0.03)
         self.assertEqual(args.validation_start, "2026-01-01")
         self.assertEqual(args.lookback_days, 120)
+
+    def test_infer_symbol_from_data_path(self) -> None:
+        self.assertEqual(infer_symbol_from_data_path("data/processed/xiaomi_1810_hk_daily.csv"), "1810.HK")
+        self.assertEqual(infer_symbol_from_data_path("data/processed/spy_1d.csv"), "SPY")
+        self.assertEqual(infer_symbol_from_data_path("data/processed/brk-b_15m.csv"), "BRK-B")
+
+    def test_resolve_lot_size_rule_for_us_symbol(self) -> None:
+        rule = resolve_lot_size_rule("SPY")
+        self.assertEqual(rule.market, "US")
+        self.assertEqual(rule.lot_size, 1)
+
+    @patch("etf_strategy.data.market_rules.requests.get")
+    def test_resolve_lot_size_rule_for_hk_symbol(self, mock_get: Mock) -> None:
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.text = """
+        <td class="c3">Lot Size</td>
+        <td class="c4">200</td>
+        """
+        mock_get.return_value = mock_response
+
+        rule = resolve_lot_size_rule("1810.HK")
+
+        self.assertEqual(rule.market, "HK")
+        self.assertEqual(rule.lot_size, 200)
+        self.assertIn("AASTOCKS", rule.source)
+
+    def test_resolve_lot_size_rule_rejects_unsupported_market(self) -> None:
+        with self.assertRaisesRegex(ValueError, "暂不支持"):
+            resolve_lot_size_rule("7203.T")
 
     def test_build_sample_window_uses_sample_start_as_entry(self) -> None:
         prices = [20.0, 21.2, 22.5, 21.8, 20.9, 20.1, 19.5]
@@ -139,6 +174,10 @@ class GridStrategyTests(unittest.TestCase):
             grid_spacing_pct=0.05,
             grid_count=3,
             take_profit_pct=0.05,
+            symbol="1810.HK",
+            market="HK",
+            lot_size=200,
+            lot_size_source="unit test",
             total_capital=200000,
         )
 
@@ -148,10 +187,14 @@ class GridStrategyTests(unittest.TestCase):
         self.assertTrue(summary["TriggeredEntry"])
         self.assertEqual(summary["EntryDate"], "2025-10-01")
         self.assertAlmostEqual(summary["EntryPrice"], 20.0)
+        self.assertEqual(summary["LotSize"], 200)
+        self.assertEqual(summary["BaseUnits"], 5000)
+        self.assertEqual(summary["GridUnitsPerLevel"], 1600)
         self.assertFalse(events.empty)
         self.assertTrue({"base_buy", "grid_buy"}.issubset(set(events["EventType"])))
         self.assertEqual(events.iloc[0]["Date"], "2025-10-01")
         self.assertEqual(events.iloc[0]["EventType"], "base_buy")
+        self.assertTrue((events["Units"] % 200 == 0).all())
 
     def test_split_intraday_in_sample_and_validation(self) -> None:
         dates = pd.date_range(start="2026-04-01 09:30:00", periods=40, freq="15min")

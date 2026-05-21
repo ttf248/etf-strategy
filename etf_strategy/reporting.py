@@ -34,7 +34,8 @@ def plot_run_result(run_result: dict[str, object], output_path: str | Path, titl
     date_column = equity_curve.columns[0]
     equity_curve.rename(columns={date_column: "Date"}, inplace=True)
     equity_curve["Date"] = pd.to_datetime(equity_curve["Date"])
-    equity_curve["ReturnPct"] = (equity_curve["Equity"] / 200000.0 - 1) * 100
+    total_capital = float(run_result["summary"].get("TotalCapital", 200000.0))
+    equity_curve["ReturnPct"] = (equity_curve["Equity"] / total_capital - 1) * 100
     equity_curve["DrawdownPct"] = equity_curve["DrawdownPct"] * 100
 
     figure, axes = plt.subplots(3, 1, figsize=(16, 12), sharex=True)
@@ -87,6 +88,7 @@ def _describe_run_in_plain_words(run_result: dict[str, object], total_capital: f
     summary = run_result["summary"]
     history = run_result["history"]
     events = run_result["events"]
+    total_capital = float(summary.get("TotalCapital", total_capital))
 
     final_equity = float(summary["FinalEquity"])
     total_pnl = final_equity - total_capital
@@ -261,6 +263,9 @@ def build_report_markdown(
             f"- 样本外窗口：{decline_window.validation_start} 至 {validation_summary['EndDate']}",
             f"- 切分方式：最近分钟线样本按 `75% / 25%` 拆分样本内与样本外",
             f"- 初始规则：样本开始时投入 50% 资金建底仓，剩余 50% 资金做网格买卖",
+            f"- 最小交易单位：{int(best_summary['LotSize'])} 股，来源：{best_summary['LotSizeSource']}",
+            f"- 固定底仓数量：{int(best_summary['BaseUnits'])} 股",
+            f"- 单层网格固定数量：{int(best_summary['GridUnitsPerLevel'])} 股",
             f"- 最优参数：网格间距 {best_summary['GridSpacingPct']:.2f}% / 网格层数 {int(best_summary['GridCount'])} / 止盈比例 {best_summary['TakeProfitPct']:.2f}%",
         ]
         validation_title = "分钟线样本外验证"
@@ -286,6 +291,9 @@ def build_report_markdown(
             f"- 样本内窗口：{decline_window.sample_start} 至 {decline_window.sample_end}",
             f"- 样本外窗口：{decline_window.validation_start} 至 {validation_summary['EndDate']}",
             f"- 初始规则：样本开始时投入 50% 资金建底仓，剩余 50% 资金做网格买卖",
+            f"- 最小交易单位：{int(best_summary['LotSize'])} 股，来源：{best_summary['LotSizeSource']}",
+            f"- 固定底仓数量：{int(best_summary['BaseUnits'])} 股",
+            f"- 单层网格固定数量：{int(best_summary['GridUnitsPerLevel'])} 股",
             f"- 最优参数：网格间距 {best_summary['GridSpacingPct']:.2f}% / 网格层数 {int(best_summary['GridCount'])} / 止盈比例 {best_summary['TakeProfitPct']:.2f}%",
         ]
         validation_title = "2026 样本外验证"
@@ -335,6 +343,10 @@ def build_report_markdown(
 
 - 样本内首笔建仓日：{decline_window.entry_date}
 - 样本内建仓价：{decline_window.entry_price:.2f}
+- 最小交易单位：{int(best_summary["LotSize"])} 股
+- 固定底仓数量：{int(best_summary["BaseUnits"])} 股
+- 单层网格固定数量：{int(best_summary["GridUnitsPerLevel"])} 股
+- 网格层数含义：最多允许开启 {int(best_summary["GridCount"])} 层“固定股数”网格仓位，不再是“每层分多少钱”
 - 样本内收益率：{best_summary["ReturnPct"]:.2f}%
   - 人话：整个账户从 `200000` 变成了 `{in_sample_words["final_equity"]:.2f}`，合计{total_pnl_text} `{abs(in_sample_words["total_pnl"]):.2f}`。
 - 样本内年化收益率：{best_summary["AnnualReturnPct"]:.2f}%
@@ -354,6 +366,7 @@ def build_report_markdown(
 
 - 如果你只按规则先买 `50%` 底仓，后面完全不做网格，到样本结束时账户大约是 `{in_sample_words["base_only_equity"]:.2f}`。
 - 当前这版网格策略的最终账户是 `{in_sample_words["final_equity"]:.2f}`，收益率 `{best_summary["ReturnPct"]:.2f}%`。
+- 这里每次网格买入的不是固定金额，而是固定 `{int(best_summary["GridUnitsPerLevel"])}` 股；只要跌到下一层，就按同样股数再买一层。
 - 也就是说：网格本身虽然已经落袋赚了 `{best_summary["RealizedGridProfit"]:.2f}`，但额外接进来的下跌仓位浮盈浮亏也会影响总账户，所以整套策略相对“只拿底仓不做网格”{grid_vs_base_text} `{abs(in_sample_words["grid_vs_base_only"]):.2f}`。
 - 所以这里不能把“网格已实现收益”直接理解成“整个策略赚了这么多钱”；它只代表网格来回滚动已经兑现的那部分利润。
 
@@ -373,6 +386,8 @@ def build_report_markdown(
   - 人话：整个账户从 `200000` 变成了 `{validation_words["final_equity"]:.2f}`，合计{validation_total_pnl_text} `{abs(validation_words["total_pnl"]):.2f}`。
 - 样本外年化收益率：{validation_summary["AnnualReturnPct"]:.2f}%
 - 样本外最大回撤：{validation_summary["MaxDrawdownPct"]:.2f}%
+- 样本外沿用最小交易单位：{int(validation_summary["LotSize"])} 股
+- 样本外单层网格固定数量：{int(validation_summary["GridUnitsPerLevel"])} 股
 {validation_extra_lines}
 
 {validation_comment}
