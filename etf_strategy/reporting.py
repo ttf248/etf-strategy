@@ -343,13 +343,16 @@ def build_report_markdown(
     if validation_words["triggered_entry"]:
         # 验证段尽量复用结构化字段，避免在报告层二次推导造成口径漂移。
         validation_extra_lines = f"""- 期末有效持仓成本：{validation_summary["EffectiveCost"]:.2f}
+- 把已经兑现的网格利润算进去后，当前剩余仓位的摊薄成本大约是 `{validation_summary["EffectiveCost"]:.2f}`。
 - 相对样本外首笔建仓成本下降：{validation_summary["CostReductionPct"]:.2f}%
+- 和样本外首笔底仓买入价相比，当前持仓成本被压低了 `{validation_summary["CostReductionPct"]:.2f}%`。
 - 网格已实现收益：{validation_summary["RealizedGridProfit"]:.2f}
-  - 人话：单看已经完成并兑现的网格交易，样本外一共落袋赚了 `{validation_summary["RealizedGridProfit"]:.2f}`。
-- 完成网格循环次数：{int(validation_summary["GridCyclesCompleted"])}"""
+- 这部分是已经完成低买高卖、真正落袋的利润，样本外累计为 `{validation_summary["RealizedGridProfit"]:.2f}`。
+- 完成网格循环次数：{int(validation_summary["GridCyclesCompleted"])}
+- 这段样本外区间里，网格实际完成了 `{int(validation_summary["GridCyclesCompleted"])}` 轮买入后反弹卖出的闭环。"""
     else:
         validation_extra_lines = """- 本段样本外没有成功建立底仓，因此没有发生任何网格成交。
-- 人话：如果没有持仓或没有完成建仓，收益率保持不动是正常结果。"""
+- 没有持仓、也没有成交时，收益率停在原地是正常结果。"""
     in_sample_event_table = _build_event_table(optimization["best_run"])
     in_sample_trade_table = _build_trade_table(optimization["best_run"])
     validation_event_table = _build_event_table(validation["run"])
@@ -371,19 +374,19 @@ def build_report_markdown(
 - 单层网格固定数量：{int(best_summary["GridUnitsPerLevel"])} 股
 - 网格层数含义：最多允许开启 {int(best_summary["GridCount"])} 层“固定股数”网格仓位，不再是“每层分多少钱”
 - 样本内收益率：{best_summary["ReturnPct"]:.2f}%
-  - 人话：整个账户从 `200000` 变成了 `{in_sample_words["final_equity"]:.2f}`，合计{total_pnl_text} `{abs(in_sample_words["total_pnl"]):.2f}`。
+  - 按这套策略跑完样本内区间，账户从 `200000` 走到 `{in_sample_words["final_equity"]:.2f}`，合计{total_pnl_text} `{abs(in_sample_words["total_pnl"]):.2f}`。
 - 样本内年化收益率：{best_summary["AnnualReturnPct"]:.2f}%
-  - 人话：这是把这段样本期的结果折算成年化后的速度，用来和别的策略比较，不是说你真的持有满一年亏这么多。
+  - 这个数主要拿来和别的策略横向比较，表示把当前样本期收益折算成年化后的结果。
 - 样本内最大回撤：{best_summary["MaxDrawdownPct"]:.2f}%
-  - 人话：样本里最差的时候，账户相对阶段最高点最多回撤了约 `{best_summary["MaxDrawdownPct"]:.2f}%`。
+  - 这段样本里最难受的时候，账户相对阶段高点最多回撤了 `{best_summary["MaxDrawdownPct"]:.2f}%`。
 - 期末有效持仓成本：{best_summary["EffectiveCost"]:.2f}
-  - 人话：把已经通过网格落袋的利润扣掉后，你手里剩余持仓等效成本大约是 `{best_summary["EffectiveCost"]:.2f}`。
+  - 把已经兑现的网格利润算进去后，当前剩余仓位的摊薄成本大约是 `{best_summary["EffectiveCost"]:.2f}`。
 - 相对初始建仓成本下降：{best_summary["CostReductionPct"]:.2f}%
-  - 人话：最开始底仓买在 `{decline_window.entry_price:.2f}`，现在等效成本被网格摊低了约 `{best_summary["CostReductionPct"]:.2f}%`。
+  - 和最初底仓买入价 `{decline_window.entry_price:.2f}` 相比，当前持仓成本被压低了 `{best_summary["CostReductionPct"]:.2f}%`。
 - 网格已实现收益：{best_summary["RealizedGridProfit"]:.2f}
-  - 人话：单看“低买高卖已经完成并落袋”的网格交易，本轮一共赚了 `{best_summary["RealizedGridProfit"]:.2f}`。
+  - 这部分是已经完成低买高卖、真正落袋的利润，样本内累计为 `{best_summary["RealizedGridProfit"]:.2f}`。
 - 完成网格循环次数：{int(best_summary["GridCyclesCompleted"])}
-  - 人话：有 `{int(best_summary["GridCyclesCompleted"])}` 次网格仓位完成了“买入 -> 反弹 -> 卖出”的完整闭环。
+  - 这段样本里，网格实际完成了 `{int(best_summary["GridCyclesCompleted"])}` 轮买入后反弹卖出的闭环。
 
 ### 样本内怎么看懂
 
@@ -406,9 +409,11 @@ def build_report_markdown(
 ## {validation_title}
 
 - 样本外收益率：{validation_summary["ReturnPct"]:.2f}%
-  - 人话：整个账户从 `200000` 变成了 `{validation_words["final_equity"]:.2f}`，合计{validation_total_pnl_text} `{abs(validation_words["total_pnl"]):.2f}`。
+  - 按同一套参数跑完样本外区间，账户从 `200000` 走到 `{validation_words["final_equity"]:.2f}`，合计{validation_total_pnl_text} `{abs(validation_words["total_pnl"]):.2f}`。
 - 样本外年化收益率：{validation_summary["AnnualReturnPct"]:.2f}%
+  - 这个数主要拿来和别的策略横向比较，表示把当前样本外收益折算成年化后的结果。
 - 样本外最大回撤：{validation_summary["MaxDrawdownPct"]:.2f}%
+  - 样本外这段时间里，账户相对阶段高点最多回撤了 `{validation_summary["MaxDrawdownPct"]:.2f}%`。
 - 样本外沿用最小交易单位：{int(validation_summary["LotSize"])} 股
 - 样本外单层网格固定数量：{int(validation_summary["GridUnitsPerLevel"])} 股
 {validation_extra_lines}
