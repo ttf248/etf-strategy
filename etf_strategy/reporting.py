@@ -42,7 +42,6 @@ def plot_run_result(run_result: dict[str, object], output_path: str | Path, titl
 
     axes[0].plot(history["Date"], history["Close"], color="#1f77b4", linewidth=1.6, label="收盘价")
     axes[0].plot(history["Date"], history["EffectiveCost"], color="#d62728", linewidth=1.4, label="持仓有效成本")
-    axes[0].plot(history["Date"], history["EntryTriggerPrice"], color="#7f7f7f", linestyle="--", linewidth=1.0, label="10% 触发线")
     if not events.empty:
         marker_map = {
             "base_buy": ("^", "#e6550d", "初始建仓"),
@@ -109,6 +108,81 @@ def _describe_run_in_plain_words(run_result: dict[str, object], total_capital: f
         "grid_vs_base_only": final_equity - base_only_equity,
         "triggered_entry": triggered_entry,
     }
+
+
+def _format_markdown_value(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    if isinstance(value, float):
+        return f"{value:.2f}"
+    return str(value)
+
+
+def _build_markdown_table(frame: pd.DataFrame, columns: list[str], rename_map: dict[str, str]) -> str:
+    if frame.empty:
+        return "暂无记录。"
+
+    available_columns = [column for column in columns if column in frame.columns]
+    display = frame.loc[:, available_columns].copy()
+    display.rename(columns=rename_map, inplace=True)
+    headers = list(display.columns)
+    rows = [[_format_markdown_value(value) for value in row] for row in display.itertuples(index=False, name=None)]
+    header_line = "| " + " | ".join(headers) + " |"
+    separator_line = "| " + " | ".join(["---"] * len(headers)) + " |"
+    row_lines = ["| " + " | ".join(row) + " |" for row in rows]
+    return "\n".join([header_line, separator_line, *row_lines])
+
+
+def _build_event_table(run_result: dict[str, object]) -> str:
+    return _build_markdown_table(
+        run_result["events"],
+        columns=["Date", "EventType", "Level", "Price", "Units", "CashFlow", "Note"],
+        rename_map={
+            "Date": "时间",
+            "EventType": "事件类型",
+            "Level": "层级",
+            "Price": "价格",
+            "Units": "数量",
+            "CashFlow": "金额",
+            "Note": "说明",
+        },
+    )
+
+
+def _build_trade_table(run_result: dict[str, object]) -> str:
+    trades = run_result["trades"].copy()
+    if trades.empty:
+        return "暂无记录。"
+
+    trades["PnL"] = trades["PnL"].astype("float64")
+    trades["ReturnPctDisplay"] = trades["ReturnPct"].astype("float64") * 100
+    trades["Level"] = trades["Tag"].fillna("").astype(str).str.replace("grid_", "网格 ", regex=False)
+    trades.loc[trades["Tag"] == "base", "Level"] = "底仓"
+    return _build_markdown_table(
+        trades,
+        columns=[
+            "EntryTime",
+            "ExitTime",
+            "Duration",
+            "EntryPrice",
+            "ExitPrice",
+            "Size",
+            "PnL",
+            "ReturnPctDisplay",
+            "Level",
+        ],
+        rename_map={
+            "EntryTime": "开仓时间",
+            "ExitTime": "平仓时间",
+            "Duration": "持有时长",
+            "EntryPrice": "开仓价",
+            "ExitPrice": "平仓价",
+            "Size": "数量",
+            "PnL": "盈亏",
+            "ReturnPctDisplay": "收益率(%)",
+            "Level": "仓位类型",
+        },
+    )
 
 
 def plot_grid_search(results: pd.DataFrame, output_path: str | Path) -> Path:
@@ -186,7 +260,7 @@ def build_report_markdown(
             f"- 样本内窗口：{decline_window.sample_start} 至 {decline_window.sample_end}",
             f"- 样本外窗口：{decline_window.validation_start} 至 {validation_summary['EndDate']}",
             f"- 切分方式：最近分钟线样本按 `75% / 25%` 拆分样本内与样本外",
-            f"- 初始规则：从局部高点回撤 10% 后投入 50% 资金建底仓，剩余 50% 资金做网格买卖",
+            f"- 初始规则：样本开始时投入 50% 资金建底仓，剩余 50% 资金做网格买卖",
             f"- 最优参数：网格间距 {best_summary['GridSpacingPct']:.2f}% / 网格层数 {int(best_summary['GridCount'])} / 止盈比例 {best_summary['TakeProfitPct']:.2f}%",
         ]
         validation_title = "分钟线样本外验证"
@@ -211,7 +285,7 @@ def build_report_markdown(
             f"- 标的：小米集团 `1810.HK`",
             f"- 样本内窗口：{decline_window.sample_start} 至 {decline_window.sample_end}",
             f"- 样本外窗口：{decline_window.validation_start} 至 {validation_summary['EndDate']}",
-            f"- 初始规则：从局部高点回撤 10% 后投入 50% 资金建底仓，剩余 50% 资金做网格买卖",
+            f"- 初始规则：样本开始时投入 50% 资金建底仓，剩余 50% 资金做网格买卖",
             f"- 最优参数：网格间距 {best_summary['GridSpacingPct']:.2f}% / 网格层数 {int(best_summary['GridCount'])} / 止盈比例 {best_summary['TakeProfitPct']:.2f}%",
         ]
         validation_title = "2026 样本外验证"
@@ -222,10 +296,10 @@ def build_report_markdown(
     elif best_summary["ReturnPct"] > 0 and validation_summary["ReturnPct"] > 0:
         conclusion = "网格交易在本轮样本里同时改善了成本和总收益，参数延续性相对更强。"
     else:
-        conclusion = "这轮样本里，网格交易的效果呈现阶段性差异，需要结合是否真正触发建仓一起理解。"
+        conclusion = "这轮样本里，网格交易的效果呈现阶段性差异，需要结合样本内外所处行情阶段一起理解。"
     validation_scope = "分钟线样本外区间" if workflow_type == "minute" else "2026 样本外区间"
     if not validation_words["triggered_entry"]:
-        validation_comment = f"{validation_scope}没有触发 10% 回撤建仓，因此这段结果更像“策略没有出手”，不能直接用来证明参数有效或失效。"
+        validation_comment = f"{validation_scope}未能完成样本起点建仓，因此这段结果不能直接用来证明参数有效或失效。"
     elif validation_summary["ReturnPct"] < 0:
         validation_comment = f"{validation_scope}延续了成本摊薄，但收益仍为负，说明策略更像风险缓冲而不是单独的反转信号。"
     elif validation_summary["ReturnPct"] > 0:
@@ -243,8 +317,12 @@ def build_report_markdown(
   - 人话：单看已经完成并兑现的网格交易，样本外一共落袋赚了 `{validation_summary["RealizedGridProfit"]:.2f}`。
 - 完成网格循环次数：{int(validation_summary["GridCyclesCompleted"])}"""
     else:
-        validation_extra_lines = """- 本段样本外没有触发 10% 回撤建仓，所以没有发生底仓买入，也没有任何网格成交。
-- 人话：收益率保持 `0%` 不是图画错了，而是这段分钟线数据里策略根本没有进场。"""
+        validation_extra_lines = """- 本段样本外没有成功建立底仓，因此没有发生任何网格成交。
+- 人话：如果没有持仓或没有完成建仓，收益率保持不动是正常结果。"""
+    in_sample_event_table = _build_event_table(optimization["best_run"])
+    in_sample_trade_table = _build_trade_table(optimization["best_run"])
+    validation_event_table = _build_event_table(validation["run"])
+    validation_trade_table = _build_trade_table(validation["run"])
     report_content = f"""# 小米港股网格回测报告
 
 ## 摘要
@@ -255,8 +333,8 @@ def build_report_markdown(
 
 ## 样本内寻参结果
 
-- 参考高点：{decline_window.peak_date}，收盘价 {decline_window.peak_price:.2f}
-- 初始建仓触发日：{decline_window.entry_date}，收盘价 {decline_window.entry_price:.2f}
+- 样本内首笔建仓日：{decline_window.entry_date}
+- 样本内建仓价：{decline_window.entry_price:.2f}
 - 样本内收益率：{best_summary["ReturnPct"]:.2f}%
   - 人话：整个账户从 `200000` 变成了 `{in_sample_words["final_equity"]:.2f}`，合计{total_pnl_text} `{abs(in_sample_words["total_pnl"]):.2f}`。
 - 样本内年化收益率：{best_summary["AnnualReturnPct"]:.2f}%
@@ -282,9 +360,8 @@ def build_report_markdown(
 ### 关于收益曲线为什么看起来像 0
 
 - 图里的收益曲线不是全程为 0。
-- 建仓前没有持仓，所以那一段收益率固定是 `0%`，这是正常的。
-- 建仓后如果总账户没有回正，收益曲线就会从 `0%` 往下走；如果后来翻红，也会重新回到 `0%` 上方。
-- 如果你肉眼看图时觉得它“都贴着 0”，主要是因为前半段建仓前确实是一条 0 线，而后半段始终在负区间，没有出现重新翻红。
+- 现在这版策略在样本开始时就直接建仓，所以收益曲线会从首笔底仓建立后立即开始波动。
+- 如果你肉眼看图时觉得它“贴着 0”，通常是因为整体盈亏波动幅度不大，或者样本后半段虽然有网格利润，但总账户仍在盈亏平衡附近徘徊。
 
 ![样本内回测图](figures/{in_sample_chart.name})
 
@@ -301,6 +378,24 @@ def build_report_markdown(
 {validation_comment}
 
 ![样本外回测图](figures/{validation_chart.name})
+
+## 交易记录
+
+### 样本内事件流水
+
+{in_sample_event_table}
+
+### 样本内成交结果
+
+{in_sample_trade_table}
+
+### 样本外事件流水
+
+{validation_event_table}
+
+### 样本外成交结果
+
+{validation_trade_table}
 
 ## 结论
 
