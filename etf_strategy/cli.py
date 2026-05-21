@@ -24,8 +24,10 @@ from etf_strategy.config import (
     DEFAULT_MINUTE_PERIOD,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_REPORT_DIR,
+    DEFAULT_REPORT_ROOT,
     DEFAULT_SYMBOL,
 )
+from etf_strategy.data.market_rules import infer_symbol_from_data_path
 from etf_strategy.data.yahoo import (
     build_default_output_path,
     download_price_bars,
@@ -33,7 +35,16 @@ from etf_strategy.data.yahoo import (
     save_price_bars,
 )
 from etf_strategy.logging_utils import configure_logging
-from etf_strategy.reporting import build_minute_report_markdown, build_report_markdown, build_strategy_comparison_report
+from etf_strategy.reporting import (
+    build_minute_report_markdown,
+    build_report_index_entry,
+    build_report_markdown,
+    build_strategy_comparison_report,
+    build_unified_report_index,
+    bootstrap_report_registry,
+    register_report_index_entries,
+    resolve_symbol_spec,
+)
 from etf_strategy.settings import (
     DEFAULT_LOOKBACK_DAYS,
     DEFAULT_VALIDATION_RATIO,
@@ -185,6 +196,7 @@ def build_parser() -> argparse.ArgumentParser:
     batch_parser.add_argument("--jobs", default="1", help="单标的寻参并行线程数；可传整数或 auto")
     batch_parser.add_argument("--cache-dir", default=None, help="候选参数回测缓存目录")
     _add_strategy_arguments(batch_parser)
+    batch_parser.add_argument("--compare-strategies", action="store_true", help="批量为每个标的生成当前周期的多策略对比报告")
     _add_execution_arguments(batch_parser)
 
     return parser
@@ -270,6 +282,128 @@ def _default_compare_strategy_kinds(interval: str) -> list[StrategyKind]:
     if is_intraday_interval(interval):
         return ["grid", "minute_rebound", "minute_rebound_with_fade_filter"]
     return ["grid", "daily_rebound"]
+
+
+def _strategy_display_name(strategy_kind: str) -> str:
+    labels = {
+        "grid": "网格",
+        "daily_rebound": "日线超跌反弹",
+        "minute_rebound": "分钟急跌反抽",
+        "minute_rebound_with_fade_filter": "分钟反抽+冲高回落过滤",
+        "compare": "多策略对比",
+    }
+    return labels.get(strategy_kind, strategy_kind)
+
+
+def _single_report_index_entry(
+    report_path: str | Path,
+    workflow_result: dict[str, object],
+    symbol: str,
+    interval: str,
+    strategy_kind: str | None = None,
+    report_root: str | Path = DEFAULT_REPORT_ROOT,
+) -> dict[str, object]:
+    best_summary = workflow_result["optimization"]["best_run"]["summary"]
+    validation_summary = workflow_result["validation"]["run"]["summary"]
+    resolved_strategy_kind = str(
+        strategy_kind
+        or best_summary.get("StrategyKind")
+        or validation_summary.get("StrategyKind")
+        or workflow_result.get("strategy_kind", "grid")
+    )
+    resolved_symbol = str(symbol or best_summary.get("Symbol") or validation_summary.get("Symbol") or DEFAULT_SYMBOL)
+    note = _format_best_parameter_summary(best_summary)
+    return build_report_index_entry(
+        report_path=report_path,
+        symbol=resolved_symbol,
+        interval=interval,
+        report_view=resolved_strategy_kind,
+        strategy_kind=resolved_strategy_kind,
+        strategy_name=_strategy_display_name(resolved_strategy_kind),
+        validation_return_pct=float(validation_summary.get("NetReturnPct", validation_summary.get("ReturnPct", 0.0))),
+        max_drawdown_pct=float(validation_summary.get("MaxDrawdownPct", 0.0)),
+        note=note,
+        report_root=report_root,
+    )
+
+
+def _comparison_report_index_entry(
+    report_path: str | Path,
+    comparison_results: dict[str, dict[str, object]],
+    interval: str,
+    symbol: str,
+    report_root: str | Path = DEFAULT_REPORT_ROOT,
+) -> dict[str, object]:
+    ranked = sorted(
+        comparison_results.values(),
+        key=lambda workflow_result: (
+            float(workflow_result["validation"]["run"]["summary"].get("NetReturnPct", workflow_result["validation"]["run"]["summary"].get("ReturnPct", 0.0))),
+            -float(workflow_result["validation"]["run"]["summary"].get("MaxDrawdownPct", 0.0)),
+        ),
+        reverse=True,
+    )
+    recommended = ranked[0]
+    best_summary = recommended["optimization"]["best_run"]["summary"]
+    validation_summary = recommended["validation"]["run"]["summary"]
+    strategy_list = " / ".join(_strategy_display_name(key) for key in comparison_results)
+    note = f"推荐 {_strategy_display_name(str(best_summary.get('StrategyKind', 'grid')))}；对比 {strategy_list}"
+    return build_report_index_entry(
+        report_path=report_path,
+        symbol=symbol,
+        interval=interval,
+        report_view="compare",
+        strategy_kind="compare",
+        strategy_name="多策略对比",
+        validation_return_pct=float(validation_summary.get("NetReturnPct", validation_summary.get("ReturnPct", 0.0))),
+        max_drawdown_pct=float(validation_summary.get("MaxDrawdownPct", 0.0)),
+        note=note,
+        report_root=report_root,
+    )
+
+
+def _failed_report_index_entry(
+    report_path: str | Path,
+    symbol: str,
+    interval: str,
+    report_view: str,
+    error: Exception,
+    report_root: str | Path = DEFAULT_REPORT_ROOT,
+) -> dict[str, object]:
+    return build_report_index_entry(
+        report_path=report_path,
+        symbol=symbol,
+        interval=interval,
+        report_view=report_view,
+        strategy_kind=report_view,
+        strategy_name=_strategy_display_name(report_view),
+        validation_return_pct="",
+        max_drawdown_pct="",
+        note=str(error),
+        status="failed",
+        error=str(error),
+        report_root=report_root,
+    )
+
+
+def _refresh_unified_report_index(entries: list[dict[str, object]], report_root: str | Path) -> Path:
+    bootstrap_report_registry(report_root=report_root)
+    register_report_index_entries(entries, report_root=report_root)
+    return build_unified_report_index(report_root=report_root)
+
+
+def _resolve_report_root(report_dir: str | Path) -> Path:
+    path = Path(report_dir)
+    if path.name in {"daily", "minute"} and path.parent != path:
+        return path.parent.parent if path.parent.parent != path.parent else path.parent
+    return path
+
+
+def _resolve_report_symbol(explicit_symbol: str | None, data_path: str | Path | None = None) -> str:
+    if explicit_symbol:
+        return explicit_symbol
+    if data_path:
+        return infer_symbol_from_data_path(str(data_path))
+    return DEFAULT_SYMBOL
 
 
 def _format_best_parameter_summary(summary: dict[str, object]) -> str:
@@ -507,6 +641,7 @@ def handle_run(args: argparse.Namespace) -> int:
     _validate_daily_date_range(args, "run")
     output_dir = Path(args.output_dir or (DEFAULT_MINUTE_OUTPUT_DIR if intraday_mode else DEFAULT_OUTPUT_DIR))
     report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR if intraday_mode else DEFAULT_REPORT_DIR)
+    report_root = _resolve_report_root(report_dir)
     data_path = _resolve_download_output_path(args.symbol, args.interval, args.period, output=None)
     logger.info(
         "收到 run 命令: symbol={} interval={} strategy={} compare={} data_path={} output_dir={} report_dir={}",
@@ -554,11 +689,26 @@ def handle_run(args: argparse.Namespace) -> int:
         report_path = build_minute_report_markdown(result, report_dir=report_dir)
     else:
         report_path = build_report_markdown(result, report_dir=report_dir)
+    report_symbol = _resolve_report_symbol(args.symbol)
+    index_entries = [
+        _comparison_report_index_entry(report_path, comparison_results, args.interval, args.symbol, report_root=report_root)
+        if comparison_results is not None
+        else _single_report_index_entry(
+            report_path,
+            result,
+            symbol=report_symbol,
+            interval=args.interval,
+            strategy_kind=args.strategy,
+            report_root=report_root,
+        )
+    ]
+    index_path = _refresh_unified_report_index(index_entries, report_root=report_root)
     logger.info("[3/3] 正式报告生成完成: report={}", report_path)
     best_summary = result["optimization"]["best_run"]["summary"]
     validation_summary = result["validation"]["run"]["summary"]
     print(f"完整工作流已完成，汇总文件: {result['combined_summary_path']}")
     print(f"中文报告: {report_path}")
+    print(f"正式汇总报告: {index_path}")
     print(f"样本内最优参数: {_format_best_parameter_summary(best_summary)}")
     print(
         f"{'分钟线样本外表现' if intraday_mode else '2026 样本外表现'}: "
@@ -578,6 +728,7 @@ def handle_report(args: argparse.Namespace) -> int:
     execution_config = _build_execution_from_args(args)
     output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR if is_intraday_interval(args.interval) else DEFAULT_OUTPUT_DIR)
     report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR if is_intraday_interval(args.interval) else DEFAULT_REPORT_DIR)
+    report_root = _resolve_report_root(report_dir)
     args.output_dir = output_dir
     if args.compare_strategies:
         comparison_results = _run_comparison_workflows(args.data, args, execution_config)
@@ -597,7 +748,28 @@ def handle_report(args: argparse.Namespace) -> int:
         report_path = build_minute_report_markdown(result, report_dir=report_dir)
     else:
         report_path = build_report_markdown(result, report_dir=report_dir)
+    report_symbol = _resolve_report_symbol(args.symbol, args.data)
+    index_entries = [
+        _comparison_report_index_entry(
+            report_path,
+            comparison_results,
+            args.interval,
+            report_symbol,
+            report_root=report_root,
+        )
+        if comparison_results is not None
+        else _single_report_index_entry(
+            report_path,
+            result,
+            symbol=report_symbol,
+            interval=args.interval,
+            strategy_kind=args.strategy,
+            report_root=report_root,
+        )
+    ]
+    index_path = _refresh_unified_report_index(index_entries, report_root=report_root)
     print(f"报告已生成: {report_path}")
+    print(f"正式汇总报告: {index_path}")
     logger.info("report 命令完成: report={} elapsed={:.2f}s", report_path, perf_counter() - started_at)
     return 0
 
@@ -638,117 +810,18 @@ def _resolve_batch_symbols(args: argparse.Namespace) -> tuple[list[str], dict[st
     return deduplicated, specs_by_symbol
 
 
-def _relative_markdown_link(target: str | Path, base_dir: Path) -> str:
-    """生成报告索引用的相对 Markdown 链接路径。"""
-    target_path = Path(target)
-    if not target_path.is_absolute():
-        target_path = target_path.resolve()
-    relative_path = target_path.relative_to(base_dir.resolve())
-    return relative_path.as_posix()
-
-
-def _build_batch_report_index(
-    report_root: Path,
-    rows: list[dict[str, object]],
-    specs_by_symbol: dict[str, SymbolSpec],
-    interval: str,
-    symbol_set: str | None,
-) -> Path:
-    """生成多标的汇总索引，README 和人工复盘都直接链接这里。"""
-    report_root.mkdir(parents=True, exist_ok=True)
-    if symbol_set == "hstech_plus_513050" and interval == DEFAULT_MINUTE_INTERVAL:
-        target = report_root / "hstech_15m_report_index.md"
-    else:
-        target = report_root / f"report_index_{interval}.md"
-    ok_rows = [row for row in rows if row.get("Status") == "ok"]
-    failed_rows = [row for row in rows if row.get("Status") != "ok"]
-    source_notes = sorted(
-        {spec.source for spec in specs_by_symbol.values() if spec.source and spec.category == "恒生科技成分股"}
-    )
-
-    table_rows: list[str] = []
-    for row in rows:
-        symbol = str(row["Symbol"])
-        spec = specs_by_symbol.get(
-            symbol,
-            SymbolSpec(symbol=symbol, name=symbol, category="自定义标的", source="命令行 --symbols"),
-        )
-        status = str(row.get("Status", ""))
-        if status == "ok" and row.get("ReportPath"):
-            report_link = f"[打开报告]({_relative_markdown_link(str(row['ReportPath']), report_root)})"
-            validation_return = f"{float(row.get('ValidationNetReturnPct', 0.0)):.2f}%"
-            max_drawdown = f"{float(row.get('ValidationMaxDrawdownPct', 0.0)):.2f}%"
-            note = (
-                f"间距 {float(row.get('GridSpacingPct', 0.0)):.2f}% / "
-                f"层数 {int(row.get('GridCount', 0))} / "
-                f"止盈 {float(row.get('TakeProfitPct', 0.0)):.2f}%"
-            )
-        else:
-            report_link = (
-                f"[查看失败记录]({_relative_markdown_link(str(row['ReportPath']), report_root)})"
-                if row.get("ReportPath")
-                else "未生成"
-            )
-            validation_return = "-"
-            max_drawdown = "-"
-            note = str(row.get("Error", "批量回测失败"))
-
-        table_rows.append(
-            "| "
-            + " | ".join(
-                [
-                    spec.category,
-                    symbol,
-                    spec.name,
-                    interval,
-                    validation_return,
-                    max_drawdown,
-                    status,
-                    note.replace("|", "/"),
-                    report_link,
-                ]
-            )
-            + " |"
-        )
-
-    source_block = "\n".join(f"- {source}" for source in source_notes) or "- 命令行自定义标的。"
-    content = "\n".join(
-        [
-            "# 恒生科技分钟线汇总报告索引",
-            "",
-            "## 汇总备注",
-            "",
-            f"- 标的池：`{symbol_set or 'custom'}`，共 `{len(rows)}` 个标的，成功 `{len(ok_rows)}` 个，失败 `{len(failed_rows)}` 个。",
-            f"- 周期：`{interval}`；使用 Yahoo Finance 最近 `60d` 分钟线，下载必须配置代理，并按 `75% / 25%` 切分样本内与样本外。",
-            "- 策略口径：纯现金网格，`realistic` 执行口径，默认同时计算 `hold` 与 `force_exit` 左侧处理。",
-            "- 本报告只用于策略研究复盘，不构成实盘交易建议。",
-            "",
-            "## 成分来源",
-            "",
-            source_block,
-            "",
-            "## 报告列表",
-            "",
-            "| 分类 | 标的 | 名称 | 周期 | 样本外收益 | 最大回撤 | 状态 | 备注 | 报告 |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
-            *table_rows,
-            "",
-        ]
-    )
-    target.write_text(content, encoding="utf-8")
-    return target
-
-
 def _write_failed_batch_report(
     symbol_report_dir: Path,
     symbol: str,
     spec: SymbolSpec,
     interval: str,
     error: Exception,
+    report_view: str = "grid",
 ) -> Path:
     """为失败标的生成可点击的失败报告，保证索引表每一行都有落点。"""
     symbol_report_dir.mkdir(parents=True, exist_ok=True)
-    target = symbol_report_dir / f"{_batch_symbol_slug(symbol)}_{interval}_grid_report.md"
+    suffix = "strategy_compare_report" if report_view == "compare" else f"{report_view}_report"
+    target = symbol_report_dir / f"{_batch_symbol_slug(symbol)}_{interval}_{suffix}.md"
     content = "\n".join(
         [
             f"# {symbol} 批量回测失败记录",
@@ -770,8 +843,6 @@ def _write_failed_batch_report(
 def handle_batch(args: argparse.Namespace) -> int:
     """批量执行多个标的的完整研究流程。"""
     started_at = perf_counter()
-    if args.strategy != "grid":
-        raise ValueError("batch 命令当前仅支持 grid；多策略对比先围绕单标的正式报告使用。")
     symbols, specs_by_symbol = _resolve_batch_symbols(args)
 
     intraday_mode = is_intraday_interval(args.interval)
@@ -780,6 +851,7 @@ def handle_batch(args: argparse.Namespace) -> int:
     execution_config = _build_execution_from_args(args)
     jobs = _resolve_jobs(args.jobs)
     rows: list[dict[str, object]] = []
+    index_entries: list[dict[str, object]] = []
     logger.info("收到 batch 命令: symbols={} interval={} download={}", symbols, args.interval, args.download)
 
     for symbol in symbols:
@@ -806,33 +878,69 @@ def handle_batch(args: argparse.Namespace) -> int:
             if not data_path.exists():
                 raise FileNotFoundError(f"行情文件不存在，请先下载或传 --download: {data_path}")
 
-            if intraday_mode:
-                result = run_minute_full_workflow(
-                    data_path=data_path,
+            cache_dir = Path(args.cache_dir) / slug if args.cache_dir else None
+            if args.compare_strategies:
+                batch_args = argparse.Namespace(**vars(args))
+                batch_args.symbol = symbol
+                batch_args.output_dir = str(symbol_output_dir)
+                batch_args.cache_dir = str(cache_dir) if cache_dir else None
+                comparison_results = _run_comparison_workflows(data_path, batch_args, execution_config)
+                result = comparison_results[args.strategy] if args.strategy in comparison_results else next(iter(comparison_results.values()))
+                report_path = build_strategy_comparison_report(
+                    strategy_results=comparison_results,
+                    interval=args.interval,
                     symbol=symbol,
-                    output_dir=symbol_output_dir,
-                    validation_ratio=args.validation_ratio,
-                    execution_config=execution_config,
-                    wf_window_count=args.wf_window_count,
-                    wf_min_window_size=args.wf_min_window_size,
-                    jobs=jobs,
-                    cache_dir=Path(args.cache_dir) / slug if args.cache_dir else None,
+                    report_dir=symbol_report_dir,
                 )
-                report_path = build_minute_report_markdown(result, report_dir=symbol_report_dir)
+                index_entries.append(
+                    _comparison_report_index_entry(
+                        report_path=report_path,
+                        comparison_results=comparison_results,
+                        interval=args.interval,
+                        symbol=symbol,
+                        report_root=report_root,
+                    )
+                )
             else:
-                result = run_full_workflow(
-                    data_path=data_path,
-                    symbol=symbol,
-                    output_dir=symbol_output_dir,
-                    validation_start=args.validation_start,
-                    lookback_days=args.lookback_days,
-                    execution_config=execution_config,
-                    wf_window_count=args.wf_window_count,
-                    wf_min_window_size=args.wf_min_window_size,
-                    jobs=jobs,
-                    cache_dir=Path(args.cache_dir) / slug if args.cache_dir else None,
+                if intraday_mode:
+                    result = run_minute_full_workflow(
+                        data_path=data_path,
+                        symbol=symbol,
+                        output_dir=symbol_output_dir,
+                        validation_ratio=args.validation_ratio,
+                        strategy_kind=args.strategy,
+                        execution_config=execution_config,
+                        wf_window_count=args.wf_window_count,
+                        wf_min_window_size=args.wf_min_window_size,
+                        jobs=jobs,
+                        cache_dir=cache_dir,
+                    )
+                    report_path = build_minute_report_markdown(result, report_dir=symbol_report_dir)
+                else:
+                    result = run_full_workflow(
+                        data_path=data_path,
+                        symbol=symbol,
+                        output_dir=symbol_output_dir,
+                        validation_start=args.validation_start,
+                        lookback_days=args.lookback_days,
+                        strategy_kind=args.strategy,
+                        execution_config=execution_config,
+                        wf_window_count=args.wf_window_count,
+                        wf_min_window_size=args.wf_min_window_size,
+                        jobs=jobs,
+                        cache_dir=cache_dir,
+                    )
+                    report_path = build_report_markdown(result, report_dir=symbol_report_dir)
+                index_entries.append(
+                    _single_report_index_entry(
+                        report_path=report_path,
+                        workflow_result=result,
+                        symbol=symbol,
+                        interval=args.interval,
+                        strategy_kind=args.strategy,
+                        report_root=report_root,
+                    )
                 )
-                report_path = build_report_markdown(result, report_dir=symbol_report_dir)
 
             best_summary = result["optimization"]["best_run"]["summary"]
             validation_summary = result["validation"]["run"]["summary"]
@@ -858,7 +966,8 @@ def handle_batch(args: argparse.Namespace) -> int:
             if args.download and not download_completed:
                 logger.error("[batch] Yahoo 数据下载失败，批量流程停止: symbol={} error={}", symbol, exc)
                 raise
-            failed_report_path = _write_failed_batch_report(symbol_report_dir, symbol, spec, args.interval, exc)
+            report_view = "compare" if args.compare_strategies else args.strategy
+            failed_report_path = _write_failed_batch_report(symbol_report_dir, symbol, spec, args.interval, exc, report_view=report_view)
             rows.append(
                 {
                     "Symbol": symbol,
@@ -871,18 +980,22 @@ def handle_batch(args: argparse.Namespace) -> int:
                     "ElapsedSeconds": perf_counter() - symbol_started_at,
                 }
             )
+            index_entries.append(
+                _failed_report_index_entry(
+                    report_path=failed_report_path,
+                    symbol=symbol,
+                    interval=args.interval,
+                    report_view=report_view,
+                    error=exc,
+                    report_root=report_root,
+                )
+            )
             logger.exception("[batch] 标的失败: symbol={}", symbol)
 
     output_root.mkdir(parents=True, exist_ok=True)
     summary_path = output_root / "batch_summary.csv"
     pd.DataFrame(rows).to_csv(summary_path, index=False, encoding="utf-8-sig")
-    index_path = _build_batch_report_index(
-        report_root=report_root,
-        rows=rows,
-        specs_by_symbol=specs_by_symbol,
-        interval=args.interval,
-        symbol_set=args.symbol_set,
-    )
+    index_path = _refresh_unified_report_index(index_entries, report_root=report_root)
     ok_count = sum(1 for row in rows if row["Status"] == "ok")
     print(f"批量流程完成: 成功 {ok_count}/{len(rows)}，汇总文件: {summary_path}，报告索引: {index_path}")
     logger.info("batch 命令完成: summary={} index={} elapsed={:.2f}s", summary_path, index_path, perf_counter() - started_at)

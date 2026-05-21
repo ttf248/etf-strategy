@@ -11,7 +11,7 @@
 
 | 分类 | 标的 | 名称 | 周期 | 样本外收益 | 最大回撤 | 状态/备注 | 报告 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 汇总索引 | hstech_15m | 恒生科技 30 只成分股 + 513050.SS | 15m | 见索引 | 见索引 | 索引落在 `reports/` 根目录，单标的各自归档到自己的目录 | [打开索引](reports/hstech_15m_report_index.md) |
+| 汇总索引 | all_reports | 单标的、批量、多策略对比统一汇总 | 多周期 | 见索引 | 见索引 | 唯一正式入口，所有新增报告都会回写到 `reports/` 根目录这份总表 | [打开索引](reports/report_index.md) |
 | 默认样本 | 1810.HK | 小米集团-W 分钟多策略对比 | 15m | 见报告 | 见报告 | 默认优先阅读入口 | [打开报告](reports/1810_hk/minute/1810_hk_15m_strategy_compare_report.md) |
 | 默认样本 | 1810.HK | 小米集团-W 日线多策略对比 | 1d | 见报告 | 见报告 | 日线左侧反弹专项研究 | [打开报告](reports/1810_hk/daily/1810_hk_daily_strategy_compare_report.md) |
 | 基线报告 | 1810.HK | 小米集团-W 网格分钟报告 | 15m | 见报告 | 见报告 | 保留作对照基准 | [打开报告](reports/1810_hk/minute/1810_hk_15m_grid_report.md) |
@@ -95,7 +95,7 @@ py -3.13 main.py batch --symbol-set hstech_plus_513050 --download --proxy http:/
 输出：
 
 - 批量汇总：`outputs/batch/batch_summary.csv`
-- 汇总索引：`reports/hstech_15m_report_index.md`
+- 统一汇总报告：`reports/report_index.md`
 - 单标的报告：`reports/<symbol>/minute/`
 
 ## 文档导航
@@ -294,7 +294,7 @@ py -3.13 main.py batch --symbol-set hstech_plus_513050 --download --proxy http:/
 输出：
 
 - 批量汇总：`outputs/batch/batch_summary.csv`
-- 汇总报告索引：`reports/hstech_15m_report_index.md`
+- 统一汇总报告：`reports/report_index.md`
 - 单标的中间结果：`outputs/batch/<symbol>/`
 - 单标的报告：`reports/<symbol>/minute/`
 

@@ -13,6 +13,7 @@
 1. [README](../README.md)
 2. [回测报告阅读指南](report_reading_guide.md)
 3. 正式报告：
+   - [统一汇总报告](../reports/report_index.md)
    - [日线多策略对比报告](../reports/1810_hk/daily/1810_hk_daily_strategy_compare_report.md)
    - [15 分钟线多策略对比报告](../reports/1810_hk/minute/1810_hk_15m_strategy_compare_report.md)
    - [15 分钟线网格基线报告](../reports/1810_hk/minute/1810_hk_15m_grid_report.md)
@@ -25,6 +26,7 @@
 
 直接看：
 
+- [统一汇总报告](../reports/report_index.md)
 - [日线报告](../reports/1810_hk/daily/1810_hk_grid_report.md)
 - [日线多策略对比报告](../reports/1810_hk/daily/1810_hk_daily_strategy_compare_report.md)
 - [15 分钟线多策略对比报告](../reports/1810_hk/minute/1810_hk_15m_strategy_compare_report.md)

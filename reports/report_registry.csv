@@ -1,0 +1,35 @@
+﻿Symbol,Name,Category,Source,Interval,ReportView,StrategyKind,StrategyName,Status,ValidationNetReturnPct,ValidationMaxDrawdownPct,Note,Error,ReportPath,GeneratedAt
+513050.SS,中概互联网ETF,国内ETF,用户指定追加标的,15m,grid,grid,网格,ok,0.0,0.0,间距 4.00% / 层数 7 / 止盈 3.00%,,513050_ss/minute/513050_ss_15m_grid_report.md,legacy
+0020.HK,SENSETIME - W,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,-0.17,1.01,间距 4.00% / 层数 4 / 止盈 1.00%,,0020_hk/minute/0020_hk_15m_grid_report.md,legacy
+0241.HK,ALI HEALTH,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,-1.68,2.03,间距 4.00% / 层数 7 / 止盈 1.00%,,0241_hk/minute/0241_hk_15m_grid_report.md,legacy
+0268.HK,KINGDEE INT'L,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,-0.82,1.45,间距 4.00% / 层数 7 / 止盈 3.00%,,0268_hk/minute/0268_hk_15m_grid_report.md,legacy
+0285.HK,BYD ELECTRONIC,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,0.0,0.0,间距 4.00% / 层数 7 / 止盈 1.00%,,0285_hk/minute/0285_hk_15m_grid_report.md,legacy
+0300.HK,MIDEA GROUP,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,0.43,0.46,间距 4.00% / 层数 6 / 止盈 3.00%,,0300_hk/minute/0300_hk_15m_grid_report.md,legacy
+0700.HK,TENCENT,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,failed,,,"单层网格预算不足以买入 1 手，无法执行固定股数网格: lot_size=100, price=534.50","单层网格预算不足以买入 1 手，无法执行固定股数网格: lot_size=100, price=534.50",0700_hk/minute/0700_hk_15m_grid_report.md,legacy
+0780.HK,TONGCHENGTRAVEL,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,-1.16,1.59,间距 4.00% / 层数 6 / 止盈 2.00%,,0780_hk/minute/0780_hk_15m_grid_report.md,legacy
+0981.HK,SMIC,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,failed,,,"单层网格预算不足以买入 1 手，无法执行固定股数网格: lot_size=500, price=71.10","单层网格预算不足以买入 1 手，无法执行固定股数网格: lot_size=500, price=71.10",0981_hk/minute/0981_hk_15m_grid_report.md,legacy
+0992.HK,LENOVO GROUP,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,2.47,0.87,间距 1.00% / 层数 4 / 止盈 3.00%,,0992_hk/minute/0992_hk_15m_grid_report.md,legacy
+1024.HK,KUAISHOU - W,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,0.0,0.0,间距 4.00% / 层数 7 / 止盈 2.00%,,1024_hk/minute/1024_hk_15m_grid_report.md,legacy
+1211.HK,BYD COMPANY,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,-3.87,4.51,间距 1.50% / 层数 4 / 止盈 2.00%,,1211_hk/minute/1211_hk_15m_grid_report.md,legacy
+1347.HK,HUA HONG SEMI,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,failed,,,"单层网格预算不足以买入 1 手，无法执行固定股数网格: lot_size=1000, price=98.75","单层网格预算不足以买入 1 手，无法执行固定股数网格: lot_size=1000, price=98.75",1347_hk/minute/1347_hk_15m_grid_report.md,legacy
+1698.HK,TME - SW,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,0.71,0.49,间距 3.00% / 层数 7 / 止盈 1.50%,,1698_hk/minute/1698_hk_15m_grid_report.md,legacy
+1810.HK,XIAOMI - W,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,compare,compare,多策略对比,ok,0.0,0.0,推荐 网格；对比 网格 / 分钟急跌反抽 / 分钟反抽+冲高回落过滤,,1810_hk/minute/1810_hk_15m_strategy_compare_report.md,2026-05-22 04:51:53
+1810.HK,XIAOMI - W,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,0.0,0.0,间距 4.00% / 层数 7 / 止盈 1.00%,,1810_hk/minute/1810_hk_15m_grid_report.md,2026-05-22 04:51:53
+1810.HK,XIAOMI - W,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,1d,compare,compare,多策略对比,ok,9.66,4.35,推荐 日线超跌反弹；对比 网格 / 日线超跌反弹,,1810_hk/daily/1810_hk_daily_strategy_compare_report.md,2026-05-22 04:51:53
+1810.HK,XIAOMI - W,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,1d,grid,grid,网格,ok,-1.71,3.42,间距 7.00% / 层数 7 / 止盈 3.00%,,1810_hk/daily/1810_hk_grid_report.md,2026-05-22 04:51:53
+2015.HK,LI AUTO - W,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,-1.41,2.11,间距 4.00% / 层数 4 / 止盈 3.00%,,2015_hk/minute/2015_hk_15m_grid_report.md,legacy
+2382.HK,SUNNY OPTICAL,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,0.28,0.15,间距 2.00% / 层数 6 / 止盈 2.00%,,2382_hk/minute/2382_hk_15m_grid_report.md,legacy
+3690.HK,MEITUAN - W,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,0.0,0.0,间距 4.00% / 层数 6 / 止盈 1.00%,,3690_hk/minute/3690_hk_15m_grid_report.md,legacy
+3888.HK,KINGSOFT,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,-0.5,0.63,间距 4.00% / 层数 6 / 止盈 1.50%,,3888_hk/minute/3888_hk_15m_grid_report.md,legacy
+6618.HK,JD HEALTH,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,-2.0,2.9,间距 4.00% / 层数 4 / 止盈 1.00%,,6618_hk/minute/6618_hk_15m_grid_report.md,legacy
+6690.HK,HAIER SMARTHOME,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,-1.0,1.38,间距 4.00% / 层数 7 / 止盈 3.00%,,6690_hk/minute/6690_hk_15m_grid_report.md,legacy
+9618.HK,JD - SW,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,0.51,0.1,间距 1.50% / 层数 7 / 止盈 3.00%,,9618_hk/minute/9618_hk_15m_grid_report.md,legacy
+9626.HK,BILIBILI - W,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,-4.04,4.69,间距 4.00% / 层数 7 / 止盈 3.00%,,9626_hk/minute/9626_hk_15m_grid_report.md,legacy
+9660.HK,HORIZONROBOT - W,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,-4.47,5.46,间距 1.50% / 层数 5 / 止盈 2.00%,,9660_hk/minute/9660_hk_15m_grid_report.md,legacy
+9863.HK,LEAPMOTOR,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,0.32,1.35,间距 4.00% / 层数 7 / 止盈 1.00%,,9863_hk/minute/9863_hk_15m_grid_report.md,legacy
+9866.HK,NIO - SW,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,-2.18,5.17,间距 2.00% / 层数 7 / 止盈 3.00%,,9866_hk/minute/9866_hk_15m_grid_report.md,legacy
+9868.HK,XPENG - W,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,0.69,0.2,间距 4.00% / 层数 7 / 止盈 1.00%,,9868_hk/minute/9868_hk_15m_grid_report.md,legacy
+9888.HK,BIDU - SW,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,0.0,0.0,间距 4.00% / 层数 7 / 止盈 1.00%,,9888_hk/minute/9888_hk_15m_grid_report.md,legacy
+9961.HK,TRIP.COM - S,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,-3.64,5.11,间距 1.50% / 层数 4 / 止盈 2.00%,,9961_hk/minute/9961_hk_15m_grid_report.md,legacy
+9988.HK,BABA - W,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,0.0,0.0,间距 4.00% / 层数 7 / 止盈 3.00%,,9988_hk/minute/9988_hk_15m_grid_report.md,legacy
+9999.HK,NTES - S,恒生科技成分股,恒生科技指数官方 factsheet，2026-04，数据截至 2026-04-30,15m,grid,grid,网格,ok,0.48,0.87,间距 1.00% / 层数 5 / 止盈 1.50%,,9999_hk/minute/9999_hk_15m_grid_report.md,legacy

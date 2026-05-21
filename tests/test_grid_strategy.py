@@ -8,6 +8,7 @@ import pandas as pd
 from etf_strategy.cli import build_parser, handle_batch, handle_download, handle_run
 from etf_strategy.config import DEFAULT_DATA_PATH, DEFAULT_MINUTE_DATA_PATH, DEFAULT_MINUTE_OUTPUT_DIR
 from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
+from etf_strategy.reporting import build_report_index_entry, load_report_registry, register_report_index_entries
 from etf_strategy.settings import build_execution_config
 from etf_strategy.strategy.grid import (
     build_sample_window,
@@ -316,6 +317,25 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(args.interval, "15m")
         self.assertEqual(args.period, "60d")
 
+    def test_batch_parser_reads_compare_strategy_arguments(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "batch",
+                "--symbols",
+                "1810.HK",
+                "--interval",
+                "15m",
+                "--strategy",
+                "minute_rebound",
+                "--compare-strategies",
+            ]
+        )
+
+        self.assertEqual(args.strategy, "minute_rebound")
+        self.assertTrue(args.compare_strategies)
+
     def test_handle_batch_writes_summary_for_existing_data(self) -> None:
         parser = build_parser()
         workflow_result = {
@@ -368,15 +388,142 @@ class GridStrategyTests(unittest.TestCase):
 
             summary_path = Path(temp_dir) / "out" / "batch_summary.csv"
             summary = pd.read_csv(summary_path, encoding="utf-8-sig")
-            index_path = Path(temp_dir) / "reports" / "report_index_1d.md"
-            index_exists = index_path.exists()
+            index_path = Path(temp_dir) / "reports" / "report_index.md"
+            index_content = index_path.read_text(encoding="utf-8")
 
         self.assertEqual(result, 0)
         self.assertEqual(summary.iloc[0]["Status"], "ok")
-        self.assertTrue(index_exists)
+        self.assertIn("1810.HK", index_content)
+        self.assertIn("| grid | 网格 |", index_content)
         mock_workflow.assert_called_once()
         self.assertEqual(mock_workflow.call_args.kwargs["jobs"], 1)
         self.assertEqual(mock_workflow.call_args.kwargs["execution_config"].profile, "realistic")
+
+    def test_handle_batch_compare_updates_unified_report_index(self) -> None:
+        parser = build_parser()
+        comparison_results = {
+            "grid": {
+                "optimization": {
+                    "best_run": {
+                        "summary": {
+                            "StrategyKind": "grid",
+                            "GridSpacingPct": 4.0,
+                            "GridCount": 6,
+                            "TakeProfitPct": 3.0,
+                            "ReturnPct": -1.0,
+                            "NetReturnPct": -1.2,
+                        }
+                    }
+                },
+                "validation": {
+                    "run": {
+                        "summary": {
+                            "StrategyKind": "grid",
+                            "ReturnPct": -2.0,
+                            "NetReturnPct": -2.3,
+                            "MaxDrawdownPct": 5.0,
+                        }
+                    }
+                },
+            },
+            "minute_rebound": {
+                "optimization": {
+                    "best_run": {
+                        "summary": {
+                            "StrategyKind": "minute_rebound",
+                            "GridSpacingPct": 0.0,
+                            "GridCount": 0,
+                            "TakeProfitPct": 0.0,
+                            "ReturnPct": 1.0,
+                            "NetReturnPct": 0.8,
+                        }
+                    }
+                },
+                "validation": {
+                    "run": {
+                        "summary": {
+                            "StrategyKind": "minute_rebound",
+                            "ReturnPct": 1.2,
+                            "NetReturnPct": 1.1,
+                            "MaxDrawdownPct": 2.5,
+                        }
+                    }
+                },
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            args = parser.parse_args(
+                [
+                    "batch",
+                    "--symbols",
+                    "1810.HK",
+                    "--interval",
+                    "15m",
+                    "--strategy",
+                    "minute_rebound",
+                    "--compare-strategies",
+                    "--output-dir",
+                    str(Path(temp_dir) / "out"),
+                    "--report-dir",
+                    str(Path(temp_dir) / "reports"),
+                ]
+            )
+            with (
+                patch("etf_strategy.cli._run_comparison_workflows", return_value=comparison_results),
+                patch(
+                    "etf_strategy.cli.build_strategy_comparison_report",
+                    return_value=Path(temp_dir) / "reports" / "1810_hk" / "minute" / "1810_hk_15m_strategy_compare_report.md",
+                ),
+                patch("builtins.print"),
+            ):
+                result = handle_batch(args)
+
+            index_path = Path(temp_dir) / "reports" / "report_index.md"
+            index_content = index_path.read_text(encoding="utf-8")
+
+        self.assertEqual(result, 0)
+        self.assertIn("1810.HK", index_content)
+        self.assertIn("| compare | 多策略对比 |", index_content)
+        self.assertIn("推荐 分钟急跌反抽", index_content)
+
+    def test_register_report_index_entries_prefers_new_record_over_legacy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            report_root = Path(temp_dir) / "reports"
+            legacy_entry = build_report_index_entry(
+                report_path=report_root / "1810_hk" / "minute" / "legacy_report.md",
+                symbol="1810.HK",
+                interval="15m",
+                report_view="grid",
+                strategy_kind="grid",
+                strategy_name="网格",
+                validation_return_pct=0.0,
+                max_drawdown_pct=0.0,
+                note="旧记录",
+                generated_at="legacy",
+                report_root=report_root,
+            )
+            current_entry = build_report_index_entry(
+                report_path=report_root / "1810_hk" / "minute" / "current_report.md",
+                symbol="1810.HK",
+                interval="15m",
+                report_view="grid",
+                strategy_kind="grid",
+                strategy_name="网格",
+                validation_return_pct=1.5,
+                max_drawdown_pct=2.0,
+                note="新记录",
+                generated_at="2026-05-22 04:50:17",
+                report_root=report_root,
+            )
+
+            register_report_index_entries([legacy_entry], report_root=report_root)
+            register_report_index_entries([current_entry], report_root=report_root)
+            registry = load_report_registry(report_root=report_root)
+
+        self.assertEqual(len(registry), 1)
+        self.assertEqual(registry.iloc[0]["Note"], "新记录")
+        self.assertEqual(registry.iloc[0]["ReportPath"], "1810_hk/minute/current_report.md")
 
     def test_handle_batch_stops_when_download_fails(self) -> None:
         parser = build_parser()

@@ -1472,3 +1472,47 @@
 - 运行时取舍：
   - 原分钟过滤策略参数空间达到 `3888` 组，正式报告耗时过长
   - 已把分钟线默认参数空间收紧到 `96 + 192` 组，保留对比能力，同时让正式报告能在可接受时间内完成
+
+## 统一正式汇总报告
+
+### 状态
+
+进行中，已完成统一索引主链路改造，待本轮验证与产物迁移完成后收尾提交。
+
+### 修改方案
+
+把原先只服务 `hstech_15m` 批量网格的 `reports/hstech_15m_report_index.md` 下线，改成基于结构化注册表重建的唯一正式汇总报告 `reports/report_index.md`。后续只要有新的单标的报告、批量报告、单策略报告、多策略对比报告或失败记录，都统一更新这份总表。
+
+### 修改内容
+
+- 配置层：
+  - `etf_strategy/config.py` 新增 `DEFAULT_REPORT_INDEX_PATH=reports/report_index.md`
+  - `etf_strategy/config.py` 新增 `DEFAULT_REPORT_REGISTRY_PATH=reports/report_registry.csv`
+- 报告层：
+  - `etf_strategy/reporting.py` 新增统一注册表列定义、注册表读写、旧索引迁移解析和统一 Markdown 重建逻辑
+  - 统一索引按 `symbol + interval + report_view` 去重，`failed` 记录和 `compare` 视图保留在同一张表
+- CLI：
+  - `report/run/batch` 在生成正式报告后统一调用注册表刷新逻辑
+  - `batch` 支持 `--compare-strategies`，批量多策略对比也会进入统一汇总
+  - 单报告索引注册改成显式传入 `symbol` 与 `strategy_kind`，避免依赖工作流返回值里必须带 `Symbol`
+  - 删除旧的 `_build_batch_report_index()`，避免仓库里并存两套汇总逻辑
+- 测试：
+  - `tests/test_grid_strategy.py` 改为断言 `reports/report_index.md`
+  - 新增批量 `--compare-strategies` 解析与统一索引写入覆盖
+  - `tests/test_repo_contracts.py` 改为检查 README 顶部统一索引入口
+- 文档：
+  - `README.md`
+  - `doc/index.md`
+  - `doc/development_guide.md`
+
+### 设计取舍
+
+- 不再直接往 Markdown 索引里追加行，而是先写入 `report_registry.csv`，再重建 `report_index.md`。这样可以稳定覆盖旧记录，也便于同一 `symbol + interval + report_view` 后续重跑时替换旧结果。
+- `compare` 视图按单独一行收录，而不是把对比里的每个策略拆散写入，避免“同一份多策略报告”在总表里重复出现多行链接。
+- 失败记录仍保留在统一总表里，不单独拆出失败索引，因为批量运行时排查最重要的是能在同一张表里同时看到成功和失败。
+
+### 验证
+
+- `py -3.13 -m unittest tests.test_grid_strategy tests.test_repo_contracts tests.test_yahoo_data`
+- `py -3.13 -m compileall etf_strategy tests`
+- `git diff --check`

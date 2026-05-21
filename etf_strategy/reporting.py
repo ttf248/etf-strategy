@@ -19,7 +19,15 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from loguru import logger
 
-from etf_strategy.config import DEFAULT_MINUTE_REPORT_DIR, DEFAULT_REPORT_DIR
+from etf_strategy.config import (
+    DEFAULT_MINUTE_REPORT_DIR,
+    DEFAULT_REPORT_DIR,
+    DEFAULT_REPORT_INDEX_PATH,
+    DEFAULT_REPORT_REGISTRY_PATH,
+    DEFAULT_REPORT_ROOT,
+    DEFAULT_SYMBOL,
+)
+from etf_strategy.symbols import CN_ETF_513050, HSTECH_CONSTITUENTS, SymbolSpec
 
 
 def configure_matplotlib() -> None:
@@ -27,6 +35,276 @@ def configure_matplotlib() -> None:
     plt.style.use("seaborn-v0_8-whitegrid")
     plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS", "DejaVu Sans"]
     plt.rcParams["axes.unicode_minus"] = False
+
+
+REPORT_INDEX_COLUMNS = [
+    "Symbol",
+    "Name",
+    "Category",
+    "Source",
+    "Interval",
+    "ReportView",
+    "StrategyKind",
+    "StrategyName",
+    "Status",
+    "ValidationNetReturnPct",
+    "ValidationMaxDrawdownPct",
+    "Note",
+    "Error",
+    "ReportPath",
+    "GeneratedAt",
+]
+
+
+def _symbol_specs_by_symbol() -> dict[str, SymbolSpec]:
+    specs = {spec.symbol.upper(): spec for spec in HSTECH_CONSTITUENTS}
+    specs[CN_ETF_513050.symbol.upper()] = CN_ETF_513050
+    return specs
+
+
+def resolve_symbol_spec(symbol: str) -> SymbolSpec:
+    normalized = symbol.strip().upper()
+    specs = _symbol_specs_by_symbol()
+    if normalized in specs:
+        return specs[normalized]
+    if normalized == DEFAULT_SYMBOL:
+        return SymbolSpec(symbol=normalized, name=normalized, category="默认样本", source="项目默认样本")
+    return SymbolSpec(symbol=normalized, name=normalized, category="自定义标的", source="命令行或本地报告")
+
+
+def _report_index_key(entry: dict[str, object]) -> str:
+    return "|".join(
+        [
+            str(entry.get("Symbol", "")).upper(),
+            str(entry.get("Interval", "")),
+            str(entry.get("ReportView", "")),
+        ]
+    )
+
+
+def _generated_at_sort_key(value: object) -> tuple[int, str]:
+    text = str(value or "")
+    if text == "legacy":
+        return (0, "")
+    return (1, text)
+
+
+def _relative_markdown_link(target: str | Path, base_dir: Path) -> str:
+    target_path = Path(target)
+    if not target_path.is_absolute():
+        target_path = target_path.resolve()
+    return target_path.relative_to(base_dir.resolve()).as_posix()
+
+
+def _registry_path(report_root: str | Path = DEFAULT_REPORT_ROOT) -> Path:
+    root = Path(report_root)
+    if root.resolve() == DEFAULT_REPORT_ROOT.resolve():
+        return DEFAULT_REPORT_REGISTRY_PATH
+    return root / DEFAULT_REPORT_REGISTRY_PATH.name
+
+
+def _index_path(report_root: str | Path = DEFAULT_REPORT_ROOT) -> Path:
+    root = Path(report_root)
+    if root.resolve() == DEFAULT_REPORT_ROOT.resolve():
+        return DEFAULT_REPORT_INDEX_PATH
+    return root / DEFAULT_REPORT_INDEX_PATH.name
+
+
+def load_report_registry(report_root: str | Path = DEFAULT_REPORT_ROOT) -> pd.DataFrame:
+    registry_path = _registry_path(report_root)
+    if not registry_path.exists():
+        return pd.DataFrame(columns=REPORT_INDEX_COLUMNS)
+    registry = pd.read_csv(registry_path, encoding="utf-8-sig")
+    for column in REPORT_INDEX_COLUMNS:
+        if column not in registry.columns:
+            registry[column] = ""
+    return registry.loc[:, REPORT_INDEX_COLUMNS].fillna("")
+
+
+def register_report_index_entries(
+    entries: list[dict[str, object]],
+    report_root: str | Path = DEFAULT_REPORT_ROOT,
+) -> Path:
+    """把报告记录写入统一注册表，后续再统一重建 Markdown 总报告。"""
+    registry_path = _registry_path(report_root)
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry = load_report_registry(report_root)
+    merged_entries = {
+        _report_index_key(record): {column: record.get(column, "") for column in REPORT_INDEX_COLUMNS}
+        for record in registry.to_dict(orient="records")
+    }
+    for entry in entries:
+        normalized = {column: entry.get(column, "") for column in REPORT_INDEX_COLUMNS}
+        key = _report_index_key(normalized)
+        current = merged_entries.get(key)
+        if current is None:
+            merged_entries[key] = normalized
+            continue
+        current_status = str(current.get("Status", ""))
+        new_status = str(normalized.get("Status", ""))
+        current_generated = _generated_at_sort_key(current.get("GeneratedAt", ""))
+        new_generated = _generated_at_sort_key(normalized.get("GeneratedAt", ""))
+        if current_status != "ok" and new_status == "ok":
+            merged_entries[key] = normalized
+        elif current_status == new_status and new_generated >= current_generated:
+            merged_entries[key] = normalized
+    updated = pd.DataFrame(merged_entries.values(), columns=REPORT_INDEX_COLUMNS)
+    updated = updated.sort_values(["Category", "Symbol", "Interval", "ReportView"], na_position="last").reset_index(drop=True)
+    updated.to_csv(registry_path, index=False, encoding="utf-8-sig")
+    return registry_path
+
+
+def _parse_legacy_batch_index(report_root: str | Path = DEFAULT_REPORT_ROOT) -> list[dict[str, object]]:
+    """兼容历史 hstech_15m_report_index.md，迁移后可直接删除旧文件。"""
+    legacy_path = Path(report_root) / "hstech_15m_report_index.md"
+    if not legacy_path.exists():
+        return []
+    entries: list[dict[str, object]] = []
+    for line in legacy_path.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("| "):
+            continue
+        if "分类" in line or " --- " in line:
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) != 9:
+            continue
+        category, symbol, name, interval, validation_return, max_drawdown, status, note, report_cell = cells
+        link_match = re.search(r"\(([^)]+)\)", report_cell)
+        report_path = link_match.group(1) if link_match else ""
+        spec = resolve_symbol_spec(symbol)
+        entries.append(
+            {
+                "Symbol": symbol,
+                "Name": name or spec.name,
+                "Category": category or spec.category,
+                "Source": spec.source,
+                "Interval": interval,
+                "ReportView": "grid",
+                "StrategyKind": "grid",
+                "StrategyName": "网格",
+                "Status": status,
+                "ValidationNetReturnPct": validation_return.replace("%", "") if validation_return != "-" else "",
+                "ValidationMaxDrawdownPct": max_drawdown.replace("%", "") if max_drawdown != "-" else "",
+                "Note": note,
+                "Error": note if status != "ok" else "",
+                "ReportPath": report_path,
+                "GeneratedAt": "legacy",
+            }
+        )
+    return entries
+
+
+def bootstrap_report_registry(report_root: str | Path = DEFAULT_REPORT_ROOT) -> Path:
+    """用历史批量索引初始化统一注册表。"""
+    registry = load_report_registry(report_root)
+    if not registry.empty:
+        return _registry_path(report_root)
+    legacy_entries = _parse_legacy_batch_index(report_root)
+    if not legacy_entries:
+        return _registry_path(report_root)
+    return register_report_index_entries(legacy_entries, report_root=report_root)
+
+
+def build_report_index_entry(
+    report_path: str | Path,
+    symbol: str,
+    interval: str,
+    report_view: str,
+    strategy_kind: str,
+    strategy_name: str,
+    validation_return_pct: float | str | None,
+    max_drawdown_pct: float | str | None,
+    note: str,
+    status: str = "ok",
+    error: str = "",
+    category: str | None = None,
+    name: str | None = None,
+    source: str | None = None,
+    generated_at: str | None = None,
+    report_root: str | Path = DEFAULT_REPORT_ROOT,
+) -> dict[str, object]:
+    spec = resolve_symbol_spec(symbol)
+    return {
+        "Symbol": symbol.upper(),
+        "Name": name or spec.name,
+        "Category": category or spec.category,
+        "Source": source or spec.source,
+        "Interval": interval,
+        "ReportView": report_view,
+        "StrategyKind": strategy_kind,
+        "StrategyName": strategy_name,
+        "Status": status,
+        "ValidationNetReturnPct": validation_return_pct if validation_return_pct is not None else "",
+        "ValidationMaxDrawdownPct": max_drawdown_pct if max_drawdown_pct is not None else "",
+        "Note": note,
+        "Error": error,
+        "ReportPath": _relative_markdown_link(report_path, Path(report_root)),
+        "GeneratedAt": generated_at or pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+
+def build_unified_report_index(report_root: str | Path = DEFAULT_REPORT_ROOT) -> Path:
+    """根据统一注册表重建唯一 Markdown 汇总报告。"""
+    bootstrap_report_registry(report_root)
+    registry = load_report_registry(report_root)
+    report_root_path = Path(report_root)
+    report_root_path.mkdir(parents=True, exist_ok=True)
+    target = _index_path(report_root)
+    if registry.empty:
+        target.write_text("# 正式报告总览\n\n暂无记录。\n", encoding="utf-8")
+        return target
+
+    registry["ValidationNetReturnPct"] = pd.to_numeric(registry["ValidationNetReturnPct"], errors="coerce")
+    registry["ValidationMaxDrawdownPct"] = pd.to_numeric(registry["ValidationMaxDrawdownPct"], errors="coerce")
+    ok_rows = registry[registry["Status"] == "ok"].copy()
+    failed_rows = registry[registry["Status"] != "ok"].copy()
+
+    table_rows: list[str] = []
+    for row in registry.sort_values(["Category", "Symbol", "Interval", "ReportView"]).itertuples(index=False):
+        report_target = str(row.ReportPath)
+        report_link = f"[打开报告]({report_target})" if report_target else "未生成"
+        validation_return = "-" if pd.isna(row.ValidationNetReturnPct) else f"{float(row.ValidationNetReturnPct):.2f}%"
+        max_drawdown = "-" if pd.isna(row.ValidationMaxDrawdownPct) else f"{float(row.ValidationMaxDrawdownPct):.2f}%"
+        table_rows.append(
+            "| "
+            + " | ".join(
+                [
+                    str(row.Category),
+                    str(row.Symbol),
+                    str(row.Name),
+                    str(row.Interval),
+                    str(row.ReportView),
+                    str(row.StrategyName),
+                    validation_return,
+                    max_drawdown,
+                    str(row.Status),
+                    str(row.Note).replace("|", "/"),
+                    report_link,
+                ]
+            )
+            + " |"
+        )
+
+    content = "\n".join(
+        [
+            "# 正式报告总览",
+            "",
+            "## 汇总说明",
+            "",
+            f"- 正式报告总数：`{len(registry)}`，成功 `{'%d' % len(ok_rows)}`，失败 `{'%d' % len(failed_rows)}`。",
+            "- 这份文件是唯一正式汇总报告；单个合约、批量合约、单策略报告和多策略对比报告都收录在同一张表里。",
+            "- 主键口径：`symbol + interval + report_view`；同一视图重复生成时会覆盖旧记录。",
+            "",
+            "## 报告列表",
+            "",
+            "| 分类 | 标的 | 名称 | 周期 | 视图 | 策略 | 样本外收益 | 最大回撤 | 状态 | 备注 | 报告 |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+            *table_rows,
+            "",
+        ]
+    )
+    target.write_text(content, encoding="utf-8")
+    return target
 
 
 def plot_run_result(run_result: dict[str, object], output_path: str | Path, title: str) -> Path:
