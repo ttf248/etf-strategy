@@ -8,6 +8,20 @@
 - 单一数据源：仅保留 Yahoo 数据链路
 - 可解释回测：日线主流程 + 分钟线补充研究，图表、交易表格和中文报告同时输出
 
+## 仓库内置正式样本
+
+为了保证默认流程可复现，仓库会直接跟踪两份正式样本数据：
+
+- `data/processed/xiaomi_1810_hk_daily.csv`
+- `data/processed/xiaomi_1810_hk_15m.csv`
+
+它们分别对应：
+
+- 日线主流程默认输入
+- `15m` 分钟线研究默认输入
+
+测试临时 CSV 和一次性研究样本不会一起纳入版本控制。
+
 ## 方法文档
 
 - [日线网格参数测试方法](doc/grid_parameter_search.md)
@@ -208,6 +222,7 @@ py -3.13 -m unittest tests.test_grid_strategy
 
 ## 输出说明
 
+- `data/processed/`：默认正式样本输入，当前只跟踪日线与 `15m` 两份小米样本
 - `outputs/`：运行时中间文件，默认忽略版本控制
 - `outputs/minute/`：分钟线研究中间文件，默认忽略版本控制
 - `reports/`：图表、交易表格与正式中文报告
