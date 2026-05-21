@@ -51,8 +51,8 @@ def build_parser() -> argparse.ArgumentParser:
     # 子命令保持扁平结构，避免用户为了跑一次回测需要记忆多层嵌套命令。
     download_parser = subparsers.add_parser("download", help="下载并标准化历史行情")
     download_parser.add_argument("--symbol", default=DEFAULT_SYMBOL, help="Yahoo Finance 标的代码")
-    download_parser.add_argument("--start", help="开始日期，格式 YYYY-MM-DD，日线必填")
-    download_parser.add_argument("--end", help="结束日期，格式 YYYY-MM-DD，日线必填")
+    download_parser.add_argument("--start", help="开始日期，格式 YYYY-MM-DD；日线不传时默认下载可用全历史")
+    download_parser.add_argument("--end", help="结束日期，格式 YYYY-MM-DD；和 --start 一起使用")
     download_parser.add_argument("--interval", default="1d", help="K 线周期，例如 1d、5m、15m、60m")
     download_parser.add_argument(
         "--period",
@@ -118,8 +118,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_parser = subparsers.add_parser("run", help="串联下载、寻参、验证和报告生成")
     run_parser.add_argument("--symbol", default=DEFAULT_SYMBOL, help="Yahoo Finance 标的代码")
-    run_parser.add_argument("--start", help="开始日期，格式 YYYY-MM-DD，日线必填")
-    run_parser.add_argument("--end", help="结束日期，格式 YYYY-MM-DD，日线必填")
+    run_parser.add_argument("--start", help="开始日期，格式 YYYY-MM-DD；日线不传时默认下载可用全历史")
+    run_parser.add_argument("--end", help="结束日期，格式 YYYY-MM-DD；和 --start 一起使用")
     run_parser.add_argument("--interval", default="1d", help="K 线周期，例如 1d、5m、15m、60m")
     run_parser.add_argument("--period", default=DEFAULT_MINUTE_PERIOD, help="分钟 K 线优先使用的区间，例如 5d、30d、60d")
     run_parser.add_argument(
@@ -136,20 +136,33 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _validate_daily_date_range(args: argparse.Namespace, command_name: str) -> None:
+    """校验日线显式时间区间参数。"""
+    if is_intraday_interval(args.interval):
+        return
+    if bool(args.start) ^ bool(args.end):
+        raise ValueError(f"{command_name} 在日线显式指定区间时，必须同时提供 --start 和 --end。")
+
+
+def _resolve_download_output_path(symbol: str, interval: str, period: str | None, output: str | None) -> Path:
+    """统一计算下载落盘路径。
+
+    默认样本仍保留固定文件名，方便 README、文档和报告复用；
+    其余标的或周期则按 `symbol + interval` 自动生成路径。
+    """
+    if output is not None:
+        return Path(output)
+    if interval == DEFAULT_MINUTE_INTERVAL and period == DEFAULT_MINUTE_PERIOD and symbol.upper() == DEFAULT_SYMBOL:
+        return DEFAULT_MINUTE_DATA_PATH
+    if interval == "1d" and symbol.upper() == DEFAULT_SYMBOL:
+        return DEFAULT_DATA_PATH
+    return build_default_output_path(symbol, interval)
+
+
 def handle_download(args: argparse.Namespace) -> int:
     """执行下载命令。"""
-    if not is_intraday_interval(args.interval) and (not args.start or not args.end):
-        raise ValueError("日线下载必须提供 --start 和 --end。")
-
-    output = args.output
-    if output is None:
-        # 常用研究路径给固定默认文件名，其余标的和周期自动拼接输出路径。
-        if args.interval == DEFAULT_MINUTE_INTERVAL and args.period == DEFAULT_MINUTE_PERIOD:
-            output = str(DEFAULT_MINUTE_DATA_PATH)
-        elif args.interval == "1d":
-            output = str(DEFAULT_DATA_PATH)
-        else:
-            output = str(build_default_output_path(args.symbol, args.interval))
+    _validate_daily_date_range(args, "download")
+    output = _resolve_download_output_path(args.symbol, args.interval, args.period, args.output)
 
     bars = download_price_bars(
         symbol=args.symbol,
@@ -159,7 +172,8 @@ def handle_download(args: argparse.Namespace) -> int:
         period=args.period if is_intraday_interval(args.interval) else None,
         proxy=args.proxy,
     )
-    output_path = save_price_bars(bars, output)
+    # 下载命令默认做增量合并，分钟线能保留本地历史，日线也不会因为重跑而覆盖旧样本。
+    output_path = save_price_bars(bars, output, interval=args.interval, merge_with_existing=True)
     print(f"下载完成: {output_path}")
     return 0
 
@@ -240,12 +254,10 @@ def handle_backtest(args: argparse.Namespace) -> int:
 def handle_run(args: argparse.Namespace) -> int:
     """执行“下载 -> 寻参 -> 验证 -> 报告”的完整链路。"""
     intraday_mode = is_intraday_interval(args.interval)
-    if not is_intraday_interval(args.interval) and (not args.start or not args.end):
-        raise ValueError("日线完整流程必须提供 --start 和 --end。")
-
+    _validate_daily_date_range(args, "run")
     output_dir = Path(args.output_dir or (DEFAULT_MINUTE_OUTPUT_DIR if intraday_mode else DEFAULT_OUTPUT_DIR))
     report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR if intraday_mode else DEFAULT_REPORT_DIR)
-    data_path = DEFAULT_MINUTE_DATA_PATH if intraday_mode else DEFAULT_DATA_PATH
+    data_path = _resolve_download_output_path(args.symbol, args.interval, args.period, output=None)
     bars = download_price_bars(
         symbol=args.symbol,
         interval=args.interval,
@@ -254,9 +266,9 @@ def handle_run(args: argparse.Namespace) -> int:
         period=args.period if intraday_mode else None,
         proxy=args.proxy,
     )
-    save_price_bars(bars, data_path)
+    save_price_bars(bars, data_path, interval=args.interval, merge_with_existing=True)
 
-    # `run` 总是先把最新下载结果落盘，再交给统一工作流和报告层复用。
+    # `run` 总是先把最新下载结果和本地样本合并落盘，再交给统一工作流和报告层复用。
     if intraday_mode:
         result = run_minute_full_workflow(
             data_path=data_path,

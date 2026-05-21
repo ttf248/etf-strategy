@@ -3,7 +3,8 @@ from unittest.mock import Mock, patch
 
 import pandas as pd
 
-from etf_strategy.cli import build_parser
+from etf_strategy.cli import build_parser, handle_download, handle_run
+from etf_strategy.config import DEFAULT_DATA_PATH, DEFAULT_OUTPUT_DIR
 from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
 from etf_strategy.strategy.grid import (
     build_sample_window,
@@ -79,6 +80,100 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(args.period, "60d")
         self.assertIsNone(args.start)
         self.assertIsNone(args.end)
+
+    def test_handle_download_allows_daily_without_range_and_merges_existing(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["download", "--symbol", "1810.HK"])
+        bars = pd.DataFrame(
+            {
+                "Date": ["2026-05-20"],
+                "Open": [10.0],
+                "High": [10.2],
+                "Low": [9.8],
+                "Close": [10.1],
+                "Volume": [100],
+            }
+        )
+
+        with (
+            patch("etf_strategy.cli.download_price_bars", return_value=bars) as mock_download,
+            patch("etf_strategy.cli.save_price_bars", return_value=DEFAULT_DATA_PATH) as mock_save,
+            patch("builtins.print"),
+        ):
+            result = handle_download(args)
+
+        self.assertEqual(result, 0)
+        mock_download.assert_called_once_with(
+            symbol="1810.HK",
+            interval="1d",
+            start_date=None,
+            end_date=None,
+            period=None,
+            proxy=None,
+        )
+        mock_save.assert_called_once_with(bars, DEFAULT_DATA_PATH, interval="1d", merge_with_existing=True)
+
+    def test_handle_run_allows_daily_without_range_and_merges_before_workflow(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["run", "--symbol", "1810.HK"])
+        bars = pd.DataFrame(
+            {
+                "Date": ["2026-05-20"],
+                "Open": [10.0],
+                "High": [10.2],
+                "Low": [9.8],
+                "Close": [10.1],
+                "Volume": [100],
+            }
+        )
+        workflow_result = {
+            "combined_summary_path": "outputs/combined_summary.csv",
+            "optimization": {
+                "best_run": {
+                    "summary": {
+                        "GridSpacingPct": 7.0,
+                        "GridCount": 5,
+                        "TakeProfitPct": 3.0,
+                    }
+                }
+            },
+            "validation": {
+                "run": {
+                    "summary": {
+                        "ReturnPct": 1.2,
+                        "MaxDrawdownPct": 4.5,
+                        "CostReductionPct": 2.3,
+                    }
+                }
+            },
+        }
+
+        with (
+            patch("etf_strategy.cli.download_price_bars", return_value=bars) as mock_download,
+            patch("etf_strategy.cli.save_price_bars", return_value=DEFAULT_DATA_PATH) as mock_save,
+            patch("etf_strategy.cli.run_full_workflow", return_value=workflow_result) as mock_workflow,
+            patch("etf_strategy.cli.build_report_markdown", return_value="reports/1810_hk_grid_report.md"),
+            patch("builtins.print"),
+        ):
+            result = handle_run(args)
+
+        self.assertEqual(result, 0)
+        mock_download.assert_called_once_with(
+            symbol="1810.HK",
+            interval="1d",
+            start_date=None,
+            end_date=None,
+            period=None,
+            proxy=None,
+        )
+        mock_save.assert_called_once_with(bars, DEFAULT_DATA_PATH, interval="1d", merge_with_existing=True)
+        mock_workflow.assert_called_once_with(
+            data_path=DEFAULT_DATA_PATH,
+            symbol="1810.HK",
+            output_dir=DEFAULT_OUTPUT_DIR,
+            validation_start="2026-01-01",
+            lookback_days=120,
+        )
 
     def test_backtest_parser_reads_grid_parameters(self) -> None:
         parser = build_parser()
