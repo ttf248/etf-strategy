@@ -6,7 +6,12 @@
 
 - 统一入口：所有命令都从根目录 `main.py` 进入
 - 单一数据源：仅保留 Yahoo 数据链路
-- 可解释回测：样本内寻参、2026 样本外验证、图表和中文报告同时输出
+- 可解释回测：日线主流程 + 分钟线补充研究，图表和中文报告同时输出
+
+## 方法文档
+
+- [日线网格参数测试方法](doc/grid_parameter_search.md)
+- [Yahoo 分钟线支持与 15 分钟回测说明](doc/minute_grid_research.md)
 
 ## 当前策略口径
 
@@ -88,6 +93,14 @@ py -3.13 main.py download --start 2024-01-01 --end 2026-05-22 --proxy http://127
 
 默认输出到 `data/processed/xiaomi_1810_hk_daily.csv`。
 
+如果要下载默认分钟线研究样本：
+
+```powershell
+py -3.13 main.py download --symbol 1810.HK --interval 15m --period 60d --proxy http://127.0.0.1:7897
+```
+
+默认输出到 `data/processed/xiaomi_1810_hk_15m.csv`。
+
 ### 2. 样本内参数搜索
 
 ```powershell
@@ -125,6 +138,17 @@ py -3.13 main.py report --data data/processed/xiaomi_1810_hk_daily.csv
 - 中间结果：`outputs/`
 - 报告目录：`reports/`
 
+如果要生成 15 分钟线报告：
+
+```powershell
+py -3.13 main.py report --data data/processed/xiaomi_1810_hk_15m.csv --interval 15m
+```
+
+对应输出到：
+
+- 中间结果：`outputs/minute/`
+- 报告目录：`reports/minute/`
+
 ### 5. 一键执行完整流程
 
 ```powershell
@@ -138,6 +162,14 @@ py -3.13 main.py run --start 2024-01-01 --end 2026-05-22 --proxy http://127.0.0.
 3. 2026 样本外验证
 4. 生成图表和中文报告
 
+如果要跑默认 15 分钟线研究流程：
+
+```powershell
+py -3.13 main.py run --interval 15m --period 60d --proxy http://127.0.0.1:7897
+```
+
+分钟线默认使用最近 `60d` 数据，并按 `75% / 25%` 自动拆分样本内与样本外。
+
 ## 验证
 
 ```powershell
@@ -147,7 +179,9 @@ py -3.13 -m unittest tests.test_grid_strategy
 ## 输出说明
 
 - `outputs/`：运行时中间文件，默认忽略版本控制
+- `outputs/minute/`：分钟线研究中间文件，默认忽略版本控制
 - `reports/`：图表与正式中文报告
+- `reports/minute/`：15 分钟线研究报告
 - `log/`：日志输出
 
 ## 设计取舍

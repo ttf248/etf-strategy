@@ -219,23 +219,24 @@ def handle_backtest(args: argparse.Namespace) -> int:
 
 
 def handle_run(args: argparse.Namespace) -> int:
+    intraday_mode = is_intraday_interval(args.interval)
     if not is_intraday_interval(args.interval) and (not args.start or not args.end):
         raise ValueError("日线完整流程必须提供 --start 和 --end。")
 
-    output_dir = Path(args.output_dir or (DEFAULT_MINUTE_OUTPUT_DIR if is_intraday_interval(args.interval) else DEFAULT_OUTPUT_DIR))
-    report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR if is_intraday_interval(args.interval) else DEFAULT_REPORT_DIR)
-    data_path = DEFAULT_MINUTE_DATA_PATH if is_intraday_interval(args.interval) else DEFAULT_DATA_PATH
+    output_dir = Path(args.output_dir or (DEFAULT_MINUTE_OUTPUT_DIR if intraday_mode else DEFAULT_OUTPUT_DIR))
+    report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR if intraday_mode else DEFAULT_REPORT_DIR)
+    data_path = DEFAULT_MINUTE_DATA_PATH if intraday_mode else DEFAULT_DATA_PATH
     bars = download_price_bars(
         symbol=args.symbol,
         interval=args.interval,
         start_date=args.start if args.interval == "1d" else None,
         end_date=args.end if args.interval == "1d" else None,
-        period=args.period if is_intraday_interval(args.interval) else None,
+        period=args.period if intraday_mode else None,
         proxy=args.proxy,
     )
     save_price_bars(bars, data_path)
 
-    if is_intraday_interval(args.interval):
+    if intraday_mode:
         result = run_minute_full_workflow(
             data_path=data_path,
             output_dir=output_dir,
@@ -261,7 +262,7 @@ def handle_run(args: argparse.Namespace) -> int:
         f"take_profit={best_summary['TakeProfitPct']:.2f}%"
     )
     print(
-        "2026 样本外表现: "
+        f"{'分钟线样本外表现' if intraday_mode else '2026 样本外表现'}: "
         f"return={validation_summary['ReturnPct']:.2f}% "
         f"max_drawdown={validation_summary['MaxDrawdownPct']:.2f}% "
         f"cost_reduction={validation_summary['CostReductionPct']:.2f}%"
