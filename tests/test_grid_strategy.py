@@ -5,6 +5,7 @@ from unittest.mock import ANY, Mock, patch
 
 import pandas as pd
 
+import etf_strategy.data.market_rules as market_rules
 from etf_strategy.cli import build_parser, handle_batch, handle_download, handle_run
 from etf_strategy.config import DEFAULT_DATA_PATH, DEFAULT_MINUTE_DATA_PATH, DEFAULT_MINUTE_OUTPUT_DIR
 from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
@@ -743,11 +744,24 @@ class GridStrategyTests(unittest.TestCase):
         """
         mock_get.return_value = mock_response
 
-        rule = resolve_lot_size_rule("1810.HK")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_path = Path(temp_dir) / "hk_lot_size_cache.json"
+            original_cache_path = market_rules.HK_LOT_SIZE_CACHE_PATH
+            original_cache = market_rules._HK_LOT_SIZE_CACHE
+            market_rules.HK_LOT_SIZE_CACHE_PATH = cache_path
+            market_rules._HK_LOT_SIZE_CACHE = None
+            try:
+                rule = resolve_lot_size_rule("1810.HK")
+                cached_rule = resolve_lot_size_rule("1810.HK")
+            finally:
+                market_rules.HK_LOT_SIZE_CACHE_PATH = original_cache_path
+                market_rules._HK_LOT_SIZE_CACHE = original_cache
 
         self.assertEqual(rule.market, "HK")
         self.assertEqual(rule.lot_size, 200)
         self.assertIn("AASTOCKS", rule.source)
+        self.assertEqual(cached_rule.lot_size, 200)
+        self.assertEqual(mock_get.call_count, 1)
 
     def test_resolve_lot_size_rule_rejects_unsupported_market(self) -> None:
         with self.assertRaisesRegex(ValueError, "暂不支持"):

@@ -14,7 +14,7 @@ import pandas as pd
 from loguru import logger
 
 from etf_strategy.config import DEFAULT_OUTPUT_DIR
-from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
+from etf_strategy.data.market_rules import LotSizeRule, infer_symbol_from_data_path, resolve_lot_size_rule
 from etf_strategy.settings import (
     DAILY_REBOUND_DEVIATIONS,
     DAILY_REBOUND_MA_WINDOWS,
@@ -130,15 +130,17 @@ def run_optimization_workflow(
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     jobs: int = DEFAULT_JOBS,
     cache_dir: str | Path | None = None,
+    data: pd.DataFrame | None = None,
+    lot_rule: LotSizeRule | None = None,
 ) -> dict[str, object]:
     """执行样本内参数搜索并保存结果。"""
     started_at = perf_counter()
     execution = execution_config or build_execution_config("research")
     resolved_symbol = _resolve_symbol(symbol, data_path)
-    lot_rule = resolve_lot_size_rule(resolved_symbol)
-    data = load_price_frame(data_path)
+    effective_lot_rule = lot_rule or resolve_lot_size_rule(resolved_symbol)
+    price_frame = data if data is not None else load_price_frame(data_path)
     decline_window, in_sample, _ = split_in_sample_and_validation(
-        data=data,
+        data=price_frame,
         validation_start=validation_start,
         lookback_days=lookback_days,
     )
@@ -149,9 +151,9 @@ def run_optimization_workflow(
         logger.info(
             "[1/2] 开始执行日线样本内寻参: strategy={} symbol={} data={} rows={} combinations={}",
             strategy_kind,
-            lot_rule.symbol,
+            effective_lot_rule.symbol,
             data_path,
-            len(data),
+            len(price_frame),
             _count_parameter_combinations(spacings, grid_counts, take_profits),
         )
         results, best_run = optimize_grid_parameters(
@@ -160,10 +162,10 @@ def run_optimization_workflow(
             grid_counts=grid_counts,
             take_profits=take_profits,
             scenario_name="in_sample",
-            symbol=lot_rule.symbol,
-            market=lot_rule.market,
-            lot_size=lot_rule.lot_size,
-            lot_size_source=lot_rule.source,
+            symbol=effective_lot_rule.symbol,
+            market=effective_lot_rule.market,
+            lot_size=effective_lot_rule.lot_size,
+            lot_size_source=effective_lot_rule.source,
             execution_config=execution,
             wf_window_count=wf_window_count,
             wf_min_window_size=wf_min_window_size,
@@ -175,9 +177,9 @@ def run_optimization_workflow(
         logger.info(
             "[1/2] 开始执行日线样本内寻参: strategy={} symbol={} data={} rows={} combinations={}",
             strategy_kind,
-            lot_rule.symbol,
+            effective_lot_rule.symbol,
             data_path,
-            len(data),
+            len(price_frame),
             _count_parameter_space_candidates(parameter_space),
         )
         results, best_run = optimize_rebound_parameters(
@@ -185,10 +187,10 @@ def run_optimization_workflow(
             strategy_kind=strategy_kind,
             parameter_space=parameter_space,
             scenario_name="in_sample",
-            symbol=lot_rule.symbol,
-            market=lot_rule.market,
-            lot_size=lot_rule.lot_size,
-            lot_size_source=lot_rule.source,
+            symbol=effective_lot_rule.symbol,
+            market=effective_lot_rule.market,
+            lot_size=effective_lot_rule.lot_size,
+            lot_size_source=effective_lot_rule.source,
             execution_config=execution,
             wf_window_count=wf_window_count,
             wf_min_window_size=wf_min_window_size,
@@ -233,25 +235,27 @@ def run_validation_workflow(
     strategy_kind: StrategyKind = "grid",
     strategy_params: dict[str, object] | None = None,
     execution_config: ExecutionConfig | None = None,
+    data: pd.DataFrame | None = None,
+    lot_rule: LotSizeRule | None = None,
 ) -> dict[str, object]:
     """执行 2026 样本外验证。"""
     from etf_strategy.strategy.grid import run_grid_backtest
 
     started_at = perf_counter()
     resolved_symbol = _resolve_symbol(symbol, data_path)
-    lot_rule = resolve_lot_size_rule(resolved_symbol)
+    effective_lot_rule = lot_rule or resolve_lot_size_rule(resolved_symbol)
     execution = execution_config or build_execution_config("research")
-    data = load_price_frame(data_path)
+    price_frame = data if data is not None else load_price_frame(data_path)
     logger.info(
         "[2/2] 开始执行日线样本外验证: symbol={} data={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
-        lot_rule.symbol,
+        effective_lot_rule.symbol,
         data_path,
         grid_spacing_pct * 100,
         grid_count,
         take_profit_pct * 100,
     )
     _, _, validation = split_in_sample_and_validation(
-        data=data,
+        data=price_frame,
         validation_start=validation_start,
         lookback_days=lookback_days,
     )
@@ -262,10 +266,10 @@ def run_validation_workflow(
             grid_spacing_pct=grid_spacing_pct,
             grid_count=grid_count,
             take_profit_pct=take_profit_pct,
-            symbol=lot_rule.symbol,
-            market=lot_rule.market,
-            lot_size=lot_rule.lot_size,
-            lot_size_source=lot_rule.source,
+            symbol=effective_lot_rule.symbol,
+            market=effective_lot_rule.market,
+            lot_size=effective_lot_rule.lot_size,
+            lot_size_source=effective_lot_rule.source,
             execution_config=execution,
         )
         prefix = "validation_2026"
@@ -276,10 +280,10 @@ def run_validation_workflow(
             data=validation,
             scenario_name="validation_2026",
             strategy_kind=strategy_kind,
-            symbol=lot_rule.symbol,
-            market=lot_rule.market,
-            lot_size=lot_rule.lot_size,
-            lot_size_source=lot_rule.source,
+            symbol=effective_lot_rule.symbol,
+            market=effective_lot_rule.market,
+            lot_size=effective_lot_rule.lot_size,
+            lot_size_source=effective_lot_rule.source,
             params=strategy_params,
             execution_config=execution,
         )
@@ -317,9 +321,12 @@ def run_full_workflow(
     """
     started_at = perf_counter()
     logger.info("开始执行日线完整工作流: data={} output_dir={}", data_path, output_dir)
+    resolved_symbol = _resolve_symbol(symbol, data_path)
+    lot_rule = resolve_lot_size_rule(resolved_symbol)
+    data = load_price_frame(data_path)
     optimization = run_optimization_workflow(
         data_path=data_path,
-        symbol=symbol,
+        symbol=resolved_symbol,
         output_dir=Path(output_dir) / "optimize",
         validation_start=validation_start,
         lookback_days=lookback_days,
@@ -332,6 +339,8 @@ def run_full_workflow(
         wf_min_window_size=wf_min_window_size,
         jobs=jobs,
         cache_dir=cache_dir,
+        data=data,
+        lot_rule=lot_rule,
     )
     best_summary = optimization["best_run"]["summary"]
     validation = run_validation_workflow(
@@ -339,13 +348,15 @@ def run_full_workflow(
         grid_spacing_pct=float(best_summary["GridSpacingPct"]) / 100,
         grid_count=int(best_summary["GridCount"]),
         take_profit_pct=float(best_summary["TakeProfitPct"]) / 100,
-        symbol=symbol,
+        symbol=resolved_symbol,
         output_dir=Path(output_dir) / "validation",
         validation_start=validation_start,
         lookback_days=lookback_days,
         strategy_kind=strategy_kind,
         strategy_params=None if strategy_kind == "grid" else _extract_rebound_params(best_summary, strategy_kind),
         execution_config=execution_config,
+        data=data,
+        lot_rule=lot_rule,
     )
 
     combined_summary = pd.DataFrame(
@@ -381,16 +392,18 @@ def run_minute_optimization_workflow(
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     jobs: int = DEFAULT_JOBS,
     cache_dir: str | Path | None = None,
+    data: pd.DataFrame | None = None,
+    lot_rule: LotSizeRule | None = None,
 ) -> dict[str, object]:
     """执行分钟线样本内参数搜索并保存结果。"""
     started_at = perf_counter()
     execution = execution_config or build_execution_config("research")
 
     resolved_symbol = _resolve_symbol(symbol, data_path)
-    lot_rule = resolve_lot_size_rule(resolved_symbol)
-    data = load_price_frame(data_path)
+    effective_lot_rule = lot_rule or resolve_lot_size_rule(resolved_symbol)
+    price_frame = data if data is not None else load_price_frame(data_path)
     decline_window, in_sample, _ = split_intraday_in_sample_and_validation(
-        data=data,
+        data=price_frame,
         validation_ratio=validation_ratio,
     )
     if strategy_kind == "grid":
@@ -400,9 +413,9 @@ def run_minute_optimization_workflow(
         logger.info(
             "[1/2] 开始执行分钟线样本内寻参: strategy={} symbol={} data={} rows={} combinations={}",
             strategy_kind,
-            lot_rule.symbol,
+            effective_lot_rule.symbol,
             data_path,
-            len(data),
+            len(price_frame),
             _count_parameter_combinations(spacings, grid_counts, take_profits),
         )
         results, best_run = optimize_grid_parameters(
@@ -411,10 +424,10 @@ def run_minute_optimization_workflow(
             grid_counts=grid_counts,
             take_profits=take_profits,
             scenario_name="minute_in_sample",
-            symbol=lot_rule.symbol,
-            market=lot_rule.market,
-            lot_size=lot_rule.lot_size,
-            lot_size_source=lot_rule.source,
+            symbol=effective_lot_rule.symbol,
+            market=effective_lot_rule.market,
+            lot_size=effective_lot_rule.lot_size,
+            lot_size_source=effective_lot_rule.source,
             execution_config=execution,
             wf_window_count=wf_window_count,
             wf_min_window_size=wf_min_window_size,
@@ -426,9 +439,9 @@ def run_minute_optimization_workflow(
         logger.info(
             "[1/2] 开始执行分钟线样本内寻参: strategy={} symbol={} data={} rows={} combinations={}",
             strategy_kind,
-            lot_rule.symbol,
+            effective_lot_rule.symbol,
             data_path,
-            len(data),
+            len(price_frame),
             _count_parameter_space_candidates(parameter_space),
         )
         results, best_run = optimize_rebound_parameters(
@@ -436,10 +449,10 @@ def run_minute_optimization_workflow(
             strategy_kind=strategy_kind,
             parameter_space=parameter_space,
             scenario_name="minute_in_sample",
-            symbol=lot_rule.symbol,
-            market=lot_rule.market,
-            lot_size=lot_rule.lot_size,
-            lot_size_source=lot_rule.source,
+            symbol=effective_lot_rule.symbol,
+            market=effective_lot_rule.market,
+            lot_size=effective_lot_rule.lot_size,
+            lot_size_source=effective_lot_rule.source,
             execution_config=execution,
             wf_window_count=wf_window_count,
             wf_min_window_size=wf_min_window_size,
@@ -483,25 +496,27 @@ def run_minute_validation_workflow(
     strategy_kind: StrategyKind = "grid",
     strategy_params: dict[str, object] | None = None,
     execution_config: ExecutionConfig | None = None,
+    data: pd.DataFrame | None = None,
+    lot_rule: LotSizeRule | None = None,
 ) -> dict[str, object]:
     """执行分钟线样本外验证。"""
     from etf_strategy.strategy.grid import run_grid_backtest
 
     started_at = perf_counter()
     resolved_symbol = _resolve_symbol(symbol, data_path)
-    lot_rule = resolve_lot_size_rule(resolved_symbol)
+    effective_lot_rule = lot_rule or resolve_lot_size_rule(resolved_symbol)
     execution = execution_config or build_execution_config("research")
-    data = load_price_frame(data_path)
+    price_frame = data if data is not None else load_price_frame(data_path)
     logger.info(
         "[2/2] 开始执行分钟线样本外验证: symbol={} data={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
-        lot_rule.symbol,
+        effective_lot_rule.symbol,
         data_path,
         grid_spacing_pct * 100,
         grid_count,
         take_profit_pct * 100,
     )
     _, _, validation = split_intraday_in_sample_and_validation(
-        data=data,
+        data=price_frame,
         validation_ratio=validation_ratio,
     )
     if strategy_kind == "grid":
@@ -511,10 +526,10 @@ def run_minute_validation_workflow(
             grid_spacing_pct=grid_spacing_pct,
             grid_count=grid_count,
             take_profit_pct=take_profit_pct,
-            symbol=lot_rule.symbol,
-            market=lot_rule.market,
-            lot_size=lot_rule.lot_size,
-            lot_size_source=lot_rule.source,
+            symbol=effective_lot_rule.symbol,
+            market=effective_lot_rule.market,
+            lot_size=effective_lot_rule.lot_size,
+            lot_size_source=effective_lot_rule.source,
             execution_config=execution,
         )
         prefix = "minute_validation"
@@ -525,10 +540,10 @@ def run_minute_validation_workflow(
             data=validation,
             scenario_name="minute_validation",
             strategy_kind=strategy_kind,
-            symbol=lot_rule.symbol,
-            market=lot_rule.market,
-            lot_size=lot_rule.lot_size,
-            lot_size_source=lot_rule.source,
+            symbol=effective_lot_rule.symbol,
+            market=effective_lot_rule.market,
+            lot_size=effective_lot_rule.lot_size,
+            lot_size_source=effective_lot_rule.source,
             params=strategy_params,
             execution_config=execution,
         )
@@ -561,9 +576,12 @@ def run_minute_full_workflow(
     """串联分钟线样本内寻参和样本外验证。"""
     started_at = perf_counter()
     logger.info("开始执行分钟线完整工作流: data={} output_dir={}", data_path, output_dir)
+    resolved_symbol = _resolve_symbol(symbol, data_path)
+    lot_rule = resolve_lot_size_rule(resolved_symbol)
+    data = load_price_frame(data_path)
     optimization = run_minute_optimization_workflow(
         data_path=data_path,
-        symbol=symbol,
+        symbol=resolved_symbol,
         output_dir=Path(output_dir) / "optimize",
         validation_ratio=validation_ratio,
         strategy_kind=strategy_kind,
@@ -575,6 +593,8 @@ def run_minute_full_workflow(
         wf_min_window_size=wf_min_window_size,
         jobs=jobs,
         cache_dir=cache_dir,
+        data=data,
+        lot_rule=lot_rule,
     )
     best_summary = optimization["best_run"]["summary"]
     validation = run_minute_validation_workflow(
@@ -582,12 +602,14 @@ def run_minute_full_workflow(
         grid_spacing_pct=float(best_summary["GridSpacingPct"]) / 100,
         grid_count=int(best_summary["GridCount"]),
         take_profit_pct=float(best_summary["TakeProfitPct"]) / 100,
-        symbol=symbol,
+        symbol=resolved_symbol,
         output_dir=Path(output_dir) / "validation",
         validation_ratio=validation_ratio,
         strategy_kind=strategy_kind,
         strategy_params=None if strategy_kind == "grid" else _extract_rebound_params(best_summary, strategy_kind),
         execution_config=execution_config,
+        data=data,
+        lot_rule=lot_rule,
     )
 
     combined_summary = pd.DataFrame(

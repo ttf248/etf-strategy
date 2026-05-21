@@ -1517,6 +1517,38 @@
 - `py -3.13 -m compileall etf_strategy tests`
 - `git diff --check`
 
+## 港股通沪批量性能优化
+
+### 状态
+
+已完成并通过验证，待提交。
+
+### 修改方案
+
+围绕全量 `633` 只港股通沪批量回测，先收掉最明显的重复开销：港股每手股数查询缓存、单标的完整工作流内重复读取 CSV、重复解析最小交易单位。
+
+### 修改内容
+
+- `etf_strategy/data/market_rules.py`
+  - 新增港股每手股数本地缓存，默认落在 `outputs/cache/hk_lot_size_cache.json`
+  - 同一标的再次查询时直接复用缓存，不再重复访问 AASTOCKS
+- `etf_strategy/workflow.py`
+  - `run_full_workflow()` 与 `run_minute_full_workflow()` 改为单次加载行情 CSV
+  - 优化与验证阶段复用同一个 `LotSizeRule`
+  - 优化与验证阶段复用同一份 `DataFrame`
+- 测试
+  - 新增港股每手股数缓存命中测试，确认同标的二次查询不再发网络请求
+
+### 设计取舍
+
+- 没有在这一轮引入批量级并行调度，先优先做低风险、确定性收益最高的“去重复 IO / 去重复 HTTP”优化。
+- lot size 缓存放到 `outputs/cache/`，避免把运行期缓存混入正式输入或正式产物版本控制。
+
+### 验证
+
+- `py -3.13 -m unittest tests.test_grid_strategy tests.test_repo_contracts tests.test_yahoo_data`
+- `py -3.13 -m compileall etf_strategy tests`
+
 ## 港股通沪全量网格回测入口
 
 ### 状态
