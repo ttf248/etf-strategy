@@ -1193,6 +1193,47 @@
 - `main.py`、ETF 数据口径、默认样本、报告产物和 `.vscode/launch.json` 是本仓库特有约束，所以继续留在项目专属层。
 - 这次只调整规则文件和任务记录，不改业务代码。
 
+## 改为纯现金网格并补充左侧风险对照
+
+### 状态
+
+已完成。
+
+### 修改方案
+
+删除样本起点直接建立底仓的策略假设，改成“第一根 K 线只作为网格锚点，价格触发网格层后才投入现金”。同时新增左侧行情两套口径：`hold` 持有未平网格，`force_exit` 在未平网格浮亏达到总资金阈值后强制卖出并停止交易；默认 `both` 同时计算两套结果，报告以更保守的 `force_exit` 作为主口径并展示对照。
+
+### 修改内容
+
+- 策略：
+  - `FixedUnitGridStrategy` 不再在 `init()` 建立底仓。
+  - 单层网格股数改为按总资金、网格层数、锚定价和最小交易单位计算。
+  - 新增 `GridMode`、`LeftSidePolicy`、`ForceExitLossPct`、`ClosedGridNetProfit`、`UnrealizedPnl`、`ForceExitTriggered` 等汇总字段。
+  - `run_grid_backtest()` 在 `both` 下分别运行 `hold` 和 `force_exit`，并在结果中保留 `policy_results`。
+- CLI 与配置：
+  - 新增 `--grid-mode cash`、`--left-side-policy hold|force_exit|both`、`--force-exit-loss-pct`。
+  - 默认执行口径改为纯现金网格，并把报告基准从旧底仓口径切到买入持有 / 现金闲置对照。
+- 报告：
+  - 删除初始建仓、只拿底仓等策略说明。
+  - 新增 hold / force_exit 左侧行情对照表。
+  - 核心指标改为闭环网格净利润、未平网格浮动盈亏和强制退出事件。
+- 测试与文档：
+  - 更新现金网格无首根买入、网格再进场、强制退出、CLI 参数解析测试。
+  - 同步 README、术语表、日线/分钟线说明、报告阅读指南和 VS Code 调试参数。
+
+### 设计取舍
+
+- `both` 采用两次独立回测，而不是在一个策略实例里同时维护两套仓位状态，避免撮合状态互相污染。
+- 默认主口径选择 `force_exit`，因为它更能暴露左侧行情下的亏损控制结果；`hold` 仍保留在 `policy_results` 用于判断长期持有未平网格的风险。
+- 保留 `BaseOnly*`、`BaseUnits` 等少量历史字段作为过渡兼容别名，但报告和文档不再把它们作为策略概念。
+
+### 验证
+
+- `py -3.13 -m unittest tests.test_grid_strategy`
+- `py -3.13 -m unittest tests.test_grid_strategy tests.test_repo_contracts tests.test_yahoo_data`
+- `py -3.13 main.py report --data data/processed/1810_hk_daily.csv --symbol 1810.HK --output-dir outputs --report-dir reports --execution-profile realistic --grid-mode cash --left-side-policy both --force-exit-loss-pct 0.05`
+- `py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK --interval 15m --output-dir outputs/minute --report-dir reports/minute --execution-profile realistic --grid-mode cash --left-side-policy both --force-exit-loss-pct 0.05`
+
 ## 产物清单
 
 - 入口与代码：

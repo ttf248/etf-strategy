@@ -194,9 +194,27 @@ def _add_execution_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--cooldown-bars", type=int, default=None, help="触发停手后冷却的 K 线数量")
     parser.add_argument(
         "--benchmark",
-        choices=["base_only", "buy_hold"],
+        choices=["cash_idle", "buy_hold"],
         default=None,
         help="报告重点对照基准；默认随执行口径",
+    )
+    parser.add_argument(
+        "--grid-mode",
+        choices=["cash"],
+        default=None,
+        help="网格资金模式；cash 表示不建底仓，只在触发网格价位时投入现金",
+    )
+    parser.add_argument(
+        "--left-side-policy",
+        choices=["hold", "force_exit", "both"],
+        default=None,
+        help="左侧行情处理：hold 持有未平网格，force_exit 达到亏损阈值强平，both 同时计算两套口径",
+    )
+    parser.add_argument(
+        "--force-exit-loss-pct",
+        type=float,
+        default=None,
+        help="force_exit 模式下未平网格浮亏占总资金的强平阈值，例如 0.05",
     )
 
 
@@ -210,6 +228,9 @@ def _build_execution_from_args(args: argparse.Namespace):
         stop_loss_pct=args.stop_loss_pct,
         cooldown_bars=args.cooldown_bars,
         benchmark=args.benchmark,
+        grid_mode=args.grid_mode,
+        left_side_policy=args.left_side_policy,
+        force_exit_loss_pct=args.force_exit_loss_pct,
     )
 
 
@@ -364,7 +385,7 @@ def handle_backtest(args: argparse.Namespace) -> int:
         "样本外验证完成: "
         f"return={summary['ReturnPct']:.2f}% "
         f"max_drawdown={summary['MaxDrawdownPct']:.2f}% "
-        f"cost_reduction={summary['CostReductionPct']:.2f}%"
+        f"closed_grid_profit={summary.get('ClosedGridNetProfit', 0.0):.2f}"
     )
     logger.info("backtest 命令完成: elapsed={:.2f}s", perf_counter() - started_at)
     return 0
@@ -447,7 +468,7 @@ def handle_run(args: argparse.Namespace) -> int:
         f"{'分钟线样本外表现' if intraday_mode else '2026 样本外表现'}: "
         f"return={validation_summary['ReturnPct']:.2f}% "
         f"max_drawdown={validation_summary['MaxDrawdownPct']:.2f}% "
-        f"cost_reduction={validation_summary['CostReductionPct']:.2f}%"
+        f"closed_grid_profit={validation_summary.get('ClosedGridNetProfit', 0.0):.2f}"
     )
     logger.info("run 命令完成: report={} elapsed={:.2f}s", report_path, perf_counter() - started_at)
     return 0

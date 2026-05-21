@@ -19,7 +19,13 @@
                 "--symbol",
                 "1810.HK",
                 "--execution-profile",
-                "realistic"
+                "realistic",
+                "--grid-mode",
+                "cash",
+                "--left-side-policy",
+                "both",
+                "--force-exit-loss-pct",
+                "0.05"
             ]
         },
         {
@@ -42,7 +48,13 @@
                 "--interval",
                 "15m",
                 "--execution-profile",
-                "realistic"
+                "realistic",
+                "--grid-mode",
+                "cash",
+                "--left-side-policy",
+                "both",
+                "--force-exit-loss-pct",
+                "0.05"
             ]
         }
     ]

@@ -22,6 +22,8 @@ from etf_strategy.config import (
 
 WorkflowMode = Literal["daily", "intraday"]
 ExecutionProfile = Literal["research", "realistic"]
+GridMode = Literal["cash"]
+LeftSidePolicy = Literal["hold", "force_exit", "both"]
 
 DEFAULT_VALIDATION_START = "2026-01-01"
 DEFAULT_LOOKBACK_DAYS = 120
@@ -53,7 +55,10 @@ class ExecutionConfig:
     max_position_ratio: float = 1.0
     stop_loss_pct: float = 0.0
     cooldown_bars: int = 0
-    benchmark: str = "base_only"
+    benchmark: str = "buy_hold"
+    grid_mode: GridMode = "cash"
+    left_side_policy: LeftSidePolicy = "both"
+    force_exit_loss_pct: float = 0.05
 
 
 @dataclass(frozen=True)
@@ -93,7 +98,10 @@ def default_execution_config(profile: ExecutionProfile = "research") -> Executio
             max_position_ratio=0.95,
             stop_loss_pct=0.20,
             cooldown_bars=5,
-            benchmark="base_only",
+            benchmark="buy_hold",
+            grid_mode="cash",
+            left_side_policy="both",
+            force_exit_loss_pct=0.05,
         )
     return ExecutionConfig()
 
@@ -106,6 +114,9 @@ def build_execution_config(
     stop_loss_pct: float | None = None,
     cooldown_bars: int | None = None,
     benchmark: str | None = None,
+    grid_mode: GridMode | None = None,
+    left_side_policy: LeftSidePolicy | None = None,
+    force_exit_loss_pct: float | None = None,
 ) -> ExecutionConfig:
     """基于默认口径叠加命令行显式覆盖值。"""
     base = default_execution_config(profile)
@@ -117,6 +128,9 @@ def build_execution_config(
         stop_loss_pct=base.stop_loss_pct if stop_loss_pct is None else stop_loss_pct,
         cooldown_bars=base.cooldown_bars if cooldown_bars is None else cooldown_bars,
         benchmark=base.benchmark if benchmark is None else benchmark,
+        grid_mode=base.grid_mode if grid_mode is None else grid_mode,
+        left_side_policy=base.left_side_policy if left_side_policy is None else left_side_policy,
+        force_exit_loss_pct=base.force_exit_loss_pct if force_exit_loss_pct is None else force_exit_loss_pct,
     )
 
 

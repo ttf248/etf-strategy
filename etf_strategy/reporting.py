@@ -57,9 +57,9 @@ def plot_run_result(run_result: dict[str, object], output_path: str | Path, titl
     if not events.empty:
         # 价格图上的散点只负责帮助人眼定位关键交易，不承载收益计算逻辑。
         marker_map = {
-            "base_buy": ("^", "#e6550d", "初始建仓"),
             "grid_buy": ("v", "#31a354", "网格买入"),
             "grid_sell": ("o", "#756bb1", "网格卖出"),
+            "force_exit_sell": ("x", "#de2d26", "强制卖出"),
         }
         for event_type, (marker, color, label) in marker_map.items():
             subset = events[events["EventType"] == event_type]
@@ -79,7 +79,7 @@ def plot_run_result(run_result: dict[str, object], output_path: str | Path, titl
         equity_curve["ReturnPct"],
         color="#2ca02c",
         linewidth=1.5,
-        label="组合收益率（建仓前固定为 0%）",
+        label="组合收益率",
     )
     axes[2].plot(equity_curve["Date"], equity_curve["DrawdownPct"], color="#d62728", linewidth=1.2, label="回撤比例")
     axes[2].axhline(0, color="#7f7f7f", linewidth=0.8)
@@ -127,36 +127,28 @@ def plot_run_result(run_result: dict[str, object], output_path: str | Path, titl
 def _describe_run_in_plain_words(run_result: dict[str, object], total_capital: float = 200000.0) -> dict[str, float | bool]:
     """把回测结果翻译成更接近投资者视角的金额口径。"""
     summary = run_result["summary"]
-    history = run_result["history"]
-    events = run_result["events"]
     total_capital = float(summary.get("TotalCapital", total_capital))
 
     final_equity = float(summary["FinalEquity"])
     total_pnl = final_equity - total_capital
-    triggered_entry = bool(summary.get("TriggeredEntry", False))
-    if "BaseOnlyFinalEquity" in summary:
-        base_only_equity = float(summary["BaseOnlyFinalEquity"])
-    elif triggered_entry:
-        end_price = float(history.iloc[-1]["Close"])
-        base_buy = events[events["EventType"] == "base_buy"].iloc[0]
-        base_units = int(base_buy["Units"])
-        base_cash_flow = float(base_buy["CashFlow"])
-        base_cash_left = total_capital - base_cash_flow
-        # 这里构造“只拿底仓不做网格”的对照组，方便解释网格究竟贡献了多少。
-        base_only_equity = base_cash_left + base_units * end_price
-    else:
-        base_only_equity = total_capital
-    base_only_pnl = base_only_equity - total_capital
-    buy_hold_equity = float(summary.get("BuyHoldFinalEquity", base_only_equity))
+    triggered_entry = bool(summary.get("TriggeredGridEntry", summary.get("TriggeredEntry", False)))
+    cash_idle_equity = float(summary.get("CashIdleFinalEquity", total_capital))
+    cash_idle_pnl = cash_idle_equity - total_capital
+    buy_hold_equity = float(summary.get("BuyHoldFinalEquity", cash_idle_equity))
     buy_hold_pnl = buy_hold_equity - total_capital
 
     return {
         "final_equity": final_equity,
         "total_pnl": total_pnl,
-        "base_only_equity": base_only_equity,
-        "base_only_pnl": base_only_pnl,
-        "base_only_return_pct": base_only_pnl / total_capital * 100,
-        "grid_vs_base_only": final_equity - base_only_equity,
+        "cash_idle_equity": cash_idle_equity,
+        "cash_idle_pnl": cash_idle_pnl,
+        "cash_idle_return_pct": cash_idle_pnl / total_capital * 100,
+        "grid_vs_cash_idle": final_equity - cash_idle_equity,
+        # 旧 key 作为报告内部过渡别名，避免下方历史函数漏改时报错。
+        "base_only_equity": cash_idle_equity,
+        "base_only_pnl": cash_idle_pnl,
+        "base_only_return_pct": cash_idle_pnl / total_capital * 100,
+        "grid_vs_base_only": final_equity - cash_idle_equity,
         "buy_hold_equity": buy_hold_equity,
         "buy_hold_pnl": buy_hold_pnl,
         "buy_hold_return_pct": buy_hold_pnl / total_capital * 100,
@@ -248,7 +240,7 @@ def _build_trade_table(run_result: dict[str, object]) -> str:
     trades["PnL"] = trades["PnL"].astype("float64")
     trades["ReturnPctDisplay"] = trades["ReturnPct"].astype("float64") * 100
     trades["Level"] = trades["Tag"].fillna("").astype(str).str.replace("grid_", "网格 ", regex=False)
-    trades.loc[trades["Tag"] == "base", "Level"] = "底仓"
+    trades.loc[trades["Tag"] == "base", "Level"] = "历史底仓"
     return _build_markdown_table(
         trades,
         columns=[
@@ -342,19 +334,24 @@ def _build_run_chart_summary(run_result: dict[str, object], run_words: dict[str,
     end_price = float(history.iloc[-1]["Close"])
     entry_price = float(summary["EntryPrice"])
     effective_cost = float(summary["EffectiveCost"])
+    position_units = int(summary.get("PositionUnits", 0))
     price_change_pct = (end_price / entry_price - 1) * 100 if entry_price else 0.0
     cost_gap_pct = (end_price / effective_cost - 1) * 100 if effective_cost else 0.0
     cycles = int(summary["GridCyclesCompleted"])
     realized_profit = float(summary["RealizedGridProfit"])
-    if end_price >= effective_cost:
+    unrealized_pnl = float(summary.get("UnrealizedPnl", 0.0))
+    force_exit_triggered = bool(summary.get("ForceExitTriggered", False))
+    if position_units <= 0:
+        cost_comment = "样本结束时没有未平网格仓位，剩余风险已经体现在现金和已实现利润里。"
+    elif end_price >= effective_cost:
         cost_comment = (
             f"样本结束时收盘价 `{end_price:.2f}` 已经回到有效成本 `{effective_cost:.2f}` 之上，"
-            f"剩余持仓按摊薄口径已经转回浮盈区。"
+            f"未平网格按当前口径已经转回浮盈区。"
         )
     else:
         cost_comment = (
             f"样本结束时收盘价 `{end_price:.2f}` 仍低于有效成本 `{effective_cost:.2f}`，"
-            f"剩余持仓按摊薄口径还处在约 `{abs(cost_gap_pct):.2f}%` 的浮亏区。"
+            f"未平网格还处在约 `{abs(cost_gap_pct):.2f}%` 的浮亏区。"
         )
 
     if cycles > 0:
@@ -365,15 +362,21 @@ def _build_run_chart_summary(run_result: dict[str, object], run_words: dict[str,
     else:
         cycle_comment = "这段区间里没有完成任何网格闭环，所以图上即使有持仓波动，也还没有形成已落袋的网格利润。"
 
+    risk_comment = (
+        "左侧强制退出已经触发，后续不再继续开新网格。"
+        if force_exit_triggered
+        else f"期末未平网格浮动盈亏为 `{unrealized_pnl:.2f}`。"
+    )
+
     if float(summary["ReturnPct"]) >= 0:
         account_comment = (
             f"总账户最终是盈利状态，期末权益 `{run_words['final_equity']:.2f}`，"
-            f"说明底仓浮盈浮亏加上网格利润后，整体结果已经转正。"
+            f"说明闭环利润、未平仓浮动盈亏和现金余额合计后已经转正。"
         )
     else:
         account_comment = (
             f"总账户最终仍是亏损状态，期末权益 `{run_words['final_equity']:.2f}`；"
-            f"也就是说，网格已实现利润还没完全覆盖底仓和未平仓仓位的回撤。"
+            f"也就是说，已实现网格利润还没完全覆盖未平仓或强制退出带来的亏损。"
         )
 
     return "\n".join(
@@ -381,6 +384,7 @@ def _build_run_chart_summary(run_result: dict[str, object], run_words: dict[str,
             f"- 这一段价格从 `{entry_price:.2f}` 走到 `{end_price:.2f}`，区间涨跌幅约 `{price_change_pct:.2f}%`。",
             f"- {cost_comment}",
             f"- {cycle_comment}",
+            f"- {risk_comment}",
             f"- {account_comment}",
         ]
     )
@@ -457,8 +461,8 @@ def _build_exec_summary(
         )
     else:
         in_sample_conclusion = (
-            f"样本内虽然通过网格把成本压低了 `{float(in_sample_summary['CostReductionPct']):.2f}%`，"
-            f"但总账户最终还是亏损 `{abs(float(in_sample_summary['ReturnPct'])):.2f}%`。"
+            f"样本内总账户最终亏损 `{abs(float(in_sample_summary['ReturnPct'])):.2f}%`，"
+            f"闭环网格净利润为 `{float(in_sample_summary.get('ClosedGridNetProfit', 0.0)):.2f}`。"
         )
 
     if float(validation_summary["ReturnPct"]) >= 0:
@@ -469,7 +473,7 @@ def _build_exec_summary(
     else:
         validation_conclusion = (
             f"样本外依然没有转正，收益率 `{float(validation_summary['ReturnPct']):.2f}%`，"
-            "说明它更像摊薄成本工具，而不是独立盈利策略。"
+            "说明这组网格参数在该行情结构下还不能独立证明盈利能力。"
         )
 
     return "\n".join(
@@ -492,7 +496,7 @@ def _build_profit_judgement(best_summary: dict[str, object], validation_summary:
         return "当前样本内和样本外都为正收益，可以继续观察，但还不能直接等同于稳定实盘盈利。"
     if validation_return > 0:
         return "样本外已经转正，但样本内没有稳定赚钱，暂时只能说参数在新阶段有改善，不能证明长期稳定盈利。"
-    return "当前还不能证明这套网格能稳定盈利，它更像在下跌和震荡里帮助你摊低持仓成本。"
+    return "当前还不能证明这套网格能稳定盈利，尤其要继续观察单边下跌时未平仓风险如何处理。"
 
 
 def _build_quick_answer_table(
@@ -515,10 +519,10 @@ def _build_quick_answer_table(
             _build_profit_judgement(best_summary, validation_summary),
         ],
         [
-            "比只拿底仓好不好",
-            f"{float(in_sample_words['grid_vs_base_only']):.2f}",
-            f"{float(validation_words['grid_vs_base_only']):.2f}",
-            "正数表示网格比只拿底仓更好，负数表示网格反而拖累了结果。",
+            "比现金闲置好不好",
+            f"{float(in_sample_words['grid_vs_cash_idle']):.2f}",
+            f"{float(validation_words['grid_vs_cash_idle']):.2f}",
+            "正数表示网格策略赚到钱，负数表示不交易反而更好。",
         ],
         [
             "比买入持有好不好",
@@ -563,7 +567,7 @@ def _build_selection_method_table(best_summary: dict[str, object], optimization_
         [
             "单窗综合分",
             f"{float(best_summary['Score']):.2f}",
-            "这是整段样本内的收益、回撤、成本摊薄综合分。",
+            "这是整段样本内的收益、回撤、闭环网格利润综合分。",
         ],
         [
             "稳健窗口数",
@@ -599,6 +603,16 @@ def _build_execution_risk_table(
             str(validation_summary.get("ExecutionProfile", "research")),
         ],
         [
+            "网格模式",
+            str(best_summary.get("GridMode", "cash")),
+            str(validation_summary.get("GridMode", "cash")),
+        ],
+        [
+            "左侧处理口径",
+            str(best_summary.get("RequestedLeftSidePolicy", best_summary.get("LeftSidePolicy", "hold"))),
+            str(validation_summary.get("RequestedLeftSidePolicy", validation_summary.get("LeftSidePolicy", "hold"))),
+        ],
+        [
             "手续费 / 滑点",
             f"{float(best_summary.get('CommissionBps', 0.0)):.2f} / {float(best_summary.get('SlippageBps', 0.0)):.2f} bps",
             f"{float(validation_summary.get('CommissionBps', 0.0)):.2f} / {float(validation_summary.get('SlippageBps', 0.0)):.2f} bps",
@@ -612,6 +626,11 @@ def _build_execution_risk_table(
             "停手事件",
             int(best_summary.get("StopLossEvents", 0)),
             int(validation_summary.get("StopLossEvents", 0)),
+        ],
+        [
+            "强制退出事件",
+            int(best_summary.get("ForceExitEvents", 0)),
+            int(validation_summary.get("ForceExitEvents", 0)),
         ],
     ]
     return _build_simple_markdown_table(["约束", "样本内", "样本外"], rows)
@@ -643,16 +662,22 @@ def _build_core_metric_table(
             "按收盘价和估算成交价差额累计，属于近似实盘口径。",
         ],
         [
-            "有效持仓成本",
+            "未平网格有效成本",
             f"{float(best_summary['EffectiveCost']):.2f}",
             f"{float(validation_summary['EffectiveCost']):.2f}",
-            "看网格有没有把手里剩余仓位的成本压低。",
+            "只在期末仍有未平网格仓位时有意义。",
         ],
         [
-            "已实现网格收益",
-            f"{float(best_summary['RealizedGridProfit']):.2f}",
-            f"{float(validation_summary['RealizedGridProfit']):.2f}",
+            "闭环网格净利润",
+            f"{float(best_summary.get('ClosedGridNetProfit', best_summary['RealizedGridProfit'])):.2f}",
+            f"{float(validation_summary.get('ClosedGridNetProfit', validation_summary['RealizedGridProfit'])):.2f}",
             "这是已经完成低买高卖、真正落袋的利润，不等于总账户收益。",
+        ],
+        [
+            "未平网格浮动盈亏",
+            f"{float(best_summary.get('UnrealizedPnl', 0.0)):.2f}",
+            f"{float(validation_summary.get('UnrealizedPnl', 0.0)):.2f}",
+            "hold 口径会保留这部分风险，force_exit 口径触发后通常回到 0。",
         ],
         [
             "网格闭环次数",
@@ -664,18 +689,18 @@ def _build_core_metric_table(
     return _build_simple_markdown_table(["指标", "样本内", "样本外", "怎么读"], rows)
 
 
-def _build_base_comparison_table(
+def _build_benchmark_comparison_table(
     in_sample_words: dict[str, float | bool],
     validation_words: dict[str, float | bool],
     best_summary: dict[str, object],
     validation_summary: dict[str, object],
 ) -> str:
-    """展示网格相对“只拿底仓”的增益或拖累。"""
+    """展示网格相对现金闲置和买入持有的增益或拖累。"""
     rows = [
         [
-            "只拿底仓收益率",
-            f"{float(in_sample_words['base_only_return_pct']):.2f}%",
-            f"{float(validation_words['base_only_return_pct']):.2f}%",
+            "现金闲置收益率",
+            f"{float(in_sample_words['cash_idle_return_pct']):.2f}%",
+            f"{float(validation_words['cash_idle_return_pct']):.2f}%",
         ],
         [
             "买入持有收益率",
@@ -688,9 +713,9 @@ def _build_base_comparison_table(
             f"{float(validation_summary.get('NetReturnPct', validation_summary['ReturnPct'])):.2f}%",
         ],
         [
-            "网格相对底仓多赚/多亏",
-            f"{float(in_sample_words['grid_vs_base_only']):.2f}",
-            f"{float(validation_words['grid_vs_base_only']):.2f}",
+            "网格相对现金闲置多赚/多亏",
+            f"{float(in_sample_words['grid_vs_cash_idle']):.2f}",
+            f"{float(validation_words['grid_vs_cash_idle']):.2f}",
         ],
         [
             "网格相对买入持有多赚/多亏",
@@ -699,6 +724,49 @@ def _build_base_comparison_table(
         ],
     ]
     return _build_simple_markdown_table(["对比项", "样本内", "样本外"], rows)
+
+
+def _policy_label(policy: str) -> str:
+    labels = {
+        "hold": "hold：未平网格继续持有",
+        "force_exit": "force_exit：达到亏损阈值强平",
+    }
+    return labels.get(policy, policy)
+
+
+def _build_policy_comparison_table(in_sample_run: dict[str, object], validation_run: dict[str, object]) -> str:
+    """展示 hold 与 force_exit 两种左侧处理方式的结果差异。"""
+    in_sample_policies = in_sample_run.get("policy_results")
+    validation_policies = validation_run.get("policy_results")
+    if not isinstance(in_sample_policies, dict) or not isinstance(validation_policies, dict):
+        policy = str(in_sample_run["summary"].get("LeftSidePolicy", "hold"))
+        return f"当前仅计算 `{policy}` 口径，未生成 hold / force_exit 对照。"
+
+    rows = []
+    for policy in ["hold", "force_exit"]:
+        in_policy_run = in_sample_policies.get(policy)
+        out_policy_run = validation_policies.get(policy)
+        if not isinstance(in_policy_run, dict) or not isinstance(out_policy_run, dict):
+            continue
+        in_summary = in_policy_run["summary"]
+        out_summary = out_policy_run["summary"]
+        rows.append(
+            [
+                _policy_label(policy),
+                f"{float(in_summary.get('NetReturnPct', in_summary['ReturnPct'])):.2f}%",
+                f"{float(in_summary.get('ClosedGridNetProfit', 0.0)):.2f}",
+                f"{float(in_summary.get('UnrealizedPnl', 0.0)):.2f}",
+                "是" if bool(in_summary.get("ForceExitTriggered", False)) else "否",
+                f"{float(out_summary.get('NetReturnPct', out_summary['ReturnPct'])):.2f}%",
+                f"{float(out_summary.get('ClosedGridNetProfit', 0.0)):.2f}",
+                f"{float(out_summary.get('UnrealizedPnl', 0.0)):.2f}",
+                "是" if bool(out_summary.get("ForceExitTriggered", False)) else "否",
+            ]
+        )
+    return _build_simple_markdown_table(
+        ["左侧口径", "样本内净收益率", "样本内闭环利润", "样本内浮动盈亏", "样本内强平", "样本外净收益率", "样本外闭环利润", "样本外浮动盈亏", "样本外强平"],
+        rows,
+    )
 
 
 def build_report_markdown(
@@ -746,10 +814,10 @@ def build_report_markdown(
             f"- 样本内窗口：{decline_window.sample_start} 至 {decline_window.sample_end}",
             f"- 样本外窗口：{decline_window.validation_start} 至 {validation_summary['EndDate']}",
             f"- 切分方式：最近分钟线样本按 `75% / 25%` 拆分样本内与样本外",
-            f"- 初始规则：样本开始时投入 50% 资金建底仓，剩余 50% 资金做网格买卖",
+            f"- 网格模式：纯现金网格，不在样本起点建立底仓；第一根 K 线收盘价只作为网格锚点",
             f"- 最小交易单位：{int(best_summary['LotSize'])} 股，来源：{best_summary['LotSizeSource']}",
-            f"- 固定底仓数量：{int(best_summary['BaseUnits'])} 股",
             f"- 单层网格固定数量：{int(best_summary['GridUnitsPerLevel'])} 股",
+            f"- 左侧处理：`{best_summary.get('RequestedLeftSidePolicy', best_summary.get('LeftSidePolicy', 'hold'))}`，强制退出阈值 `{float(best_summary.get('ForceExitLossPct', 0.0)):.2f}%` 总资金浮亏",
             f"- 执行口径：`{best_summary.get('ExecutionProfile', 'research')}`，手续费 `{float(best_summary.get('CommissionBps', 0.0)):.2f}` bps，滑点 `{float(best_summary.get('SlippageBps', 0.0)):.2f}` bps",
             f"- 最优参数：网格间距 {best_summary['GridSpacingPct']:.2f}% / 网格层数 {int(best_summary['GridCount'])} / 止盈比例 {best_summary['TakeProfitPct']:.2f}%",
         ]
@@ -775,10 +843,10 @@ def build_report_markdown(
             f"- 标的：`{symbol}`",
             f"- 样本内窗口：{decline_window.sample_start} 至 {decline_window.sample_end}",
             f"- 样本外窗口：{decline_window.validation_start} 至 {validation_summary['EndDate']}",
-            f"- 初始规则：样本开始时投入 50% 资金建底仓，剩余 50% 资金做网格买卖",
+            f"- 网格模式：纯现金网格，不在样本起点建立底仓；第一根 K 线收盘价只作为网格锚点",
             f"- 最小交易单位：{int(best_summary['LotSize'])} 股，来源：{best_summary['LotSizeSource']}",
-            f"- 固定底仓数量：{int(best_summary['BaseUnits'])} 股",
             f"- 单层网格固定数量：{int(best_summary['GridUnitsPerLevel'])} 股",
+            f"- 左侧处理：`{best_summary.get('RequestedLeftSidePolicy', best_summary.get('LeftSidePolicy', 'hold'))}`，强制退出阈值 `{float(best_summary.get('ForceExitLossPct', 0.0)):.2f}%` 总资金浮亏",
             f"- 执行口径：`{best_summary.get('ExecutionProfile', 'research')}`，手续费 `{float(best_summary.get('CommissionBps', 0.0)):.2f}` bps，滑点 `{float(best_summary.get('SlippageBps', 0.0)):.2f}` bps",
             f"- 最优参数：网格间距 {best_summary['GridSpacingPct']:.2f}% / 网格层数 {int(best_summary['GridCount'])} / 止盈比例 {best_summary['TakeProfitPct']:.2f}%",
         ]
@@ -787,18 +855,18 @@ def build_report_markdown(
 
     # 结论语句是报告层的解释模板，不参与回测结果计算。
     if best_summary["ReturnPct"] <= 0 and validation_summary["ReturnPct"] <= 0:
-        conclusion = "这套网格当前更像摊薄成本工具，还不能证明它能稳定把总账户做成正收益。"
+        conclusion = "这套网格当前还不能证明能稳定把总账户做成正收益，左侧下跌风险是主要约束。"
     elif best_summary["ReturnPct"] > 0 and validation_summary["ReturnPct"] > 0:
-        conclusion = "这套网格在当前样本里样本内外都转正，说明它不仅能摊薄成本，也有继续观察的价值。"
+        conclusion = "这套网格在当前样本里样本内外都转正，说明参数具备继续观察的价值。"
     else:
         conclusion = "这套网格在不同阶段表现不一致，说明它对行情结构比较敏感，不能只看单段结果下结论。"
 
     if not validation_words["triggered_entry"]:
-        validation_comment = "样本外这段区间没有完成样本起点建仓，所以这里只能当作数据区间说明，不能据此判断参数是否有效。"
+        validation_comment = "样本外这段区间没有触发任何网格买入，所以这里只能说明价格没有进入计划网格区间。"
     elif float(validation_summary["ReturnPct"]) > 0:
         validation_comment = "样本外结果转正，说明这组参数在新阶段没有立刻失效。"
     else:
-        validation_comment = "样本外没有转正，说明这组参数更像在帮你缓冲下跌，而不是独立制造稳定盈利。"
+        validation_comment = "样本外没有转正，说明这组参数还不能在该行情结构下独立制造稳定盈利。"
 
     in_sample_chart_summary = _build_run_chart_summary(optimization["best_run"], in_sample_words)
     validation_chart_summary = _build_run_chart_summary(validation["run"], validation_words)
@@ -807,12 +875,13 @@ def build_report_markdown(
     quick_answer_table = _build_quick_answer_table(best_summary, validation_summary, in_sample_words, validation_words)
     core_metric_table = _build_core_metric_table(best_summary, validation_summary)
     execution_risk_table = _build_execution_risk_table(best_summary, validation_summary)
-    base_comparison_table = _build_base_comparison_table(
+    benchmark_comparison_table = _build_benchmark_comparison_table(
         in_sample_words=in_sample_words,
         validation_words=validation_words,
         best_summary=best_summary,
         validation_summary=validation_summary,
     )
+    policy_comparison_table = _build_policy_comparison_table(optimization["best_run"], validation["run"])
     in_sample_event_table = _build_event_table(optimization["best_run"])
     in_sample_trade_table = _build_trade_table(optimization["best_run"])
     validation_event_table = _build_event_table(validation["run"])
@@ -827,14 +896,14 @@ def build_report_markdown(
 
 ## 第一层：先看结论
 
-### 先回答 4 个问题
+### 先回答关键问题
 
 {quick_answer_table}
 
 ### 一句话判断
 
 - {conclusion}
-- 当前正式拿去实盘的证据还不够，更合理的定位是：先把它当成“网格摊成本策略”，不是“已经验证可稳定盈利的策略”。
+- 当前正式拿去实盘的证据还不够，更合理的定位是：先验证它能否通过网格闭环赚钱，再看左侧行情下能否控制亏损。
 - 如果你只想知道现在值不值得继续研究，看完上面这张表就够了。
 
 ## 第二层：展开细节
@@ -853,12 +922,16 @@ def build_report_markdown(
 
 ### 网格到底有没有帮忙
 
-{base_comparison_table}
+{benchmark_comparison_table}
+
+### 左侧行情怎么处理
+
+{policy_comparison_table}
 
 补一句最重要的解释：
 
 - “网格已实现收益”只代表已经完成低买高卖、真正落袋的那部分利润。
-- 真正决定你账户最后赚没赚钱的，是“底仓浮盈浮亏 + 未平仓网格浮盈浮亏 + 已实现网格收益”三者一起的结果。
+- 真正决定你账户最后赚没赚钱的，是“已实现网格收益 + 未平仓网格浮动盈亏 + 现金余额”三者一起的结果。
 - 所以完全可能出现“网格已经落袋赚钱，但总账户还是亏钱”的情况。
 
 ### 图表速读总结
@@ -878,7 +951,7 @@ def build_report_markdown(
 #### {validation_title}
 
 - 样本外账户最终从 `200000` 走到 `{validation_words["final_equity"]:.2f}`，总盈亏 `{validation_words["total_pnl"]:.2f}`。
-- 样本外固定底仓仍按最小交易单位 `{int(validation_summary["LotSize"])}` 股执行，单层网格固定数量是 `{int(validation_summary["GridUnitsPerLevel"])}` 股。
+- 样本外单层网格按最小交易单位 `{int(validation_summary["LotSize"])}` 股取整，固定数量是 `{int(validation_summary["GridUnitsPerLevel"])}` 股。
 - {validation_comment}
 
 #### 样本外回测图
@@ -910,8 +983,8 @@ def build_report_markdown(
 ## 最终结论
 
 - 这套参数更适合“先跌一段、再进入震荡或反弹”的行情，因为它依赖反弹来兑现网格利润。
-- 如果行情持续单边下跌，网格只能帮你部分摊低成本，不能替代止损、趋势过滤或停手机制。
-- 当前样本下，成本摊薄效果是存在的：样本内下降 {best_summary["CostReductionPct"]:.2f}%，样本外下降 {validation_summary["CostReductionPct"]:.2f}%。
+- 如果行情持续单边下跌，hold 口径会继续持有未平网格，force_exit 口径会在浮亏达到阈值后清仓并停止交易。
+- 当前样本下，闭环网格净利润：样本内 {float(best_summary.get("ClosedGridNetProfit", 0.0)):.2f}，样本外 {float(validation_summary.get("ClosedGridNetProfit", 0.0)):.2f}。
 - {conclusion_tail}
 """
     report_path.write_text(report_content, encoding="utf-8")

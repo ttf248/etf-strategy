@@ -87,6 +87,43 @@ class GridStrategyTests(unittest.TestCase):
         self.assertIsNone(args.end)
         self.assertEqual(args.execution_profile, "realistic")
 
+    def test_backtest_parser_reads_cash_grid_policy_arguments(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "backtest",
+                "--data",
+                "data/processed/1810_hk_daily.csv",
+                "--grid-spacing",
+                "0.05",
+                "--grid-count",
+                "3",
+                "--take-profit",
+                "0.04",
+                "--grid-mode",
+                "cash",
+                "--left-side-policy",
+                "force_exit",
+                "--force-exit-loss-pct",
+                "0.03",
+            ]
+        )
+
+        execution = build_execution_config(
+            args.execution_profile,
+            grid_mode=args.grid_mode,
+            left_side_policy=args.left_side_policy,
+            force_exit_loss_pct=args.force_exit_loss_pct,
+        )
+
+        self.assertEqual(args.grid_mode, "cash")
+        self.assertEqual(args.left_side_policy, "force_exit")
+        self.assertAlmostEqual(args.force_exit_loss_pct, 0.03)
+        self.assertEqual(execution.grid_mode, "cash")
+        self.assertEqual(execution.left_side_policy, "force_exit")
+        self.assertAlmostEqual(execution.force_exit_loss_pct, 0.03)
+
     def test_handle_download_allows_daily_without_range_and_merges_existing(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["download", "--symbol", "1810.HK"])
@@ -355,8 +392,8 @@ class GridStrategyTests(unittest.TestCase):
         self.assertFalse(in_sample.empty)
         self.assertFalse(validation.empty)
 
-    def test_run_grid_backtest_enters_on_first_bar(self) -> None:
-        # 这组价格同时覆盖：样本起点建仓、下跌补仓、反弹止盈三类关键路径。
+    def test_run_grid_backtest_uses_cash_grid_without_first_bar_buy(self) -> None:
+        # 这组价格同时覆盖：不初始买入、下跌开网格、反弹止盈、卖出后再进场。
         prices = [20.0, 19.0, 18.0, 17.0, 18.2, 19.1, 20.0, 18.0, 19.3, 20.2]
         frame = build_test_frame(prices, start="2025-10-01")
 
@@ -377,15 +414,21 @@ class GridStrategyTests(unittest.TestCase):
         events = result["events"]
 
         self.assertTrue(summary["TriggeredEntry"])
+        self.assertTrue(summary["TriggeredGridEntry"])
         self.assertEqual(summary["EntryDate"], "2025-10-01")
         self.assertAlmostEqual(summary["EntryPrice"], 20.0)
         self.assertEqual(summary["LotSize"], 200)
-        self.assertEqual(summary["BaseUnits"], 5000)
-        self.assertEqual(summary["GridUnitsPerLevel"], 1600)
+        self.assertEqual(summary["BaseUnits"], 0)
+        self.assertEqual(summary["GridUnitsPerLevel"], 3200)
+        self.assertEqual(summary["GridMode"], "cash")
+        self.assertEqual(summary["RequestedLeftSidePolicy"], "both")
+        self.assertIn("policy_results", result)
         self.assertFalse(events.empty)
-        self.assertTrue({"base_buy", "grid_buy"}.issubset(set(events["EventType"])))
-        self.assertEqual(events.iloc[0]["Date"], "2025-10-01")
-        self.assertEqual(events.iloc[0]["EventType"], "base_buy")
+        self.assertTrue({"grid_buy", "grid_sell"}.issubset(set(events["EventType"])))
+        self.assertNotIn("base_buy", set(events["EventType"]))
+        self.assertEqual(events.iloc[0]["Date"], "2025-10-02")
+        self.assertEqual(events.iloc[0]["EventType"], "grid_buy")
+        self.assertGreaterEqual(len(events[(events["EventType"] == "grid_buy") & (events["Level"] == 1)]), 2)
         self.assertTrue((events["Units"] % 200 == 0).all())
 
     def test_run_grid_backtest_realistic_profile_records_costs(self) -> None:
@@ -419,10 +462,43 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(summary["ExecutionProfile"], "realistic")
         self.assertGreater(summary["TransactionCost"], 0)
         self.assertGreater(summary["SlippageCost"], 0)
-        self.assertLess(summary["BaseUnits"], 5000)
+        self.assertEqual(summary["BaseUnits"], 0)
         self.assertIn("ExecutionPrice", events.columns)
-        self.assertIn("BaseOnlyReturnPct", summary)
+        self.assertIn("CashIdleReturnPct", summary)
         self.assertIn("BuyHoldReturnPct", summary)
+
+    def test_run_grid_backtest_force_exit_sells_open_grid_and_stops(self) -> None:
+        prices = [20.0, 19.0, 18.0, 16.0, 15.0, 17.0]
+        frame = build_test_frame(prices, start="2025-10-01")
+
+        result = run_grid_backtest(
+            data=frame,
+            scenario_name="force_exit_unit_test",
+            grid_spacing_pct=0.05,
+            grid_count=3,
+            take_profit_pct=0.05,
+            symbol="1810.HK",
+            market="HK",
+            lot_size=200,
+            lot_size_source="unit test",
+            total_capital=200000,
+            execution_config=build_execution_config(
+                "research",
+                left_side_policy="force_exit",
+                force_exit_loss_pct=0.05,
+            ),
+        )
+
+        summary = result["summary"]
+        events = result["events"]
+
+        self.assertTrue(summary["ForceExitTriggered"])
+        self.assertGreaterEqual(summary["ForceExitEvents"], 1)
+        self.assertEqual(summary["PositionUnits"], 0)
+        self.assertIn("force_exit_sell", set(events["EventType"]))
+        first_force_exit_index = events.index[events["EventType"] == "force_exit_sell"][0]
+        after_force_exit = events.loc[first_force_exit_index + 1 :]
+        self.assertNotIn("grid_buy", set(after_force_exit["EventType"]))
 
     def test_run_grid_backtest_realistic_profile_records_stop_loss_event(self) -> None:
         prices = [20.0, 18.0, 17.0, 16.0]
