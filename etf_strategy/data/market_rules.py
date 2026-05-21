@@ -128,11 +128,11 @@ def _fetch_hk_lot_size(symbol: str) -> int:
     return lot_size
 
 
-def _load_hk_lot_size_cache(cache_path: str | Path = HK_LOT_SIZE_CACHE_PATH) -> dict[str, int]:
+def _load_hk_lot_size_cache(cache_path: str | Path | None = None) -> dict[str, int]:
     global _HK_LOT_SIZE_CACHE
     if _HK_LOT_SIZE_CACHE is not None:
         return _HK_LOT_SIZE_CACHE
-    target = Path(cache_path)
+    target = Path(cache_path or HK_LOT_SIZE_CACHE_PATH)
     if not target.exists():
         _HK_LOT_SIZE_CACHE = {}
         return _HK_LOT_SIZE_CACHE
@@ -141,8 +141,8 @@ def _load_hk_lot_size_cache(cache_path: str | Path = HK_LOT_SIZE_CACHE_PATH) -> 
     return _HK_LOT_SIZE_CACHE
 
 
-def _save_hk_lot_size_cache(cache: dict[str, int], cache_path: str | Path = HK_LOT_SIZE_CACHE_PATH) -> None:
-    target = Path(cache_path)
+def _save_hk_lot_size_cache(cache: dict[str, int], cache_path: str | Path | None = None) -> None:
+    target = Path(cache_path or HK_LOT_SIZE_CACHE_PATH)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(cache, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")
 

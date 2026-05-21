@@ -1515,6 +1515,35 @@
 
 - `py -3.13 -m unittest tests.test_grid_strategy tests.test_repo_contracts tests.test_yahoo_data`
 - `py -3.13 -m compileall etf_strategy tests`
+
+## 港股通沪批量下载失败容错
+
+### 状态
+
+已完成并通过验证，待提交。
+
+### 修改方案
+
+把 `batch --download` 从“任一标的下载失败即整批中止”改成“单标的下载失败记为 failed 并继续”，确保 633 只全量批量也能稳定产出统一汇总报告。
+
+### 修改内容
+
+- `etf_strategy/cli.py`
+  - 下载失败时不再 `raise`
+  - 继续复用现有 failed 报告和统一索引写入逻辑
+  - 日志明确区分“下载失败但已继续”和“其他标的失败”
+- `tests/test_grid_strategy.py`
+  - 把原“下载失败即整批停止”测试改成“下载失败会写 failed 报告并继续”
+
+### 设计取舍
+
+- 对小批量来说，中止整批更严格；但对港股通沪这种 633 只全量批量，单点下载失败就中止没有实用价值。
+- 失败继续的前提是 failed 记录必须能进入统一汇总报告，方便后续补跑失败标的。
+
+### 验证
+
+- `py -3.13 -m unittest tests.test_grid_strategy tests.test_repo_contracts tests.test_yahoo_data`
+- `py -3.13 -m compileall etf_strategy tests`
 - `git diff --check`
 
 ## 港股通沪批量性能优化

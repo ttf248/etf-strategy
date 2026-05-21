@@ -977,9 +977,6 @@ def handle_batch(args: argparse.Namespace) -> int:
             )
             logger.info("[batch] 标的完成: symbol={} report={}", symbol, report_path)
         except Exception as exc:
-            if args.download and not download_completed:
-                logger.error("[batch] Yahoo 数据下载失败，批量流程停止: symbol={} error={}", symbol, exc)
-                raise
             report_view = "compare" if args.compare_strategies else args.strategy
             failed_report_path = _write_failed_batch_report(symbol_report_dir, symbol, spec, args.interval, exc, report_view=report_view)
             rows.append(
@@ -1005,7 +1002,10 @@ def handle_batch(args: argparse.Namespace) -> int:
                     report_root=report_root,
                 )
             )
-            logger.exception("[batch] 标的失败: symbol={}", symbol)
+            if args.download and not download_completed:
+                logger.error("[batch] 下载失败，已记录 failed 报告并继续下一个标的: symbol={} error={}", symbol, exc)
+            else:
+                logger.exception("[batch] 标的失败: symbol={}", symbol)
 
     output_root.mkdir(parents=True, exist_ok=True)
     summary_path = output_root / "batch_summary.csv"

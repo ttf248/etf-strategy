@@ -658,7 +658,7 @@ class GridStrategyTests(unittest.TestCase):
         self.assertIn("00002.HK", index_content)
         self.assertNotIn("**00002.HK**", index_content)
 
-    def test_handle_batch_stops_when_download_fails(self) -> None:
+    def test_handle_batch_records_failed_report_when_download_fails(self) -> None:
         parser = build_parser()
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -678,13 +678,17 @@ class GridStrategyTests(unittest.TestCase):
             )
             with (
                 patch("etf_strategy.cli.download_price_bars", side_effect=ValueError("Yahoo 行情下载失败")) as mock_download,
-                patch("etf_strategy.cli._write_failed_batch_report") as mock_failed_report,
+                patch(
+                    "etf_strategy.cli._write_failed_batch_report",
+                    return_value=Path(temp_dir) / "reports" / "1810_hk" / "minute" / "1810_hk_15m_grid_report.md",
+                ) as mock_failed_report,
+                patch("builtins.print"),
             ):
-                with self.assertRaisesRegex(ValueError, "Yahoo 行情下载失败"):
-                    handle_batch(args)
+                result = handle_batch(args)
 
         mock_download.assert_called_once()
-        mock_failed_report.assert_not_called()
+        mock_failed_report.assert_called_once()
+        self.assertEqual(result, 1)
 
     def test_backtest_parser_reads_grid_parameters(self) -> None:
         parser = build_parser()
