@@ -127,6 +127,7 @@
 - 运行时可以直接看控制台里的 `INFO` 级别提示
 - 更详细的定位日志仍写入 `log/etf_strategy_YYYY-MM-DD.log`
 - `main.py` 会主动尝试把 Windows 控制台切到 UTF-8，`.vscode/launch.json` 也会显式传入 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`
+- `report` 命令会输出 `[1/2] -> [2/2]` 进度，`run` 命令会输出 `[1/3] -> [2/3] -> [3/3]` 顶层进度
 
 如果代码改动会影响：
 

@@ -284,6 +284,7 @@ def handle_run(args: argparse.Namespace) -> int:
         output_dir,
         report_dir,
     )
+    logger.info("[1/3] 开始下载并合并最新行情")
     bars = download_price_bars(
         symbol=args.symbol,
         interval=args.interval,
@@ -292,9 +293,11 @@ def handle_run(args: argparse.Namespace) -> int:
         period=args.period if intraday_mode else None,
         proxy=args.proxy,
     )
-    save_price_bars(bars, data_path, interval=args.interval, merge_with_existing=True)
+    merged_data_path = save_price_bars(bars, data_path, interval=args.interval, merge_with_existing=True)
+    logger.info("[1/3] 下载与落盘完成: data_path={}", merged_data_path)
 
     # `run` 总是先把最新下载结果和本地样本合并落盘，再交给统一工作流和报告层复用。
+    logger.info("[2/3] 开始执行完整回测工作流")
     if intraday_mode:
         result = run_minute_full_workflow(
             data_path=data_path,
@@ -302,7 +305,6 @@ def handle_run(args: argparse.Namespace) -> int:
             output_dir=output_dir,
             validation_ratio=args.validation_ratio,
         )
-        report_path = build_minute_report_markdown(result, report_dir=report_dir)
     else:
         result = run_full_workflow(
             data_path=data_path,
@@ -311,7 +313,13 @@ def handle_run(args: argparse.Namespace) -> int:
             validation_start=args.validation_start,
             lookback_days=args.lookback_days,
         )
+    logger.info("[2/3] 完整回测工作流完成: summary={}", result["combined_summary_path"])
+    logger.info("[3/3] 开始生成正式报告")
+    if intraday_mode:
+        report_path = build_minute_report_markdown(result, report_dir=report_dir)
+    else:
         report_path = build_report_markdown(result, report_dir=report_dir)
+    logger.info("[3/3] 正式报告生成完成: report={}", report_path)
     best_summary = result["optimization"]["best_run"]["summary"]
     validation_summary = result["validation"]["run"]["summary"]
     print(f"完整工作流已完成，汇总文件: {result['combined_summary_path']}")
