@@ -60,6 +60,8 @@
 
 - Yahoo 数据下载与标准化
 - 交易单位规则
+- 日线全历史默认下载口径
+- 分钟线本地样本增量合并
 
 ## 常见改动应该改哪里
 
@@ -68,6 +70,7 @@
 至少同步更新：
 
 - `etf_strategy/cli.py`
+- `etf_strategy/data/yahoo.py`
 - `README.md`
 - 对应测试
 
@@ -95,9 +98,20 @@
 至少同步更新：
 
 - `etf_strategy/config.py`
+- `etf_strategy/cli.py`
 - `.gitignore`
 - `README.md`
 - 相关测试
+
+### 修改下载与样本积累规则
+
+至少同步更新：
+
+- `etf_strategy/data/yahoo.py`
+- `etf_strategy/cli.py`
+- `doc/glossary.md`
+- `doc/minute_grid_research.md`
+- `task.md`
 
 ## 文档更新触发条件
 

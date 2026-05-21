@@ -26,10 +26,16 @@
 
 它们分别对应：
 
-- 日线主流程默认输入
-- `15m` 分钟线研究默认输入
+- 日线主流程默认输入快照
+- `15m` 分钟线研究默认输入快照
 
 测试临时 CSV 和一次性研究样本不会一起纳入版本控制。
+
+需要注意：
+
+- `download` 和 `run` 命令现在会优先把新下载的数据和本地 CSV 做合并
+- 日线在不传 `--start/--end` 时，会按 Yahoo 可提供的全历史口径下载
+- 仓库里提交的两份 CSV 只是当前示例快照，不代表下载能力上限
 
 ## 最短上手路径
 
@@ -86,7 +92,13 @@ py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK -
 ### 下载日线数据
 
 ```powershell
-py -3.13 main.py download --start 2024-01-01 --end 2026-05-22 --proxy http://127.0.0.1:7897
+py -3.13 main.py download --symbol 1810.HK --proxy http://127.0.0.1:7897
+```
+
+如果你只想下载某一段日线区间，也可以显式传：
+
+```powershell
+py -3.13 main.py download --symbol 1810.HK --start 2024-01-01 --end 2026-05-22 --proxy http://127.0.0.1:7897
 ```
 
 ### 下载默认分钟线数据
@@ -94,6 +106,11 @@ py -3.13 main.py download --start 2024-01-01 --end 2026-05-22 --proxy http://127
 ```powershell
 py -3.13 main.py download --symbol 1810.HK --interval 15m --period 60d --proxy http://127.0.0.1:7897
 ```
+
+说明：
+
+- 分钟线免费数据通常只有最近 `60d`
+- 项目会先把这次下载结果和本地 `data/processed/1810_hk_15m.csv` 做时间戳合并，再进入后续回测
 
 ### 样本内参数搜索
 
@@ -110,8 +127,10 @@ py -3.13 main.py backtest --data data/processed/1810_hk_daily.csv --symbol 1810.
 ### 一键执行完整流程
 
 ```powershell
-py -3.13 main.py run --start 2024-01-01 --end 2026-05-22 --proxy http://127.0.0.1:7897
+py -3.13 main.py run --symbol 1810.HK --proxy http://127.0.0.1:7897
 ```
+
+如果你希望限定这次日线完整流程只使用某个时间段，也可以显式传 `--start` 和 `--end`。
 
 如果你在中国大陆直连 Yahoo，通常需要代理。可以设置：
 
@@ -153,5 +172,5 @@ task.md          AI 任务记录
 ## 验证
 
 ```powershell
-py -3.13 -m unittest tests.test_grid_strategy
+py -3.13 -m unittest tests.test_grid_strategy tests.test_repo_contracts tests.test_yahoo_data
 ```
