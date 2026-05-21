@@ -62,7 +62,13 @@ def plot_run_result(run_result: dict[str, object], output_path: str | Path, titl
     axes[1].set_ylabel("金额")
     axes[1].legend(loc="upper right")
 
-    axes[2].plot(equity_curve["Date"], equity_curve["ReturnPct"], color="#2ca02c", linewidth=1.5, label="组合收益率")
+    axes[2].plot(
+        equity_curve["Date"],
+        equity_curve["ReturnPct"],
+        color="#2ca02c",
+        linewidth=1.5,
+        label="组合收益率（建仓前固定为 0%）",
+    )
     axes[2].plot(equity_curve["Date"], equity_curve["DrawdownPct"], color="#d62728", linewidth=1.2, label="回撤比例")
     axes[2].axhline(0, color="#7f7f7f", linewidth=0.8)
     axes[2].set_ylabel("百分比")
@@ -75,6 +81,30 @@ def plot_run_result(run_result: dict[str, object], output_path: str | Path, titl
     figure.savefig(target, dpi=180, bbox_inches="tight")
     plt.close(figure)
     return target
+
+
+def _describe_run_in_plain_words(run_result: dict[str, object], total_capital: float = 200000.0) -> dict[str, float]:
+    """把回测结果翻译成更接近投资者视角的金额口径。"""
+    summary = run_result["summary"]
+    history = run_result["history"]
+    events = run_result["events"]
+
+    final_equity = float(summary["FinalEquity"])
+    total_pnl = final_equity - total_capital
+    end_price = float(history.iloc[-1]["Close"])
+
+    base_buy = events[events["EventType"] == "base_buy"].iloc[0]
+    base_units = int(base_buy["Units"])
+    base_cash_flow = float(base_buy["CashFlow"])
+    base_cash_left = total_capital - base_cash_flow
+    base_only_equity = base_cash_left + base_units * end_price
+
+    return {
+        "final_equity": final_equity,
+        "total_pnl": total_pnl,
+        "base_only_equity": base_only_equity,
+        "grid_vs_base_only": final_equity - base_only_equity,
+    }
 
 
 def plot_grid_search(results: pd.DataFrame, output_path: str | Path) -> Path:
@@ -125,6 +155,8 @@ def build_report_markdown(
     decline_window = optimization["decline_window"]
     best_summary = optimization["best_run"]["summary"]
     validation_summary = validation["run"]["summary"]
+    in_sample_words = _describe_run_in_plain_words(optimization["best_run"])
+    validation_words = _describe_run_in_plain_words(validation["run"])
 
     in_sample_chart = plot_run_result(
         optimization["best_run"],
@@ -170,12 +202,33 @@ def build_report_markdown(
 - 参考高点：{decline_window.peak_date}，收盘价 {decline_window.peak_price:.2f}
 - 初始建仓触发日：{decline_window.entry_date}，收盘价 {decline_window.entry_price:.2f}
 - 样本内收益率：{best_summary["ReturnPct"]:.2f}%
+  - 人话：整个账户从 `200000` 变成了 `{in_sample_words["final_equity"]:.2f}`，合计亏损 `{abs(in_sample_words["total_pnl"]):.2f}`。
 - 样本内年化收益率：{best_summary["AnnualReturnPct"]:.2f}%
+  - 人话：这是把这段样本期的结果折算成年化后的速度，用来和别的策略比较，不是说你真的持有满一年亏这么多。
 - 样本内最大回撤：{best_summary["MaxDrawdownPct"]:.2f}%
+  - 人话：样本里最差的时候，账户相对阶段最高点最多回撤了约 `18.42%`。
 - 期末有效持仓成本：{best_summary["EffectiveCost"]:.2f}
+  - 人话：把已经通过网格落袋的利润扣掉后，你手里剩余持仓等效成本大约是 `49.23`。
 - 相对初始建仓成本下降：{best_summary["CostReductionPct"]:.2f}%
+  - 人话：最开始底仓买在 `53.35`，现在等效成本被网格摊低了约 `7.72%`。
 - 网格已实现收益：{best_summary["RealizedGridProfit"]:.2f}
+  - 人话：单看“低买高卖已经完成并落袋”的网格交易，本轮一共赚了 `1607.84`。
 - 完成网格循环次数：{int(best_summary["GridCyclesCompleted"])}
+  - 人话：有 `3` 次网格仓位完成了“买入 -> 反弹 -> 卖出”的完整闭环。
+
+### 样本内怎么看懂
+
+- 如果你只按规则先买 `50%` 底仓，后面完全不做网格，到样本结束时账户大约是 `{in_sample_words["base_only_equity"]:.2f}`，收益率约 `-13.27%`。
+- 当前这版网格策略的最终账户是 `{in_sample_words["final_equity"]:.2f}`，收益率 `-15.50%`。
+- 也就是说：网格本身虽然已经落袋赚了 `1607.84`，但额外接进来的下跌仓位浮亏更大，所以整套策略比“只拿底仓不做网格”还多亏了 `{abs(in_sample_words["grid_vs_base_only"]):.2f}`。
+- 所以这里不能把“网格已实现收益”直接理解成“整个策略赚了这么多钱”；它只代表网格来回滚动已经兑现的那部分利润。
+
+### 关于收益曲线为什么看起来像 0
+
+- 图里的收益曲线不是全程为 0。
+- 建仓前没有持仓，所以那一段收益率固定是 `0%`，这是正常的。
+- 建仓后这轮样本一直没有把总账户拉回正收益，所以收益曲线会从 `0%` 往下走，最低大约到 `-18.42%`，收尾在 `-15.50%`。
+- 如果你肉眼看图时觉得它“都贴着 0”，主要是因为前半段建仓前确实是一条 0 线，而后半段始终在负区间，没有出现重新翻红。
 
 ![样本内回测图](figures/{in_sample_chart.name})
 
@@ -184,11 +237,13 @@ def build_report_markdown(
 ## 2026 样本外验证
 
 - 样本外收益率：{validation_summary["ReturnPct"]:.2f}%
+  - 人话：整个账户从 `200000` 变成了 `{validation_words["final_equity"]:.2f}`，合计亏损 `{abs(validation_words["total_pnl"]):.2f}`。
 - 样本外年化收益率：{validation_summary["AnnualReturnPct"]:.2f}%
 - 样本外最大回撤：{validation_summary["MaxDrawdownPct"]:.2f}%
 - 期末有效持仓成本：{validation_summary["EffectiveCost"]:.2f}
 - 相对样本外首笔建仓成本下降：{validation_summary["CostReductionPct"]:.2f}%
 - 网格已实现收益：{validation_summary["RealizedGridProfit"]:.2f}
+  - 人话：单看已经完成并兑现的网格交易，样本外一共落袋赚了 `{validation_summary["RealizedGridProfit"]:.2f}`。
 - 完成网格循环次数：{int(validation_summary["GridCyclesCompleted"])}
 
 {validation_comment}
