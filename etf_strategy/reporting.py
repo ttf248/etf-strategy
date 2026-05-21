@@ -512,11 +512,20 @@ def build_report_markdown(
 
 {conclusion}
 
-## 老板一眼看懂版
+## 第一层：先看结论
+
+### 老板一眼看懂版
 
 {exec_summary}
 
-## 样本内寻参结果
+### 怎么使用这份报告
+
+- 如果你只想判断这套参数值不值得继续研究，看完上面 3 条就够了。
+- 如果你想知道为什么会得出这个结论，再往下看“第二层：展开细节”。
+
+## 第二层：展开细节
+
+### 样本内寻参结果
 
 - 样本内首笔建仓日：{decline_window.entry_date}
 - 样本内建仓价：{decline_window.entry_price:.2f}
@@ -565,7 +574,7 @@ def build_report_markdown(
 
 ![样本内参数热力图](figures/{search_chart.name})
 
-## {validation_title}
+### {validation_title}
 
 - 样本外收益率：{validation_summary["ReturnPct"]:.2f}%
   - 按同一套参数跑完样本外区间，账户从 `200000` 走到 `{validation_words["final_equity"]:.2f}`，合计{validation_total_pnl_text} `{abs(validation_words["total_pnl"]):.2f}`。
@@ -585,7 +594,7 @@ def build_report_markdown(
 
 ![样本外回测图](figures/{validation_chart.name})
 
-## 交易记录
+### 交易记录
 
 ### 样本内事件流水
 
@@ -603,7 +612,7 @@ def build_report_markdown(
 
 {validation_trade_table}
 
-## 结论
+## 最终结论
 
 - 这套参数更适合“先急跌、后震荡修复”的行情，能够通过来回做网格降低持仓成本。
 - 如果行情持续单边下跌，网格收益只能部分对冲亏损，不能替代趋势止损或更强的择时规则。
