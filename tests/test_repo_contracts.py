@@ -55,7 +55,7 @@ class RepoContractTests(unittest.TestCase):
         for config in configurations:
             self.assertEqual(config["program"], "${workspaceFolder}/main.py")
             self.assertEqual(config["args"][0], "report")
-            self.assertEqual(config["console"], "externalTerminal")
+            self.assertEqual(config["console"], "integratedTerminal")
             self.assertEqual(config["env"]["PYTHONUTF8"], "1")
             self.assertEqual(config["env"]["PYTHONIOENCODING"], "utf-8")
 

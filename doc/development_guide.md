@@ -122,12 +122,14 @@
 - 基于 `data/processed/1810_hk_daily.csv` 的日线正式报告重算
 - 基于 `data/processed/1810_hk_15m.csv` 的 15 分钟正式报告重算
 
-这两条配置当前统一使用外部终端窗口执行：
+这两条配置当前统一使用 VS Code 集成终端执行：
 
 - 运行时可以直接看控制台里的 `INFO` 级别提示
 - 更详细的定位日志仍写入 `log/etf_strategy_YYYY-MM-DD.log`
 - `main.py` 会主动尝试把 Windows 控制台切到 UTF-8，`.vscode/launch.json` 也会显式传入 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`
 - `report` 命令会输出 `[1/2] -> [2/2]` 进度，`run` 命令会输出 `[1/3] -> [2/3] -> [3/3]` 顶层进度
+
+之所以不再使用外部终端，是因为默认一键入口执行很快；如果窗口自动关闭，用户往往来不及看到进度和异常信息。
 
 如果代码改动会影响：
 
