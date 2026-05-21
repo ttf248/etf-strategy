@@ -25,6 +25,14 @@ class DeclineWindow:
     validation_start: str
 
 
+def format_timestamp(timestamp: pd.Timestamp) -> str:
+    """按数据粒度输出日期或日期时间。"""
+    normalized = pd.Timestamp(timestamp)
+    if normalized.hour or normalized.minute or normalized.second:
+        return normalized.strftime("%Y-%m-%d %H:%M:%S")
+    return normalized.strftime("%Y-%m-%d")
+
+
 class XiaomiGridStrategy(Strategy):
     """小米港股左侧建仓 + 双向网格策略。"""
 
@@ -87,7 +95,7 @@ class XiaomiGridStrategy(Strategy):
 
         self.event_log.append(
             {
-                "Date": current_date.strftime("%Y-%m-%d"),
+                "Date": format_timestamp(current_date),
                 "EventType": "base_buy",
                 "Level": 0,
                 "Price": close_price,
@@ -130,7 +138,7 @@ class XiaomiGridStrategy(Strategy):
 
             self.event_log.append(
                 {
-                    "Date": current_date.strftime("%Y-%m-%d"),
+                    "Date": format_timestamp(current_date),
                     "EventType": "grid_buy",
                     "Level": int(level["level"]),
                     "Price": close_price,
@@ -166,7 +174,7 @@ class XiaomiGridStrategy(Strategy):
 
             self.event_log.append(
                 {
-                    "Date": current_date.strftime("%Y-%m-%d"),
+                    "Date": format_timestamp(current_date),
                     "EventType": "grid_sell",
                     "Level": int(level["level"]),
                     "Price": close_price,
@@ -202,7 +210,7 @@ class XiaomiGridStrategy(Strategy):
 
         self.history.append(
             {
-                "Date": current_date.strftime("%Y-%m-%d"),
+                "Date": format_timestamp(current_date),
                 "Close": close_price,
                 "PeakClose": self.high_water_mark,
                 "EntryTriggerPrice": self.entry_trigger_price,
@@ -271,13 +279,13 @@ def locate_recent_decline_window(
         entry_date = entry_rows.index[0]
         entry_price = float(entry_rows.iloc[0]["Close"])
         return DeclineWindow(
-            peak_date=peak_date.strftime("%Y-%m-%d"),
+            peak_date=format_timestamp(peak_date),
             peak_price=peak_price,
-            entry_date=entry_date.strftime("%Y-%m-%d"),
+            entry_date=format_timestamp(entry_date),
             entry_price=entry_price,
-            sample_start=peak_date.strftime("%Y-%m-%d"),
-            sample_end=sample_end_ts.strftime("%Y-%m-%d"),
-            validation_start=validation_timestamp.strftime("%Y-%m-%d"),
+            sample_start=format_timestamp(peak_date),
+            sample_end=format_timestamp(sample_end_ts),
+            validation_start=format_timestamp(validation_timestamp),
         )
 
     raise ValueError("未能在样本内区间定位到满足 10% 回撤条件的下跌窗口。")
@@ -294,6 +302,37 @@ def _history_to_frame(history: list[dict[str, object]]) -> pd.DataFrame:
 
 def _events_to_frame(events: list[dict[str, object]]) -> pd.DataFrame:
     return pd.DataFrame(events) if events else pd.DataFrame()
+
+
+def locate_intraday_decline_window(
+    data: pd.DataFrame,
+    validation_start: pd.Timestamp,
+    entry_drawdown_pct: float = ENTRY_DRAWDOWN_RATIO,
+) -> DeclineWindow:
+    """在分钟样本内定位一轮满足回撤条件的下跌窗口。"""
+    if data.empty:
+        raise ValueError("分钟样本内区间为空，无法定位下跌窗口。")
+
+    peak_date = data["Close"].idxmax()
+    peak_price = float(data.loc[peak_date, "Close"])
+    after_peak = data.loc[peak_date:]
+    entry_threshold = peak_price * (1 - entry_drawdown_pct)
+    entry_rows = after_peak[after_peak["Close"] <= entry_threshold]
+    if entry_rows.empty:
+        raise ValueError("分钟样本内区间未出现 10% 回撤，无法定位建仓窗口。")
+
+    entry_date = entry_rows.index[0]
+    entry_price = float(entry_rows.iloc[0]["Close"])
+    sample_end = data.index.max()
+    return DeclineWindow(
+        peak_date=format_timestamp(peak_date),
+        peak_price=peak_price,
+        entry_date=format_timestamp(entry_date),
+        entry_price=entry_price,
+        sample_start=format_timestamp(peak_date),
+        sample_end=format_timestamp(sample_end),
+        validation_start=format_timestamp(validation_start),
+    )
 
 
 def run_grid_backtest(
@@ -327,16 +366,16 @@ def run_grid_backtest(
     events = _events_to_frame(strategy.event_log)
 
     latest_snapshot = history.iloc[-1].to_dict() if not history.empty else {}
-    peak_date = strategy.peak_date.strftime("%Y-%m-%d")
-    base_entry_date = strategy.base_entry_date.strftime("%Y-%m-%d") if strategy.base_entry_date else ""
+    peak_date = format_timestamp(strategy.peak_date)
+    base_entry_date = format_timestamp(strategy.base_entry_date) if strategy.base_entry_date else ""
     max_drawdown_pct = abs(float(stats["Max. Drawdown [%]"]))
     return_pct = float(stats["Return [%]"])
     cost_reduction_pct = float(latest_snapshot.get("CostReductionPct", 0.0))
 
     summary = {
         "Scenario": scenario_name,
-        "StartDate": data.index.min().strftime("%Y-%m-%d"),
-        "EndDate": data.index.max().strftime("%Y-%m-%d"),
+        "StartDate": format_timestamp(data.index.min()),
+        "EndDate": format_timestamp(data.index.max()),
         "PeakDate": peak_date,
         "PeakPrice": strategy.high_water_mark,
         "EntryDate": base_entry_date,
@@ -420,6 +459,28 @@ def split_in_sample_and_validation(
     validation = data.loc[decline_window.validation_start:].copy()
     if validation.empty:
         raise ValueError("样本外区间为空，无法验证 2026 表现。")
+    return decline_window, in_sample, validation
+
+
+def split_intraday_in_sample_and_validation(
+    data: pd.DataFrame,
+    validation_ratio: float = 0.25,
+) -> tuple[DeclineWindow, pd.DataFrame, pd.DataFrame]:
+    """按最近分钟线样本拆分样本内和样本外数据。"""
+    if not 0 < validation_ratio < 0.5:
+        raise ValueError("validation_ratio 必须在 0 和 0.5 之间。")
+    if len(data) < 20:
+        raise ValueError("分钟线样本过短，至少需要 20 根 K 线。")
+
+    split_index = int(len(data) * (1 - validation_ratio))
+    split_index = min(max(split_index, 1), len(data) - 1)
+    raw_in_sample = data.iloc[:split_index].copy()
+    validation = data.iloc[split_index:].copy()
+    validation_start = pd.Timestamp(validation.index.min())
+    decline_window = locate_intraday_decline_window(raw_in_sample, validation_start=validation_start)
+    in_sample = raw_in_sample.loc[pd.Timestamp(decline_window.sample_start) : raw_in_sample.index.max()].copy()
+    if validation.empty:
+        raise ValueError("分钟样本外区间为空，无法验证表现。")
     return decline_window, in_sample, validation
 
 

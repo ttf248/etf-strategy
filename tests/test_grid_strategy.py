@@ -3,7 +3,11 @@ import unittest
 import pandas as pd
 
 from etf_strategy.cli import build_parser
-from etf_strategy.strategy.grid import locate_recent_decline_window, run_grid_backtest
+from etf_strategy.strategy.grid import (
+    locate_recent_decline_window,
+    run_grid_backtest,
+    split_intraday_in_sample_and_validation,
+)
 
 
 def build_test_frame(close_prices: list[float], start: str = "2025-09-01") -> pd.DataFrame:
@@ -46,7 +50,29 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(args.symbol, "1810.HK")
         self.assertEqual(args.interval, "15m")
         self.assertEqual(args.period, "60d")
+        self.assertEqual(args.period, "60d")
         self.assertIsNone(args.output)
+
+    def test_run_parser_reads_intraday_parameters(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "run",
+                "--symbol",
+                "1810.HK",
+                "--interval",
+                "15m",
+                "--period",
+                "60d",
+            ]
+        )
+
+        self.assertEqual(args.command, "run")
+        self.assertEqual(args.interval, "15m")
+        self.assertEqual(args.period, "60d")
+        self.assertIsNone(args.start)
+        self.assertIsNone(args.end)
 
     def test_backtest_parser_reads_grid_parameters(self) -> None:
         parser = build_parser()
@@ -109,6 +135,28 @@ class GridStrategyTests(unittest.TestCase):
         self.assertNotEqual(summary["EntryDate"], "")
         self.assertFalse(events.empty)
         self.assertTrue({"base_buy", "grid_buy"}.issubset(set(events["EventType"])))
+
+    def test_split_intraday_in_sample_and_validation(self) -> None:
+        dates = pd.date_range(start="2026-04-01 09:30:00", periods=40, freq="15min")
+        prices = [30.0, 31.0, 32.0, 33.0, 34.0, 35.0, 34.0, 33.0, 32.0, 31.0] + [30.0] * 30
+        frame = pd.DataFrame(
+            {
+                "Open": prices,
+                "High": [price * 1.01 for price in prices],
+                "Low": [price * 0.99 for price in prices],
+                "Close": prices,
+                "Volume": [1000] * len(prices),
+            },
+            index=dates,
+        )
+        frame.index.name = "Date"
+
+        window, in_sample, validation = split_intraday_in_sample_and_validation(frame, validation_ratio=0.25)
+
+        self.assertEqual(window.peak_date, "2026-04-01 10:45:00")
+        self.assertEqual(window.entry_date, "2026-04-01 11:45:00")
+        self.assertFalse(in_sample.empty)
+        self.assertFalse(validation.empty)
 
 
 if __name__ == "__main__":

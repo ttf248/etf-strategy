@@ -6,16 +6,31 @@ from loguru import logger
 
 from etf_strategy.config import (
     DEFAULT_DATA_PATH,
+    DEFAULT_MINUTE_OUTPUT_DIR,
+    DEFAULT_MINUTE_REPORT_DIR,
     DEFAULT_MINUTE_DATA_PATH,
     DEFAULT_MINUTE_INTERVAL,
     DEFAULT_MINUTE_PERIOD,
     DEFAULT_OUTPUT_DIR,
+    DEFAULT_REPORT_DIR,
     DEFAULT_SYMBOL,
 )
-from etf_strategy.data.yahoo import build_default_output_path, download_price_bars, save_price_bars
+from etf_strategy.data.yahoo import (
+    build_default_output_path,
+    download_price_bars,
+    is_intraday_interval,
+    save_price_bars,
+)
 from etf_strategy.logging_utils import configure_logging
-from etf_strategy.reporting import build_report_markdown
-from etf_strategy.workflow import run_full_workflow, run_optimization_workflow, run_validation_workflow
+from etf_strategy.reporting import build_minute_report_markdown, build_report_markdown
+from etf_strategy.workflow import (
+    run_full_workflow,
+    run_minute_full_workflow,
+    run_minute_optimization_workflow,
+    run_minute_validation_workflow,
+    run_optimization_workflow,
+    run_validation_workflow,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,10 +42,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     download_parser = subparsers.add_parser("download", help="下载并标准化历史行情")
     download_parser.add_argument("--symbol", default=DEFAULT_SYMBOL, help="Yahoo Finance 标的代码")
-    download_parser.add_argument("--start", required=True, help="开始日期，格式 YYYY-MM-DD")
-    download_parser.add_argument("--end", required=True, help="结束日期，格式 YYYY-MM-DD")
+    download_parser.add_argument("--start", help="开始日期，格式 YYYY-MM-DD，日线必填")
+    download_parser.add_argument("--end", help="结束日期，格式 YYYY-MM-DD，日线必填")
     download_parser.add_argument("--interval", default="1d", help="K 线周期，例如 1d、5m、15m、60m")
-    download_parser.add_argument("--period", help="分钟 K 线优先使用的区间，例如 5d、30d、60d")
+    download_parser.add_argument(
+        "--period",
+        default=DEFAULT_MINUTE_PERIOD,
+        help="分钟 K 线优先使用的区间，例如 5d、30d、60d",
+    )
     download_parser.add_argument(
         "--proxy",
         default=os.getenv("ETF_STRATEGY_PROXY"),
@@ -44,12 +63,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     optimize_parser = subparsers.add_parser("optimize", help="执行样本内参数搜索")
     optimize_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
-    optimize_parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR / "optimize"), help="参数搜索结果输出目录")
+    optimize_parser.add_argument("--interval", default="1d", help="数据周期，决定使用日线还是分钟线工作流")
+    optimize_parser.add_argument("--output-dir", default=None, help="参数搜索结果输出目录")
     optimize_parser.add_argument("--validation-start", default="2026-01-01", help="样本外起始日期")
     optimize_parser.add_argument("--lookback-days", type=int, default=120, help="样本内回看天数")
+    optimize_parser.add_argument("--validation-ratio", type=float, default=0.25, help="分钟线样本外比例")
 
     backtest_parser = subparsers.add_parser("backtest", help="执行样本外验证")
     backtest_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
+    backtest_parser.add_argument("--interval", default="1d", help="数据周期，决定使用日线还是分钟线工作流")
     backtest_parser.add_argument(
         "--grid-spacing",
         type=float,
@@ -68,36 +90,45 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="单层止盈比例，例如 0.03 表示某层买入后反弹 3%% 就卖出该层",
     )
-    backtest_parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR / "validation"), help="样本外验证输出目录")
+    backtest_parser.add_argument("--output-dir", default=None, help="样本外验证输出目录")
     backtest_parser.add_argument("--validation-start", default="2026-01-01", help="样本外起始日期")
     backtest_parser.add_argument("--lookback-days", type=int, default=120, help="样本内回看天数")
+    backtest_parser.add_argument("--validation-ratio", type=float, default=0.25, help="分钟线样本外比例")
 
     report_parser = subparsers.add_parser("report", help="生成图表与中文报告")
     report_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
-    report_parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="工作流中间文件目录")
-    report_parser.add_argument("--report-dir", default="reports", help="图表与 Markdown 报告输出目录")
+    report_parser.add_argument("--interval", default="1d", help="数据周期，决定使用日线还是分钟线工作流")
+    report_parser.add_argument("--output-dir", default=None, help="工作流中间文件目录")
+    report_parser.add_argument("--report-dir", default=None, help="图表与 Markdown 报告输出目录")
     report_parser.add_argument("--validation-start", default="2026-01-01", help="样本外起始日期")
     report_parser.add_argument("--lookback-days", type=int, default=120, help="样本内回看天数")
+    report_parser.add_argument("--validation-ratio", type=float, default=0.25, help="分钟线样本外比例")
 
     run_parser = subparsers.add_parser("run", help="串联下载、寻参、验证和报告生成")
     run_parser.add_argument("--symbol", default=DEFAULT_SYMBOL, help="Yahoo Finance 标的代码")
-    run_parser.add_argument("--start", required=True, help="开始日期，格式 YYYY-MM-DD")
-    run_parser.add_argument("--end", required=True, help="结束日期，格式 YYYY-MM-DD")
+    run_parser.add_argument("--start", help="开始日期，格式 YYYY-MM-DD，日线必填")
+    run_parser.add_argument("--end", help="结束日期，格式 YYYY-MM-DD，日线必填")
+    run_parser.add_argument("--interval", default="1d", help="K 线周期，例如 1d、5m、15m、60m")
+    run_parser.add_argument("--period", default=DEFAULT_MINUTE_PERIOD, help="分钟 K 线优先使用的区间，例如 5d、30d、60d")
     run_parser.add_argument(
         "--proxy",
         default=os.getenv("ETF_STRATEGY_PROXY"),
         help="访问 Yahoo 所需的代理地址，例如 http://127.0.0.1:7897",
     )
-    run_parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="完整工作流输出目录")
-    run_parser.add_argument("--report-dir", default="reports", help="图表与 Markdown 报告输出目录")
+    run_parser.add_argument("--output-dir", default=None, help="完整工作流输出目录")
+    run_parser.add_argument("--report-dir", default=None, help="图表与 Markdown 报告输出目录")
     run_parser.add_argument("--validation-start", default="2026-01-01", help="样本外起始日期")
     run_parser.add_argument("--lookback-days", type=int, default=120, help="样本内回看天数")
+    run_parser.add_argument("--validation-ratio", type=float, default=0.25, help="分钟线样本外比例")
 
     return parser
 
 
 def handle_download(args: argparse.Namespace) -> int:
     """执行下载命令。"""
+    if not is_intraday_interval(args.interval) and (not args.start or not args.end):
+        raise ValueError("日线下载必须提供 --start 和 --end。")
+
     output = args.output
     if output is None:
         if args.interval == DEFAULT_MINUTE_INTERVAL and args.period == DEFAULT_MINUTE_PERIOD:
@@ -112,7 +143,7 @@ def handle_download(args: argparse.Namespace) -> int:
         interval=args.interval,
         start_date=args.start if args.interval == "1d" else None,
         end_date=args.end if args.interval == "1d" else None,
-        period=args.period,
+        period=args.period if is_intraday_interval(args.interval) else None,
         proxy=args.proxy,
     )
     output_path = save_price_bars(bars, output)
@@ -128,12 +159,21 @@ def handle_placeholder(args: argparse.Namespace) -> int:
 
 
 def handle_optimize(args: argparse.Namespace) -> int:
-    result = run_optimization_workflow(
-        data_path=args.data,
-        output_dir=args.output_dir,
-        validation_start=args.validation_start,
-        lookback_days=args.lookback_days,
-    )
+    if is_intraday_interval(args.interval):
+        output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR / "optimize")
+        result = run_minute_optimization_workflow(
+            data_path=args.data,
+            output_dir=output_dir,
+            validation_ratio=args.validation_ratio,
+        )
+    else:
+        output_dir = args.output_dir or str(DEFAULT_OUTPUT_DIR / "optimize")
+        result = run_optimization_workflow(
+            data_path=args.data,
+            output_dir=output_dir,
+            validation_start=args.validation_start,
+            lookback_days=args.lookback_days,
+        )
     best_summary = result["best_run"]["summary"]
     print(f"样本内最优参数已生成: {result['results_path']}")
     print(
@@ -147,15 +187,27 @@ def handle_optimize(args: argparse.Namespace) -> int:
 
 
 def handle_backtest(args: argparse.Namespace) -> int:
-    result = run_validation_workflow(
-        data_path=args.data,
-        grid_spacing_pct=args.grid_spacing,
-        grid_count=args.grid_count,
-        take_profit_pct=args.take_profit,
-        output_dir=args.output_dir,
-        validation_start=args.validation_start,
-        lookback_days=args.lookback_days,
-    )
+    if is_intraday_interval(args.interval):
+        output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR / "validation")
+        result = run_minute_validation_workflow(
+            data_path=args.data,
+            grid_spacing_pct=args.grid_spacing,
+            grid_count=args.grid_count,
+            take_profit_pct=args.take_profit,
+            output_dir=output_dir,
+            validation_ratio=args.validation_ratio,
+        )
+    else:
+        output_dir = args.output_dir or str(DEFAULT_OUTPUT_DIR / "validation")
+        result = run_validation_workflow(
+            data_path=args.data,
+            grid_spacing_pct=args.grid_spacing,
+            grid_count=args.grid_count,
+            take_profit_pct=args.take_profit,
+            output_dir=output_dir,
+            validation_start=args.validation_start,
+            lookback_days=args.lookback_days,
+        )
     summary = result["run"]["summary"]
     print(
         "样本外验证完成: "
@@ -167,18 +219,37 @@ def handle_backtest(args: argparse.Namespace) -> int:
 
 
 def handle_run(args: argparse.Namespace) -> int:
-    output_dir = Path(args.output_dir)
-    data_path = DEFAULT_DATA_PATH
-    bars = download_daily_bars(args.symbol, args.start, args.end, proxy=args.proxy)
-    save_daily_bars(bars, data_path)
+    if not is_intraday_interval(args.interval) and (not args.start or not args.end):
+        raise ValueError("日线完整流程必须提供 --start 和 --end。")
 
-    result = run_full_workflow(
-        data_path=data_path,
-        output_dir=output_dir,
-        validation_start=args.validation_start,
-        lookback_days=args.lookback_days,
+    output_dir = Path(args.output_dir or (DEFAULT_MINUTE_OUTPUT_DIR if is_intraday_interval(args.interval) else DEFAULT_OUTPUT_DIR))
+    report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR if is_intraday_interval(args.interval) else DEFAULT_REPORT_DIR)
+    data_path = DEFAULT_MINUTE_DATA_PATH if is_intraday_interval(args.interval) else DEFAULT_DATA_PATH
+    bars = download_price_bars(
+        symbol=args.symbol,
+        interval=args.interval,
+        start_date=args.start if args.interval == "1d" else None,
+        end_date=args.end if args.interval == "1d" else None,
+        period=args.period if is_intraday_interval(args.interval) else None,
+        proxy=args.proxy,
     )
-    report_path = build_report_markdown(result, report_dir=args.report_dir)
+    save_price_bars(bars, data_path)
+
+    if is_intraday_interval(args.interval):
+        result = run_minute_full_workflow(
+            data_path=data_path,
+            output_dir=output_dir,
+            validation_ratio=args.validation_ratio,
+        )
+        report_path = build_minute_report_markdown(result, report_dir=report_dir)
+    else:
+        result = run_full_workflow(
+            data_path=data_path,
+            output_dir=output_dir,
+            validation_start=args.validation_start,
+            lookback_days=args.lookback_days,
+        )
+        report_path = build_report_markdown(result, report_dir=report_dir)
     best_summary = result["optimization"]["best_run"]["summary"]
     validation_summary = result["validation"]["run"]["summary"]
     print(f"完整工作流已完成，汇总文件: {result['combined_summary_path']}")
@@ -199,13 +270,25 @@ def handle_run(args: argparse.Namespace) -> int:
 
 
 def handle_report(args: argparse.Namespace) -> int:
-    result = run_full_workflow(
-        data_path=args.data,
-        output_dir=args.output_dir,
-        validation_start=args.validation_start,
-        lookback_days=args.lookback_days,
-    )
-    report_path = build_report_markdown(result, report_dir=args.report_dir)
+    if is_intraday_interval(args.interval):
+        output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR)
+        report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR)
+        result = run_minute_full_workflow(
+            data_path=args.data,
+            output_dir=output_dir,
+            validation_ratio=args.validation_ratio,
+        )
+        report_path = build_minute_report_markdown(result, report_dir=report_dir)
+    else:
+        output_dir = args.output_dir or str(DEFAULT_OUTPUT_DIR)
+        report_dir = args.report_dir or str(DEFAULT_REPORT_DIR)
+        result = run_full_workflow(
+            data_path=args.data,
+            output_dir=output_dir,
+            validation_start=args.validation_start,
+            lookback_days=args.lookback_days,
+        )
+        report_path = build_report_markdown(result, report_dir=report_dir)
     print(f"报告已生成: {report_path}")
     return 0
 
