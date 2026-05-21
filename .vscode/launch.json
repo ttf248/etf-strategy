@@ -7,6 +7,8 @@
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
+            "internalConsoleOptions": "openOnSessionStart",
+            "redirectOutput": true,
             "env": {
                 "PYTHONUTF8": "1",
                 "PYTHONIOENCODING": "utf-8"
@@ -25,6 +27,8 @@
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
+            "internalConsoleOptions": "openOnSessionStart",
+            "redirectOutput": true,
             "env": {
                 "PYTHONUTF8": "1",
                 "PYTHONIOENCODING": "utf-8"

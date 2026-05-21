@@ -128,6 +128,7 @@
 - 更详细的定位日志仍写入 `log/etf_strategy_YYYY-MM-DD.log`
 - `main.py` 会主动尝试把 Windows 控制台切到 UTF-8，`.vscode/launch.json` 也会显式传入 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`
 - `report` 命令会输出 `[1/2] -> [2/2]` 进度，`run` 命令会输出 `[1/3] -> [2/3] -> [3/3]` 顶层进度
+- 如果集成终端没有自动切到前台，调试控制台也会自动打开，并通过 `redirectOutput` 同步显示输出
 
 之所以不再使用外部终端，是因为默认一键入口执行很快；如果窗口自动关闭，用户往往来不及看到进度和异常信息。
 

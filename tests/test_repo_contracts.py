@@ -56,8 +56,14 @@ class RepoContractTests(unittest.TestCase):
             self.assertEqual(config["program"], "${workspaceFolder}/main.py")
             self.assertEqual(config["args"][0], "report")
             self.assertEqual(config["console"], "integratedTerminal")
+            self.assertEqual(config["internalConsoleOptions"], "openOnSessionStart")
+            self.assertTrue(config["redirectOutput"])
             self.assertEqual(config["env"]["PYTHONUTF8"], "1")
             self.assertEqual(config["env"]["PYTHONIOENCODING"], "utf-8")
+
+    def test_vscode_settings_open_debug_view_on_session_start(self) -> None:
+        settings_payload = json.loads((REPO_ROOT / ".vscode" / "settings.json").read_text(encoding="utf-8"))
+        self.assertEqual(settings_payload["debug.openDebug"], "openOnSessionStart")
 
     def test_reports_keep_two_layer_structure(self) -> None:
         report_files = [
