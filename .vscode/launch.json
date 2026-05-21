@@ -3,7 +3,7 @@
     "configurations": [
         {
             "name": "一键生成日线正式报告",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "cwd": "${workspaceFolder}",
@@ -22,7 +22,7 @@
         },
         {
             "name": "一键生成15分钟正式报告",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "cwd": "${workspaceFolder}",

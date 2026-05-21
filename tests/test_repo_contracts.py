@@ -53,7 +53,7 @@ class RepoContractTests(unittest.TestCase):
         config_names = {config["name"] for config in configurations}
         self.assertEqual(config_names, {"一键生成日线正式报告", "一键生成15分钟正式报告"})
         for config in configurations:
-            self.assertEqual(config["type"], "python")
+            self.assertEqual(config["type"], "debugpy")
             self.assertEqual(config["program"], "${workspaceFolder}/main.py")
             self.assertEqual(config["cwd"], "${workspaceFolder}")
             self.assertEqual(config["args"][0], "report")

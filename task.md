@@ -35,6 +35,7 @@
 - [x] 增加 VS Code 调试控制台兜底输出
 - [x] 按微软文档重构 VS Code 配置
 - [x] 参考示例收敛 VS Code 启动配置
+- [x] 修复 VS Code 调试器类型
 
 ## 项目规划整理
 
@@ -975,6 +976,33 @@
 
 - 这次调整的重点是“少即是多”，让 VS Code 配置更像一份普通 Python 项目里的 `launch.json`，降低维护和理解成本。
 - 既然用户明确给了参考样式，就不应该继续保留一大层额外抽象，否则配置越改越远离用户预期。
+
+## 修复 VS Code 调试器类型
+
+### 状态
+
+已完成。
+
+### 修改方案
+
+保留上一轮按示例收敛后的简单结构和 `integratedTerminal` 输出方式，但把 `launch.json` 里的调试器类型从旧写法 `python` 改回微软当前 Python 调试文档推荐的 `debugpy`。
+
+### 修改内容
+
+- `.vscode/launch.json`：
+  - 两条一键报告配置的 `type` 从 `python` 改为 `debugpy`
+  - 保留 `console=integratedTerminal`
+  - 保留 `cwd=${workspaceFolder}`
+- `tests/test_repo_contracts.py`：
+  - 更新 VS Code 启动配置契约，固定 `type=debugpy`
+- `README.md`、`doc/development_guide.md`：
+  - 说明 `type=python` 是旧参考写法，当前调试器类型使用 `debugpy`
+  - 补充 VS Code 需要安装 Microsoft Python / Python Debugger 扩展
+
+### 设计规则、原因和收益
+
+- 用户给的示例可以保留“结构简洁”和“集成终端输出”的部分，但 `type=python` 已经不适合作为当前 VS Code Python Debugger 的调试类型。
+- 这次修正针对的是“命令行能跑、VS Code 无法启动调试”的问题，避免继续在终端配置上绕圈。
 
 ## 产物清单
 

@@ -167,12 +167,14 @@ task.md          AI 任务记录
 
 ## VS Code 运行与调试
 
-现在按你给的参考样式，VS Code 重新收敛成“轻量 `launch.json` + 辅助 `settings.json`”：
+现在 VS Code 配置收敛成“轻量 `launch.json` + 辅助 `settings.json`”：
 
 - `.vscode/launch.json`：只保留 2 条 Python 启动配置
 - `.vscode/settings.json`：只保留 Windows 终端的 `PowerShell -NoProfile` 设置
 
 ### 启动入口
+
+使用这些启动项前，需要 VS Code 已安装 Microsoft 的 Python / Python Debugger 扩展；否则 `debugpy` 调试类型不会被识别。
 
 `launch.json` 当前只保留 2 个一键入口：
 
@@ -185,14 +187,14 @@ task.md          AI 任务记录
 - 不依赖本地代理是否可用
 - 更适合日常改代码后的快速回归验证
 
-这两条配置现在都采用你给的这种风格：
+这两条配置保留你给的集成终端启动风格，但调试器类型使用微软当前 Python 调试文档推荐的 `debugpy`：
 
-- `type=python`
+- `type=debugpy`
 - `request=launch`
 - `program=${workspaceFolder}/main.py`
 - `console=integratedTerminal`
 
-也就是点启动后，直接在 VS Code 集成终端里执行，而不是再额外拆到调试控制台或任务系统。
+原因是 `type=python` 属于旧写法，在当前 Python Debugger 扩展下可能导致 VS Code 无法启动调试。现在点启动后，程序仍会直接在 VS Code 集成终端里执行。
 
 ### 终端设置
 
