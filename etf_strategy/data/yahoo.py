@@ -10,6 +10,7 @@ from loguru import logger
 
 STANDARD_COLUMNS = ["Date", "Open", "High", "Low", "Close", "Volume"]
 CHART_API_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+INTRADAY_INTERVALS = {"1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h"}
 
 
 def _flatten_columns(frame: pd.DataFrame) -> pd.DataFrame:
@@ -19,7 +20,7 @@ def _flatten_columns(frame: pd.DataFrame) -> pd.DataFrame:
     return frame
 
 
-def normalize_ohlcv(frame: pd.DataFrame) -> pd.DataFrame:
+def normalize_ohlcv(frame: pd.DataFrame, interval: str = "1d") -> pd.DataFrame:
     """标准化为回测统一使用的 OHLCV 结构。"""
     normalized = _flatten_columns(frame).copy()
 
@@ -38,8 +39,11 @@ def normalize_ohlcv(frame: pd.DataFrame) -> pd.DataFrame:
 
     normalized["Volume"] = normalized["Volume"].fillna(0).astype("int64")
     normalized.reset_index(inplace=True)
-    normalized.rename(columns={"index": "Date"}, inplace=True)
-    normalized["Date"] = normalized["Date"].dt.strftime("%Y-%m-%d")
+    normalized.rename(columns={"index": "Date", "Datetime": "Date"}, inplace=True)
+    if interval in INTRADAY_INTERVALS:
+        normalized["Date"] = normalized["Date"].dt.strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        normalized["Date"] = normalized["Date"].dt.strftime("%Y-%m-%d")
     return normalized[STANDARD_COLUMNS]
 
 
@@ -58,19 +62,33 @@ def _to_epoch_seconds(date_text: str, inclusive_end: bool = False) -> int:
     return int(date_value.timestamp())
 
 
-def _load_from_yfinance(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+def _load_from_yfinance(
+    symbol: str,
+    interval: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period: str | None = None,
+    proxy: str | None = None,
+) -> pd.DataFrame:
     """优先尝试 yfinance，适合无需代理的环境。"""
-    data = yf.download(
-        symbol,
-        start=start_date,
-        end=end_date,
-        interval="1d",
-        auto_adjust=True,
-        progress=False,
-        actions=False,
-        threads=False,
-    )
-    return normalize_ohlcv(data)
+    if proxy:
+        yf.set_config(proxy=proxy)
+
+    download_kwargs: dict[str, object] = {
+        "interval": interval,
+        "auto_adjust": True,
+        "progress": False,
+        "actions": False,
+        "threads": False,
+    }
+    if period:
+        download_kwargs["period"] = period
+    else:
+        download_kwargs["start"] = start_date
+        download_kwargs["end"] = end_date
+
+    data = yf.download(symbol, **download_kwargs)
+    return normalize_ohlcv(data, interval=interval)
 
 
 def _apply_adjustment(frame: pd.DataFrame, adj_close: list[float] | None) -> pd.DataFrame:
@@ -135,29 +153,81 @@ def _load_from_chart_api(symbol: str, start_date: str, end_date: str, proxy: str
         frame = _apply_adjustment(frame, adjclose[0].get("adjclose"))
 
     frame = frame.set_index("Date")
-    return normalize_ohlcv(frame)
+    return normalize_ohlcv(frame, interval="1d")
 
 
-def download_daily_bars(symbol: str, start_date: str, end_date: str, proxy: str | None = None) -> pd.DataFrame:
-    """下载 Yahoo Finance 日线数据并返回标准化结果。"""
-    logger.info("开始下载 {} 的 Yahoo 日线数据，区间 {} 至 {}", symbol, start_date, end_date)
+def build_default_output_path(symbol: str, interval: str) -> Path:
+    """根据标的和周期生成默认输出路径。"""
+    normalized_symbol = symbol.lower().replace(".", "_")
+    normalized_interval = interval.lower().replace(" ", "")
+    return Path("data/processed") / f"{normalized_symbol}_{normalized_interval}.csv"
+
+
+def is_intraday_interval(interval: str) -> bool:
+    """判断是否为分钟级周期。"""
+    return interval in INTRADAY_INTERVALS
+
+
+def download_price_bars(
+    symbol: str,
+    interval: str = "1d",
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period: str | None = None,
+    proxy: str | None = None,
+) -> pd.DataFrame:
+    """下载 Yahoo Finance 行情并返回标准化结果。"""
+    if is_intraday_interval(interval) and not period:
+        raise ValueError("分钟 K 线请通过 period 参数下载，例如 5d 或 60d。")
+
+    logger.info(
+        "开始下载 {} 的 Yahoo 行情，interval={}，start={}，end={}，period={}",
+        symbol,
+        interval,
+        start_date,
+        end_date,
+        period,
+    )
 
     try:
-        normalized = _load_from_yfinance(symbol, start_date, end_date)
+        normalized = _load_from_yfinance(
+            symbol=symbol,
+            interval=interval,
+            start_date=start_date,
+            end_date=end_date,
+            period=period,
+            proxy=proxy,
+        )
         logger.info("通过 yfinance 下载完成，共 {} 条记录。", len(normalized))
         return normalized
     except Exception as exc:
         logger.warning("yfinance 下载失败: {}", exc)
+
+    if is_intraday_interval(interval):
+        raise ValueError("分钟 K 线当前仅支持通过 yfinance 下载，请检查代理和 period 参数。")
+
+    if not start_date or not end_date:
+        raise ValueError("日线回退到 Yahoo Chart API 时必须提供 start_date 和 end_date。")
 
     normalized = _load_from_chart_api(symbol, start_date, end_date, proxy=proxy)
     logger.info("通过 Yahoo Chart API 下载完成，共 {} 条记录。", len(normalized))
     return normalized
 
 
-def save_daily_bars(frame: pd.DataFrame, output_path: str | Path) -> Path:
+def save_price_bars(frame: pd.DataFrame, output_path: str | Path) -> Path:
     """保存标准化数据到 CSV。"""
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(target, index=False, encoding="utf-8-sig")
     logger.info("标准化数据已写入 {}", target)
     return target
+
+
+def download_daily_bars(symbol: str, start_date: str, end_date: str, proxy: str | None = None) -> pd.DataFrame:
+    """兼容旧接口的日线下载封装。"""
+    return download_price_bars(symbol=symbol, interval="1d", start_date=start_date, end_date=end_date, proxy=proxy)
+
+
+def save_daily_bars(frame: pd.DataFrame, output_path: str | Path) -> Path:
+    """兼容旧接口的保存封装。"""
+    return save_price_bars(frame, output_path)

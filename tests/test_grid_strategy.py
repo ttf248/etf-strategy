@@ -23,6 +23,31 @@ def build_test_frame(close_prices: list[float], start: str = "2025-09-01") -> pd
 
 
 class GridStrategyTests(unittest.TestCase):
+    def test_download_parser_reads_intraday_parameters(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "download",
+                "--symbol",
+                "1810.HK",
+                "--start",
+                "2026-04-01",
+                "--end",
+                "2026-05-21",
+                "--interval",
+                "15m",
+                "--period",
+                "60d",
+            ]
+        )
+
+        self.assertEqual(args.command, "download")
+        self.assertEqual(args.symbol, "1810.HK")
+        self.assertEqual(args.interval, "15m")
+        self.assertEqual(args.period, "60d")
+        self.assertIsNone(args.output)
+
     def test_backtest_parser_reads_grid_parameters(self) -> None:
         parser = build_parser()
 

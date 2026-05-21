@@ -4,8 +4,15 @@ from pathlib import Path
 
 from loguru import logger
 
-from etf_strategy.config import DEFAULT_DATA_PATH, DEFAULT_OUTPUT_DIR, DEFAULT_SYMBOL
-from etf_strategy.data.yahoo import download_daily_bars, save_daily_bars
+from etf_strategy.config import (
+    DEFAULT_DATA_PATH,
+    DEFAULT_MINUTE_DATA_PATH,
+    DEFAULT_MINUTE_INTERVAL,
+    DEFAULT_MINUTE_PERIOD,
+    DEFAULT_OUTPUT_DIR,
+    DEFAULT_SYMBOL,
+)
+from etf_strategy.data.yahoo import build_default_output_path, download_price_bars, save_price_bars
 from etf_strategy.logging_utils import configure_logging
 from etf_strategy.reporting import build_report_markdown
 from etf_strategy.workflow import run_full_workflow, run_optimization_workflow, run_validation_workflow
@@ -22,6 +29,8 @@ def build_parser() -> argparse.ArgumentParser:
     download_parser.add_argument("--symbol", default=DEFAULT_SYMBOL, help="Yahoo Finance 标的代码")
     download_parser.add_argument("--start", required=True, help="开始日期，格式 YYYY-MM-DD")
     download_parser.add_argument("--end", required=True, help="结束日期，格式 YYYY-MM-DD")
+    download_parser.add_argument("--interval", default="1d", help="K 线周期，例如 1d、5m、15m、60m")
+    download_parser.add_argument("--period", help="分钟 K 线优先使用的区间，例如 5d、30d、60d")
     download_parser.add_argument(
         "--proxy",
         default=os.getenv("ETF_STRATEGY_PROXY"),
@@ -29,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     download_parser.add_argument(
         "--output",
-        default=str(DEFAULT_DATA_PATH),
+        default=None,
         help="标准化 CSV 输出路径",
     )
 
@@ -89,8 +98,24 @@ def build_parser() -> argparse.ArgumentParser:
 
 def handle_download(args: argparse.Namespace) -> int:
     """执行下载命令。"""
-    bars = download_daily_bars(args.symbol, args.start, args.end, proxy=args.proxy)
-    output_path = save_daily_bars(bars, args.output)
+    output = args.output
+    if output is None:
+        if args.interval == DEFAULT_MINUTE_INTERVAL and args.period == DEFAULT_MINUTE_PERIOD:
+            output = str(DEFAULT_MINUTE_DATA_PATH)
+        elif args.interval == "1d":
+            output = str(DEFAULT_DATA_PATH)
+        else:
+            output = str(build_default_output_path(args.symbol, args.interval))
+
+    bars = download_price_bars(
+        symbol=args.symbol,
+        interval=args.interval,
+        start_date=args.start if args.interval == "1d" else None,
+        end_date=args.end if args.interval == "1d" else None,
+        period=args.period,
+        proxy=args.proxy,
+    )
+    output_path = save_price_bars(bars, output)
     print(f"下载完成: {output_path}")
     return 0
 
