@@ -1,5 +1,4 @@
 {
-    "debug.openDebug": "openOnSessionStart",
     "terminal.integrated.profiles.windows": {
         "PowerShell -NoProfile": {
             "source": "PowerShell",

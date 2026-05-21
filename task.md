@@ -34,6 +34,7 @@
 - [x] 修正 VS Code 控制台闪退问题
 - [x] 增加 VS Code 调试控制台兜底输出
 - [x] 按微软文档重构 VS Code 配置
+- [x] 参考示例收敛 VS Code 启动配置
 
 ## 项目规划整理
 
@@ -933,6 +934,47 @@
 - 调试器适合看断点、异常和调试控制台输出，不适合再额外承担“确保终端面板一定弹出”的职责。
 - VS Code 任务系统原生就支持 `presentation` 行为配置，更适合解决“我就是想稳定看到终端输出”的需求。
 - `PowerShell -NoProfile` 可以减少本机 profile 脚本干扰，避免终端启动时先输出一堆无关信息甚至报错。
+
+## 参考示例收敛 VS Code 启动配置
+
+### 状态
+
+已完成。
+
+### 修改方案
+
+参考用户提供的示例，把上一轮偏复杂的 VS Code 配置重新收敛成更直接的形式：
+
+- `launch.json` 使用 `type=python`
+- 统一走 `console=integratedTerminal`
+- 删除 `tasks.json`
+- `settings.json` 只保留终端 profile 相关设置
+
+目标是让项目配置风格更接近常见 Python 工程，避免继续叠加过多调试器专用字段。
+
+### 修改内容
+
+- `.vscode/launch.json`：
+  - 两条一键报告配置从 `debugpy` 改成 `python`
+  - `console` 从 `internalConsole` 改回 `integratedTerminal`
+  - 删除 `internalConsoleOptions`
+  - 删除 `redirectOutput`
+  - 删除 `justMyCode`
+- `.vscode/tasks.json`：
+  - 删除整份文件，不再额外维护终端任务入口
+- `.vscode/settings.json`：
+  - 删除 `debug.openDebug`
+  - 保留 `PowerShell -NoProfile` 的默认终端与自动化终端设置
+- `tests/test_repo_contracts.py`：
+  - 同步删除 `tasks.json` 契约
+  - 更新 `launch.json` 和 `settings.json` 契约
+- `README.md`、`doc/development_guide.md`：
+  - 改写成新的简化口径，明确现在主要看集成终端输出
+
+### 设计规则、原因和收益
+
+- 这次调整的重点是“少即是多”，让 VS Code 配置更像一份普通 Python 项目里的 `launch.json`，降低维护和理解成本。
+- 既然用户明确给了参考样式，就不应该继续保留一大层额外抽象，否则配置越改越远离用户预期。
 
 ## 产物清单
 
