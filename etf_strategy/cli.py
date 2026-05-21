@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 from time import perf_counter
 
+import pandas as pd
 from loguru import logger
 
 from etf_strategy.config import (
@@ -89,6 +90,8 @@ def build_parser() -> argparse.ArgumentParser:
     optimize_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
     optimize_parser.add_argument("--wf-window-count", type=int, default=DEFAULT_WALK_FORWARD_WINDOW_COUNT, help="样本内稳健性窗口数")
     optimize_parser.add_argument("--wf-min-window-size", type=int, default=DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE, help="单个稳健性窗口最少 K 线数")
+    optimize_parser.add_argument("--jobs", default="1", help="寻参并行线程数；可传整数或 auto")
+    optimize_parser.add_argument("--cache-dir", default=None, help="候选参数回测缓存目录")
     _add_execution_arguments(optimize_parser)
 
     backtest_parser = subparsers.add_parser("backtest", help="执行样本外验证")
@@ -130,6 +133,8 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
     report_parser.add_argument("--wf-window-count", type=int, default=DEFAULT_WALK_FORWARD_WINDOW_COUNT, help="样本内稳健性窗口数")
     report_parser.add_argument("--wf-min-window-size", type=int, default=DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE, help="单个稳健性窗口最少 K 线数")
+    report_parser.add_argument("--jobs", default="1", help="寻参并行线程数；可传整数或 auto")
+    report_parser.add_argument("--cache-dir", default=None, help="候选参数回测缓存目录")
     _add_execution_arguments(report_parser)
 
     run_parser = subparsers.add_parser("run", help="串联下载、寻参、验证和报告生成")
@@ -150,7 +155,26 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
     run_parser.add_argument("--wf-window-count", type=int, default=DEFAULT_WALK_FORWARD_WINDOW_COUNT, help="样本内稳健性窗口数")
     run_parser.add_argument("--wf-min-window-size", type=int, default=DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE, help="单个稳健性窗口最少 K 线数")
+    run_parser.add_argument("--jobs", default="1", help="寻参并行线程数；可传整数或 auto")
+    run_parser.add_argument("--cache-dir", default=None, help="候选参数回测缓存目录")
     _add_execution_arguments(run_parser)
+
+    batch_parser = subparsers.add_parser("batch", help="批量执行多个标的的完整研究流程")
+    batch_parser.add_argument("--symbols", required=True, help="逗号分隔的 Yahoo Finance 标的代码，例如 1810.HK,SPY")
+    batch_parser.add_argument("--interval", default="1d", help="K 线周期，例如 1d、15m")
+    batch_parser.add_argument("--period", default=DEFAULT_MINUTE_PERIOD, help="分钟 K 线下载窗口，例如 60d")
+    batch_parser.add_argument("--download", action="store_true", help="批量运行前先下载并合并行情")
+    batch_parser.add_argument("--proxy", default=os.getenv("ETF_STRATEGY_PROXY"), help="访问 Yahoo 所需的代理地址")
+    batch_parser.add_argument("--output-dir", default="outputs/batch", help="批量中间结果与汇总输出目录")
+    batch_parser.add_argument("--report-dir", default="reports/batch", help="批量报告输出目录")
+    batch_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="日线样本外起始日期")
+    batch_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="日线样本内回看天数")
+    batch_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
+    batch_parser.add_argument("--wf-window-count", type=int, default=DEFAULT_WALK_FORWARD_WINDOW_COUNT, help="样本内稳健性窗口数")
+    batch_parser.add_argument("--wf-min-window-size", type=int, default=DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE, help="单个稳健性窗口最少 K 线数")
+    batch_parser.add_argument("--jobs", default="1", help="单标的寻参并行线程数；可传整数或 auto")
+    batch_parser.add_argument("--cache-dir", default=None, help="候选参数回测缓存目录")
+    _add_execution_arguments(batch_parser)
 
     return parser
 
@@ -187,6 +211,18 @@ def _build_execution_from_args(args: argparse.Namespace):
         cooldown_bars=args.cooldown_bars,
         benchmark=args.benchmark,
     )
+
+
+def _resolve_jobs(value: str | int) -> int:
+    """解析并行线程数。"""
+    if isinstance(value, int):
+        return max(1, value)
+    if value == "auto":
+        return max(1, (os.cpu_count() or 2) - 1)
+    parsed = int(value)
+    if parsed <= 0:
+        raise ValueError("--jobs 必须是正整数或 auto。")
+    return parsed
 
 
 def _validate_daily_date_range(args: argparse.Namespace, command_name: str) -> None:
@@ -256,6 +292,8 @@ def handle_optimize(args: argparse.Namespace) -> int:
             execution_config=execution_config,
             wf_window_count=args.wf_window_count,
             wf_min_window_size=args.wf_min_window_size,
+            jobs=_resolve_jobs(args.jobs),
+            cache_dir=args.cache_dir,
         )
     else:
         output_dir = args.output_dir or str(DEFAULT_OUTPUT_DIR / "optimize")
@@ -268,6 +306,8 @@ def handle_optimize(args: argparse.Namespace) -> int:
             execution_config=execution_config,
             wf_window_count=args.wf_window_count,
             wf_min_window_size=args.wf_min_window_size,
+            jobs=_resolve_jobs(args.jobs),
+            cache_dir=args.cache_dir,
         )
     best_summary = result["best_run"]["summary"]
     print(f"样本内最优参数已生成: {result['results_path']}")
@@ -370,6 +410,8 @@ def handle_run(args: argparse.Namespace) -> int:
             execution_config=execution_config,
             wf_window_count=args.wf_window_count,
             wf_min_window_size=args.wf_min_window_size,
+            jobs=_resolve_jobs(args.jobs),
+            cache_dir=args.cache_dir,
         )
     else:
         result = run_full_workflow(
@@ -381,6 +423,8 @@ def handle_run(args: argparse.Namespace) -> int:
             execution_config=execution_config,
             wf_window_count=args.wf_window_count,
             wf_min_window_size=args.wf_min_window_size,
+            jobs=_resolve_jobs(args.jobs),
+            cache_dir=args.cache_dir,
         )
     logger.info("[2/3] 完整回测工作流完成: summary={}", result["combined_summary_path"])
     logger.info("[3/3] 开始生成正式报告")
@@ -426,6 +470,8 @@ def handle_report(args: argparse.Namespace) -> int:
             execution_config=execution_config,
             wf_window_count=args.wf_window_count,
             wf_min_window_size=args.wf_min_window_size,
+            jobs=_resolve_jobs(args.jobs),
+            cache_dir=args.cache_dir,
         )
     else:
         output_dir = args.output_dir or str(DEFAULT_OUTPUT_DIR)
@@ -439,6 +485,8 @@ def handle_report(args: argparse.Namespace) -> int:
             execution_config=execution_config,
             wf_window_count=args.wf_window_count,
             wf_min_window_size=args.wf_min_window_size,
+            jobs=_resolve_jobs(args.jobs),
+            cache_dir=args.cache_dir,
         )
     logger.info("[2/2] 工作流数据准备完成，开始写正式报告")
     if is_intraday_interval(args.interval):
@@ -448,6 +496,114 @@ def handle_report(args: argparse.Namespace) -> int:
     print(f"报告已生成: {report_path}")
     logger.info("report 命令完成: report={} elapsed={:.2f}s", report_path, perf_counter() - started_at)
     return 0
+
+
+def _batch_symbol_slug(symbol: str) -> str:
+    """把标的代码转换为批量输出目录名。"""
+    return symbol.strip().lower().replace(".", "_").replace("^", "index_")
+
+
+def handle_batch(args: argparse.Namespace) -> int:
+    """批量执行多个标的的完整研究流程。"""
+    started_at = perf_counter()
+    symbols = [item.strip().upper() for item in args.symbols.split(",") if item.strip()]
+    if not symbols:
+        raise ValueError("--symbols 至少需要提供一个标的。")
+
+    intraday_mode = is_intraday_interval(args.interval)
+    output_root = Path(args.output_dir)
+    report_root = Path(args.report_dir)
+    execution_config = _build_execution_from_args(args)
+    jobs = _resolve_jobs(args.jobs)
+    rows: list[dict[str, object]] = []
+    logger.info("收到 batch 命令: symbols={} interval={} download={}", symbols, args.interval, args.download)
+
+    for symbol in symbols:
+        symbol_started_at = perf_counter()
+        slug = _batch_symbol_slug(symbol)
+        data_path = _resolve_download_output_path(symbol, args.interval, args.period, output=None)
+        symbol_output_dir = output_root / slug
+        symbol_report_dir = report_root / slug
+        try:
+            if args.download:
+                logger.info("[batch] 开始下载并合并行情: symbol={} interval={}", symbol, args.interval)
+                bars = download_price_bars(
+                    symbol=symbol,
+                    interval=args.interval,
+                    start_date=None if intraday_mode else None,
+                    end_date=None if intraday_mode else None,
+                    period=args.period if intraday_mode else None,
+                    proxy=args.proxy,
+                )
+                save_price_bars(bars, data_path, interval=args.interval, merge_with_existing=True)
+            if not data_path.exists():
+                raise FileNotFoundError(f"行情文件不存在，请先下载或传 --download: {data_path}")
+
+            if intraday_mode:
+                result = run_minute_full_workflow(
+                    data_path=data_path,
+                    symbol=symbol,
+                    output_dir=symbol_output_dir,
+                    validation_ratio=args.validation_ratio,
+                    execution_config=execution_config,
+                    wf_window_count=args.wf_window_count,
+                    wf_min_window_size=args.wf_min_window_size,
+                    jobs=jobs,
+                    cache_dir=Path(args.cache_dir) / slug if args.cache_dir else None,
+                )
+                report_path = build_minute_report_markdown(result, report_dir=symbol_report_dir)
+            else:
+                result = run_full_workflow(
+                    data_path=data_path,
+                    symbol=symbol,
+                    output_dir=symbol_output_dir,
+                    validation_start=args.validation_start,
+                    lookback_days=args.lookback_days,
+                    execution_config=execution_config,
+                    wf_window_count=args.wf_window_count,
+                    wf_min_window_size=args.wf_min_window_size,
+                    jobs=jobs,
+                    cache_dir=Path(args.cache_dir) / slug if args.cache_dir else None,
+                )
+                report_path = build_report_markdown(result, report_dir=symbol_report_dir)
+
+            best_summary = result["optimization"]["best_run"]["summary"]
+            validation_summary = result["validation"]["run"]["summary"]
+            rows.append(
+                {
+                    "Symbol": symbol,
+                    "Status": "ok",
+                    "Interval": args.interval,
+                    "ReportPath": str(report_path),
+                    "GridSpacingPct": best_summary["GridSpacingPct"],
+                    "GridCount": best_summary["GridCount"],
+                    "TakeProfitPct": best_summary["TakeProfitPct"],
+                    "InSampleNetReturnPct": best_summary.get("NetReturnPct", best_summary["ReturnPct"]),
+                    "ValidationNetReturnPct": validation_summary.get("NetReturnPct", validation_summary["ReturnPct"]),
+                    "ValidationMaxDrawdownPct": validation_summary["MaxDrawdownPct"],
+                    "ElapsedSeconds": perf_counter() - symbol_started_at,
+                }
+            )
+            logger.info("[batch] 标的完成: symbol={} report={}", symbol, report_path)
+        except Exception as exc:
+            rows.append(
+                {
+                    "Symbol": symbol,
+                    "Status": "failed",
+                    "Interval": args.interval,
+                    "Error": str(exc),
+                    "ElapsedSeconds": perf_counter() - symbol_started_at,
+                }
+            )
+            logger.exception("[batch] 标的失败: symbol={}", symbol)
+
+    output_root.mkdir(parents=True, exist_ok=True)
+    summary_path = output_root / "batch_summary.csv"
+    pd.DataFrame(rows).to_csv(summary_path, index=False, encoding="utf-8-sig")
+    ok_count = sum(1 for row in rows if row["Status"] == "ok")
+    print(f"批量流程完成: 成功 {ok_count}/{len(rows)}，汇总文件: {summary_path}")
+    logger.info("batch 命令完成: summary={} elapsed={:.2f}s", summary_path, perf_counter() - started_at)
+    return 0 if ok_count == len(rows) else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -462,5 +618,6 @@ def main(argv: list[str] | None = None) -> int:
         "backtest": handle_backtest,
         "report": handle_report,
         "run": handle_run,
+        "batch": handle_batch,
     }
     return handlers[args.command](args)

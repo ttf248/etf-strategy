@@ -154,6 +154,8 @@ py -3.13 main.py report --data data/processed/1810_hk_daily.csv --symbol 1810.HK
 - `--max-position-ratio`：最大仓位占总资金比例，例如 `0.95`
 - `--stop-loss-pct`：触发停止新增网格的跌幅，例如 `0.2`
 - `--cooldown-bars`：触发停手后的冷却 K 线数量
+- `--jobs`：寻参并行线程数，可传整数或 `auto`
+- `--cache-dir`：候选参数回测缓存目录，适合反复调报告模板时复用
 
 ### 一键执行完整流程
 
@@ -247,6 +249,22 @@ task.md          AI 任务记录
 - `[1/3]` 下载并合并最新行情
 - `[2/3]` 执行完整回测工作流
 - `[3/3]` 生成正式报告
+
+### 批量研究多个标的
+
+如果本地已经有对应标准化 CSV，可以批量运行：
+
+```powershell
+py -3.13 main.py batch --symbols 1810.HK,SPY --interval 1d --jobs auto --cache-dir outputs/cache
+```
+
+输出：
+
+- 批量汇总：`outputs/batch/batch_summary.csv`
+- 单标的中间结果：`outputs/batch/<symbol>/`
+- 单标的报告：`reports/batch/<symbol>/`
+
+如果希望批量运行前先下载并合并行情，加上 `--download`。批量入口仍然只做研究回测，不做实盘下单。
 
 ## 验证
 

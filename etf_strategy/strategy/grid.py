@@ -13,6 +13,10 @@ from __future__ import annotations
 - 成本摊薄、网格已实现收益和总账户收益需要使用同一批中间状态计算
 """
 
+import hashlib
+import json
+import pickle
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -24,6 +28,7 @@ from etf_strategy.settings import (
     DEFAULT_LOOKBACK_DAYS,
     DEFAULT_VALIDATION_RATIO,
     DEFAULT_VALIDATION_START,
+    DEFAULT_JOBS,
     DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     DEFAULT_WALK_FORWARD_WINDOW_COUNT,
     ExecutionConfig,
@@ -698,6 +703,41 @@ def _build_benchmark_metrics(
     }
 
 
+def _data_fingerprint(data: pd.DataFrame) -> str:
+    """为缓存构造行情样本指纹。"""
+    hash_value = int(pd.util.hash_pandas_object(data.reset_index(), index=False).sum())
+    return f"{len(data)}:{format_timestamp(data.index.min())}:{format_timestamp(data.index.max())}:{hash_value}"
+
+
+def _candidate_cache_path(
+    cache_dir: str | Path | None,
+    payload: dict[str, object],
+) -> Path | None:
+    """根据候选参数和样本口径生成缓存路径。"""
+    if cache_dir is None:
+        return None
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+    digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+    return Path(cache_dir) / f"{digest}.pkl"
+
+
+def _load_cached_candidate(cache_path: Path | None) -> dict[str, object] | None:
+    """读取单个候选参数缓存。"""
+    if cache_path is None or not cache_path.exists():
+        return None
+    with cache_path.open("rb") as handle:
+        return pickle.load(handle)
+
+
+def _save_cached_candidate(cache_path: Path | None, run_result: dict[str, object]) -> None:
+    """写入单个候选参数缓存。"""
+    if cache_path is None:
+        return
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    with cache_path.open("wb") as handle:
+        pickle.dump(run_result, handle)
+
+
 def build_intraday_sample_window(
     data: pd.DataFrame,
     validation_start: pd.Timestamp,
@@ -866,6 +906,8 @@ def optimize_grid_parameters(
     execution_config: ExecutionConfig | None = None,
     wf_window_count: int = DEFAULT_WALK_FORWARD_WINDOW_COUNT,
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
+    jobs: int = DEFAULT_JOBS,
+    cache_dir: str | Path | None = None,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """对网格参数做穷举搜索并返回最优结果。
 
@@ -873,49 +915,89 @@ def optimize_grid_parameters(
     但最终选参不再只看单个样本窗口里的最高分，而是叠加多窗口稳健性筛选。
     """
     execution = execution_config or build_execution_config("research")
-    rows: list[dict[str, object]] = []
-    run_records: dict[tuple[float, int, float], dict[str, object]] = {}
     walk_forward_windows = build_walk_forward_windows(
         data,
         window_count=wf_window_count,
         min_window_size=wf_min_window_size,
     )
+    candidate_specs = [
+        (spacing, grid_count, take_profit)
+        for spacing in spacings
+        for grid_count in grid_counts
+        for take_profit in take_profits
+    ]
+    effective_jobs = max(1, int(jobs))
+    data_fingerprint = _data_fingerprint(data)
 
-    for spacing in spacings:
-        for grid_count in grid_counts:
-            for take_profit in take_profits:
-                run_result = run_grid_backtest(
-                    data=data,
-                    scenario_name=scenario_name,
-                    grid_spacing_pct=spacing,
-                    grid_count=grid_count,
-                    take_profit_pct=take_profit,
-                    symbol=symbol,
-                    market=market,
-                    lot_size=lot_size,
-                    lot_size_source=lot_size_source,
-                    execution_config=execution,
-                )
-                walk_forward_runs = [
-                    run_grid_backtest(
-                        data=window,
-                        scenario_name=f"{scenario_name}_wf_{index + 1}",
-                        grid_spacing_pct=spacing,
-                        grid_count=grid_count,
-                        take_profit_pct=take_profit,
-                        symbol=symbol,
-                        market=market,
-                        lot_size=lot_size,
-                        lot_size_source=lot_size_source,
-                        execution_config=execution,
-                    )
-                    for index, window in enumerate(walk_forward_windows)
-                ]
-                robust_summary = _summarize_walk_forward_runs(walk_forward_runs)
-                run_result["summary"].update(robust_summary)
-                parameter_key = _build_parameter_key(spacing, grid_count, take_profit)
-                run_records[parameter_key] = run_result
-                rows.append(run_result["summary"])
+    def run_candidate(spec: tuple[float, int, float]) -> dict[str, object]:
+        spacing, grid_count, take_profit = spec
+        cache_payload = {
+            "data": data_fingerprint,
+            "scenario": scenario_name,
+            "symbol": symbol,
+            "market": market,
+            "lot_size": lot_size,
+            "spacing": spacing,
+            "grid_count": grid_count,
+            "take_profit": take_profit,
+            "execution": asdict(execution),
+            "wf_window_count": wf_window_count,
+            "wf_min_window_size": wf_min_window_size,
+        }
+        cache_path = _candidate_cache_path(cache_dir, cache_payload)
+        cached = _load_cached_candidate(cache_path)
+        if cached is not None:
+            return cached
+
+        run_result = run_grid_backtest(
+            data=data,
+            scenario_name=scenario_name,
+            grid_spacing_pct=spacing,
+            grid_count=grid_count,
+            take_profit_pct=take_profit,
+            symbol=symbol,
+            market=market,
+            lot_size=lot_size,
+            lot_size_source=lot_size_source,
+            execution_config=execution,
+        )
+        walk_forward_runs = [
+            run_grid_backtest(
+                data=window,
+                scenario_name=f"{scenario_name}_wf_{index + 1}",
+                grid_spacing_pct=spacing,
+                grid_count=grid_count,
+                take_profit_pct=take_profit,
+                symbol=symbol,
+                market=market,
+                lot_size=lot_size,
+                lot_size_source=lot_size_source,
+                execution_config=execution,
+            )
+            for index, window in enumerate(walk_forward_windows)
+        ]
+        robust_summary = _summarize_walk_forward_runs(walk_forward_runs)
+        run_result["summary"].update(robust_summary)
+        _save_cached_candidate(cache_path, run_result)
+        return run_result
+
+    if effective_jobs == 1 or len(candidate_specs) <= 1:
+        candidate_runs = [run_candidate(spec) for spec in candidate_specs]
+    else:
+        with ThreadPoolExecutor(max_workers=effective_jobs) as executor:
+            candidate_runs = list(executor.map(run_candidate, candidate_specs))
+
+    rows: list[dict[str, object]] = []
+    run_records: dict[tuple[float, int, float], dict[str, object]] = {}
+    for run_result in candidate_runs:
+        summary = run_result["summary"]
+        parameter_key = _build_parameter_key(
+            float(summary["GridSpacingPct"]) / 100,
+            int(summary["GridCount"]),
+            float(summary["TakeProfitPct"]) / 100,
+        )
+        run_records[parameter_key] = run_result
+        rows.append(summary)
 
     results = pd.DataFrame(rows).sort_values(
         ["RobustScore", "WalkForwardScoreMin", "WalkForwardPositiveWindowRatio", "Score", "ReturnPct"],

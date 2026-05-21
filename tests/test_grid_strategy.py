@@ -1,9 +1,11 @@
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import ANY, Mock, patch
 
 import pandas as pd
 
-from etf_strategy.cli import build_parser, handle_download, handle_run
+from etf_strategy.cli import build_parser, handle_batch, handle_download, handle_run
 from etf_strategy.config import DEFAULT_DATA_PATH, DEFAULT_OUTPUT_DIR
 from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
 from etf_strategy.settings import build_execution_config
@@ -180,9 +182,88 @@ class GridStrategyTests(unittest.TestCase):
             execution_config=ANY,
             wf_window_count=3,
             wf_min_window_size=20,
+            jobs=1,
+            cache_dir=None,
         )
         execution_config = mock_workflow.call_args.kwargs["execution_config"]
         self.assertEqual(execution_config.profile, "realistic")
+
+    def test_batch_parser_reads_symbols_and_parallel_options(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "batch",
+                "--symbols",
+                "1810.HK,SPY",
+                "--interval",
+                "1d",
+                "--jobs",
+                "auto",
+                "--cache-dir",
+                "outputs/cache",
+            ]
+        )
+
+        self.assertEqual(args.command, "batch")
+        self.assertEqual(args.symbols, "1810.HK,SPY")
+        self.assertEqual(args.jobs, "auto")
+        self.assertEqual(args.cache_dir, "outputs/cache")
+        self.assertEqual(args.execution_profile, "realistic")
+
+    def test_handle_batch_writes_summary_for_existing_data(self) -> None:
+        parser = build_parser()
+        workflow_result = {
+            "combined_summary_path": "outputs/batch/1810_hk/combined_summary.csv",
+            "optimization": {
+                "best_run": {
+                    "summary": {
+                        "GridSpacingPct": 4.0,
+                        "GridCount": 6,
+                        "TakeProfitPct": 3.0,
+                        "ReturnPct": -1.0,
+                        "NetReturnPct": -1.2,
+                    }
+                }
+            },
+            "validation": {
+                "run": {
+                    "summary": {
+                        "ReturnPct": -2.0,
+                        "NetReturnPct": -2.3,
+                        "MaxDrawdownPct": 5.0,
+                    }
+                }
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            args = parser.parse_args(
+                [
+                    "batch",
+                    "--symbols",
+                    "1810.HK",
+                    "--output-dir",
+                    str(Path(temp_dir) / "out"),
+                    "--report-dir",
+                    str(Path(temp_dir) / "reports"),
+                ]
+            )
+            with (
+                patch("etf_strategy.cli.run_full_workflow", return_value=workflow_result) as mock_workflow,
+                patch("etf_strategy.cli.build_report_markdown", return_value=Path(temp_dir) / "reports" / "1810_hk_grid_report.md"),
+                patch("builtins.print"),
+            ):
+                result = handle_batch(args)
+
+            summary_path = Path(temp_dir) / "out" / "batch_summary.csv"
+            summary = pd.read_csv(summary_path, encoding="utf-8-sig")
+
+        self.assertEqual(result, 0)
+        self.assertEqual(summary.iloc[0]["Status"], "ok")
+        mock_workflow.assert_called_once()
+        self.assertEqual(mock_workflow.call_args.kwargs["jobs"], 1)
+        self.assertEqual(mock_workflow.call_args.kwargs["execution_config"].profile, "realistic")
 
     def test_backtest_parser_reads_grid_parameters(self) -> None:
         parser = build_parser()

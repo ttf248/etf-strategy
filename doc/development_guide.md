@@ -141,6 +141,7 @@
 - 更详细的定位日志仍写入 `log/etf_strategy_YYYY-MM-DD.log`
 - `main.py` 会主动尝试把 Windows 控制台切到 UTF-8，`.vscode/launch.json` 也会显式传入 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`
 - `report` 命令会输出 `[1/2] -> [2/2]` 进度，`run` 命令会输出 `[1/3] -> [2/3] -> [3/3]` 顶层进度
+- `batch` 命令用于多标的研究汇总，默认把单标的结果写到 `outputs/batch/<symbol>/`，批量汇总写到 `outputs/batch/batch_summary.csv`
 
 这里没有继续使用参考示例里的 `type=python`，因为微软当前 Python 调试文档已经把 `debugpy` 作为 Python Debugger 扩展的调试类型；旧写法在部分 VS Code 环境里会导致无法启动调试。
 

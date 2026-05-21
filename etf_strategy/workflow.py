@@ -20,6 +20,7 @@ from etf_strategy.settings import (
     DAILY_SPACINGS,
     DAILY_TAKE_PROFITS,
     DEFAULT_LOOKBACK_DAYS,
+    DEFAULT_JOBS,
     DEFAULT_VALIDATION_RATIO,
     DEFAULT_VALIDATION_START,
     DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
@@ -57,6 +58,8 @@ def run_optimization_workflow(
     execution_config: ExecutionConfig | None = None,
     wf_window_count: int = DEFAULT_WALK_FORWARD_WINDOW_COUNT,
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
+    jobs: int = DEFAULT_JOBS,
+    cache_dir: str | Path | None = None,
 ) -> dict[str, object]:
     """执行样本内参数搜索并保存结果。"""
     started_at = perf_counter()
@@ -95,6 +98,8 @@ def run_optimization_workflow(
         execution_config=execution,
         wf_window_count=wf_window_count,
         wf_min_window_size=wf_min_window_size,
+        jobs=jobs,
+        cache_dir=cache_dir,
     )
 
     target_dir = Path(output_dir)
@@ -187,6 +192,8 @@ def run_full_workflow(
     execution_config: ExecutionConfig | None = None,
     wf_window_count: int = DEFAULT_WALK_FORWARD_WINDOW_COUNT,
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
+    jobs: int = DEFAULT_JOBS,
+    cache_dir: str | Path | None = None,
 ) -> dict[str, object]:
     """串联样本内寻参和样本外验证。
 
@@ -207,6 +214,8 @@ def run_full_workflow(
         execution_config=execution_config,
         wf_window_count=wf_window_count,
         wf_min_window_size=wf_min_window_size,
+        jobs=jobs,
+        cache_dir=cache_dir,
     )
     best_summary = optimization["best_run"]["summary"]
     validation = run_validation_workflow(
@@ -250,6 +259,8 @@ def run_minute_optimization_workflow(
     execution_config: ExecutionConfig | None = None,
     wf_window_count: int = DEFAULT_WALK_FORWARD_WINDOW_COUNT,
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
+    jobs: int = DEFAULT_JOBS,
+    cache_dir: str | Path | None = None,
 ) -> dict[str, object]:
     """执行分钟线样本内参数搜索并保存结果。"""
     started_at = perf_counter()
@@ -286,6 +297,8 @@ def run_minute_optimization_workflow(
         execution_config=execution,
         wf_window_count=wf_window_count,
         wf_min_window_size=wf_min_window_size,
+        jobs=jobs,
+        cache_dir=cache_dir,
     )
 
     target_dir = Path(output_dir)
@@ -375,6 +388,8 @@ def run_minute_full_workflow(
     execution_config: ExecutionConfig | None = None,
     wf_window_count: int = DEFAULT_WALK_FORWARD_WINDOW_COUNT,
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
+    jobs: int = DEFAULT_JOBS,
+    cache_dir: str | Path | None = None,
 ) -> dict[str, object]:
     """串联分钟线样本内寻参和样本外验证。"""
     started_at = perf_counter()
@@ -390,6 +405,8 @@ def run_minute_full_workflow(
         execution_config=execution_config,
         wf_window_count=wf_window_count,
         wf_min_window_size=wf_min_window_size,
+        jobs=jobs,
+        cache_dir=cache_dir,
     )
     best_summary = optimization["best_run"]["summary"]
     validation = run_minute_validation_workflow(
