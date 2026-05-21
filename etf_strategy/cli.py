@@ -41,9 +41,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     backtest_parser = subparsers.add_parser("backtest", help="执行样本外验证")
     backtest_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
-    backtest_parser.add_argument("--grid-spacing", type=float, required=True, help="网格间距，例如 0.05")
-    backtest_parser.add_argument("--grid-count", type=int, required=True, help="网格层数")
-    backtest_parser.add_argument("--take-profit", type=float, required=True, help="网格止盈比例，例如 0.05")
+    backtest_parser.add_argument(
+        "--grid-spacing",
+        type=float,
+        required=True,
+        help="网格间距比例，例如 0.05 表示每跌 5%% 再开下一层网格",
+    )
+    backtest_parser.add_argument(
+        "--grid-count",
+        type=int,
+        required=True,
+        help="网格层数，例如 7 表示把剩余网格资金拆成 7 层预算",
+    )
+    backtest_parser.add_argument(
+        "--take-profit",
+        type=float,
+        required=True,
+        help="单层止盈比例，例如 0.03 表示某层买入后反弹 3%% 就卖出该层",
+    )
     backtest_parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR / "validation"), help="样本外验证输出目录")
     backtest_parser.add_argument("--validation-start", default="2026-01-01", help="样本外起始日期")
     backtest_parser.add_argument("--lookback-days", type=int, default=120, help="样本内回看天数")

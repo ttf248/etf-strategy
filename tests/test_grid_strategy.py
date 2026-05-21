@@ -2,6 +2,7 @@ import unittest
 
 import pandas as pd
 
+from etf_strategy.cli import build_parser
 from etf_strategy.strategy.grid import locate_recent_decline_window, run_grid_backtest
 
 
@@ -22,6 +23,31 @@ def build_test_frame(close_prices: list[float], start: str = "2025-09-01") -> pd
 
 
 class GridStrategyTests(unittest.TestCase):
+    def test_backtest_parser_reads_grid_parameters(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "backtest",
+                "--data",
+                "data/processed/xiaomi_1810_hk_daily.csv",
+                "--grid-spacing",
+                "0.06",
+                "--grid-count",
+                "7",
+                "--take-profit",
+                "0.03",
+            ]
+        )
+
+        self.assertEqual(args.command, "backtest")
+        self.assertEqual(args.data, "data/processed/xiaomi_1810_hk_daily.csv")
+        self.assertAlmostEqual(args.grid_spacing, 0.06)
+        self.assertEqual(args.grid_count, 7)
+        self.assertAlmostEqual(args.take_profit, 0.03)
+        self.assertEqual(args.validation_start, "2026-01-01")
+        self.assertEqual(args.lookback_days, 120)
+
     def test_locate_recent_decline_window_finds_peak_and_entry(self) -> None:
         prices = [20.0, 21.2, 22.5, 21.8, 20.9, 20.1, 19.5]
         frame = build_test_frame(prices, start="2025-11-03")
