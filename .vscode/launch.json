@@ -30,7 +30,7 @@
                 "--output-dir",
                 "outputs/batch",
                 "--report-dir",
-                "reports/hstech_plus_513050/minute",
+                "reports",
                 "--execution-profile",
                 "realistic",
                 "--grid-mode",

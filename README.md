@@ -6,7 +6,7 @@
 
 | 分类 | 标的 | 名称 | 周期 | 样本外收益 | 最大回撤 | 状态/备注 | 报告 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 汇总组合 | hstech_plus_513050 | 恒生科技 30 只成分股 + 513050.SS | 15m | 见索引 | 见索引 | 所有分钟线单标的报告统一汇总在组合目录 | [打开索引](reports/hstech_plus_513050/minute/hstech_15m_report_index.md) |
+| 汇总索引 | hstech_15m | 恒生科技 30 只成分股 + 513050.SS | 15m | 见索引 | 见索引 | 索引落在 `reports/` 根目录，单标的各自归档到自己的目录 | [打开索引](reports/hstech_15m_report_index.md) |
 | 默认样本 | 1810.HK | 小米集团-W | 15m | 见报告 | 见报告 | 单标的分钟线正式报告 | [打开报告](reports/1810_hk/minute/1810_hk_15m_grid_report.md) |
 | 方法文档 | - | 参数筛选方法说明 | - | - | - | 解释寻参和稳健性评分 | [打开文档](doc/grid_parameter_search.md) |
 | 阅读指南 | - | 回测报告阅读指南 | - | - | - | 解释报告图表与指标 | [打开文档](doc/report_reading_guide.md) |
@@ -76,8 +76,8 @@ py -3.13 main.py batch --symbol-set hstech_plus_513050 --download --proxy http:/
 输出：
 
 - 批量汇总：`outputs/batch/batch_summary.csv`
-- 汇总索引：`reports/hstech_plus_513050/minute/hstech_15m_report_index.md`
-- 单标的报告：`reports/hstech_plus_513050/minute/<symbol>/`
+- 汇总索引：`reports/hstech_15m_report_index.md`
+- 单标的报告：`reports/<symbol>/minute/`
 
 ## 文档导航
 
@@ -272,9 +272,9 @@ py -3.13 main.py batch --symbol-set hstech_plus_513050 --download --proxy http:/
 输出：
 
 - 批量汇总：`outputs/batch/batch_summary.csv`
-- 汇总报告索引：`reports/hstech_plus_513050/minute/hstech_15m_report_index.md`
+- 汇总报告索引：`reports/hstech_15m_report_index.md`
 - 单标的中间结果：`outputs/batch/<symbol>/`
-- 单标的报告：`reports/hstech_plus_513050/minute/<symbol>/`
+- 单标的报告：`reports/<symbol>/minute/`
 
 如果希望批量运行前先下载并合并行情，加上 `--download`。批量入口仍然只做研究回测，不做实盘下单。
 

@@ -43,7 +43,7 @@ class RepoContractTests(unittest.TestCase):
     def test_readme_top_has_report_shortcuts(self) -> None:
         readme_lines = (REPO_ROOT / "README.md").read_text(encoding="utf-8").splitlines()[:45]
         top_block = "\n".join(readme_lines)
-        self.assertIn("reports/hstech_plus_513050/minute/hstech_15m_report_index.md", top_block)
+        self.assertIn("reports/hstech_15m_report_index.md", top_block)
         self.assertIn("reports/1810_hk/minute/1810_hk_15m_grid_report.md", top_block)
 
     def test_vscode_launch_only_keeps_one_click_report_configs(self) -> None:

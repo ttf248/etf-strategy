@@ -1332,7 +1332,7 @@
 
 - 单标的日线报告收敛到 `reports/1810_hk/daily/`
 - 单标的分钟线报告收敛到 `reports/1810_hk/minute/`
-- 恒生科技加 `513050.SS` 的分钟线汇总收敛到 `reports/hstech_plus_513050/minute/`
+- 恒生科技加 `513050.SS` 的分钟线汇总索引收敛到 `reports/` 根目录，单标的报告各自归档到自己的目录
 - 删除独立的 `reports/batch/`、根级 `reports/figures/` 和根级 `reports/minute/`
 
 ### 修改内容
@@ -1341,7 +1341,7 @@
   - `etf_strategy/config.py` 新增 `DEFAULT_REPORT_ROOT`、`DEFAULT_BATCH_REPORT_DIR`
   - 日线默认报告目录改为 `reports/1810_hk/daily`
   - 分钟线默认报告目录改为 `reports/1810_hk/minute`
-  - 批量分钟报告默认目录改为 `reports/hstech_plus_513050/minute`
+  - 批量分钟报告默认目录改为 `reports/`
   - 非 `hstech_plus_513050` 的汇总索引文件名从 `batch_{interval}_report_index.md` 改为 `report_index_{interval}.md`
 - 报告产物迁移：
   - 用 `git mv` 迁移小米日线与分钟线正式报告及图表
@@ -1356,8 +1356,8 @@
 
 ### 设计取舍
 
-- 目录先按“标的/组合”分层，再按 `daily` / `minute` 分层，阅读路径更直观，也避免 `batch` 目录和单标的目录并列造成混淆。
-- 组合汇总目录继续保留每个成分标的自己的子目录，索引仍然只需要一层相对链接，不需要改报告内部图片相对路径。
+- 目录先按“真实标的”分层，再按 `daily` / `minute` 分层，避免把标的池名字误当成一个标的目录。
+- 汇总索引单独放在 `reports/` 根目录，只承担导航作用；单标的报告继续只落在各自目录里。
 - 历史任务记录里的旧路径不全量改写，只在当前任务段和产物清单里记录新结构，避免把历史上下文改得难以追溯。
 
 ### 验证
@@ -1383,8 +1383,8 @@
   - `reports/1810_hk/daily/figures/`
   - `reports/1810_hk/minute/1810_hk_15m_grid_report.md`
   - `reports/1810_hk/minute/figures/`
-  - `reports/hstech_plus_513050/minute/hstech_15m_report_index.md`
-  - `reports/hstech_plus_513050/minute/<symbol>/`
+  - `reports/hstech_15m_report_index.md`
+  - `reports/<symbol>/minute/`
 - 文档：
   - `doc/grid_parameter_search.md`
   - `doc/minute_grid_research.md`

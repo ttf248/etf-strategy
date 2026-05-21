@@ -706,7 +706,7 @@ def handle_batch(args: argparse.Namespace) -> int:
         slug = _batch_symbol_slug(symbol)
         data_path = _resolve_download_output_path(symbol, args.interval, args.period, output=None)
         symbol_output_dir = output_root / slug
-        symbol_report_dir = report_root / slug
+        symbol_report_dir = report_root / slug / ("minute" if intraday_mode else "daily")
         download_completed = False
         try:
             if args.download:
