@@ -7,6 +7,7 @@ from loguru import logger
 from etf_strategy.config import DEFAULT_DATA_PATH, DEFAULT_OUTPUT_DIR, DEFAULT_SYMBOL
 from etf_strategy.data.yahoo import download_daily_bars, save_daily_bars
 from etf_strategy.logging_utils import configure_logging
+from etf_strategy.reporting import build_report_markdown
 from etf_strategy.workflow import run_full_workflow, run_optimization_workflow, run_validation_workflow
 
 
@@ -49,6 +50,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     report_parser = subparsers.add_parser("report", help="生成图表与中文报告")
     report_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
+    report_parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="工作流中间文件目录")
+    report_parser.add_argument("--report-dir", default="reports", help="图表与 Markdown 报告输出目录")
+    report_parser.add_argument("--validation-start", default="2026-01-01", help="样本外起始日期")
+    report_parser.add_argument("--lookback-days", type=int, default=120, help="样本内回看天数")
 
     run_parser = subparsers.add_parser("run", help="串联下载、寻参、验证和报告生成")
     run_parser.add_argument("--symbol", default=DEFAULT_SYMBOL, help="Yahoo Finance 标的代码")
@@ -60,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="访问 Yahoo 所需的代理地址，例如 http://127.0.0.1:7897",
     )
     run_parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="完整工作流输出目录")
+    run_parser.add_argument("--report-dir", default="reports", help="图表与 Markdown 报告输出目录")
     run_parser.add_argument("--validation-start", default="2026-01-01", help="样本外起始日期")
     run_parser.add_argument("--lookback-days", type=int, default=120, help="样本内回看天数")
 
@@ -132,9 +138,11 @@ def handle_run(args: argparse.Namespace) -> int:
         validation_start=args.validation_start,
         lookback_days=args.lookback_days,
     )
+    report_path = build_report_markdown(result, report_dir=args.report_dir)
     best_summary = result["optimization"]["best_run"]["summary"]
     validation_summary = result["validation"]["run"]["summary"]
     print(f"完整工作流已完成，汇总文件: {result['combined_summary_path']}")
+    print(f"中文报告: {report_path}")
     print(
         "样本内最优参数: "
         f"grid_spacing={best_summary['GridSpacingPct']:.2f}% "
@@ -150,6 +158,18 @@ def handle_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_report(args: argparse.Namespace) -> int:
+    result = run_full_workflow(
+        data_path=args.data,
+        output_dir=args.output_dir,
+        validation_start=args.validation_start,
+        lookback_days=args.lookback_days,
+    )
+    report_path = build_report_markdown(result, report_dir=args.report_dir)
+    print(f"报告已生成: {report_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """命令行主入口。"""
     configure_logging()
@@ -160,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
         "download": handle_download,
         "optimize": handle_optimize,
         "backtest": handle_backtest,
-        "report": handle_placeholder,
+        "report": handle_report,
         "run": handle_run,
     }
     return handlers[args.command](args)

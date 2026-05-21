@@ -1,54 +1,122 @@
-# 历史股票数据回测
+# ETF Strategy
 
-模型： Gemini2.5-pro
+基于 Yahoo Finance 数据的小型策略回测项目，当前聚焦小米港股 `1810.HK` 的左侧建仓 + 网格交易验证。
 
+项目目标已经从早期的“ETF 补仓脚本”调整为“可重复运行的策略研究工程”。现在的仓库重点是：
 
-中文回复: 
+- 统一入口：所有命令都从根目录 `main.py` 进入
+- 单一数据源：仅保留 Yahoo 数据链路
+- 可解释回测：样本内寻参、2026 样本外验证、图表和中文报告同时输出
 
-## 提示词
+## 当前策略口径
 
-中文回复 投资标的物：中国的券商ETF基金，场内交易， 华宝中证全指证券公司ETF，场内代码为 512000
+- 先定位最近一轮明显下跌样本，默认围绕 `2026-01-01` 前最近 `120` 天回看
+- 从局部高点回撤 `10%` 后，使用总资金 `50%` 建立底仓
+- 剩余 `50%` 资金用于双向网格
+- 网格参数搜索维度：
+  - `grid_spacing`：网格间距
+  - `grid_count`：网格层数
+  - `take_profit`：单层止盈比例
+- 选优目标：收益、最大回撤、成本下降幅度的综合评分
 
-准备进行一个投资计划，初始投资五万，总金额：二十万，初始投资五万，后续的资金，分三次进行加仓
+## 项目结构
 
-下跌的定义： 当市价低于总平均成本的百分比
-
-用最近五年的收市价数据计算，假如在任意时间点进行建仓，买入初始的五万
-下跌多少，进行加仓合适，持有多长时间合适
-
-策略截止条件：二十万本金全部投入 且 年化收益率超过 10%
-
-任务详情：
-
-1. 思考建立什么样的数学模型合适，我这种方案，有对应的交易策略吗
-2. 用Python代码实现你的模型，代码不要立即生成，你先分析方案是否还有优化空间
-3. 代码最终是绘制坐标图，我需要在一张图中看到投资时间、当前投入的的资金、加仓的时间点、当前累计收益率、折算的年华收益率
-4. 最终的代码需要能支持自行回测，随机抽取 100 个日期进行初始建仓
-5. 计算最优的加仓时间，下跌多少加仓是不是固定值，需要基于历史数据回测，帮我算出来最优值
-6. 历史数据通过 csv 文件提供
-
-日志相关的代码
-
-```python
-def setup_logging(log_dir='log'):
-    """设置日志配置"""
-    # 日志库默认输出到终端，移除终端的日志，目前保留终端的日志
-    # logger.remove()
-   
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-   
-    log_file = os.path.join(log_dir, 'E2E02_consumer_{time:YYYY-MM-DD}.log')
-   
-    # 添加日志记录器，按天滚动，并保留30天的日志
-    # TODO：日志级别的控制，通过环境变量控制，容器启动脚本注入
-    log_format = "{time:YYYY-MM-DD HH:mm:ss} - {level} - {name}:{function}:{line} - {message}"
-    logger.add(log_file, rotation="00:00", retention="30 days", level="DEBUG", format=log_format)
+```text
+etf_strategy/
+  data/          Yahoo 下载与标准化
+  strategy/      网格策略、样本切分、参数搜索
+  reporting.py   图表与 Markdown 报告生成
+  workflow.py    样本内/样本外工作流编排
+main.py          统一 CLI 入口
+tests/           标准库 unittest 用例
 ```
 
-## 数据源
+## 安装依赖
 
-还没开工，和AI沟通方案，发现了数据源的问题，本来是让腾讯混元给我推荐几个免费白嫖行情数据的库，了解到了不同的复权计算逻辑
+```powershell
+py -3.13 -m pip install -r requirements.txt
+```
 
-[https://ttf248.life/p/where-can-i-find-backtest-data](https://ttf248.life/p/where-can-i-find-backtest-data)
+如果你在中国大陆直连 Yahoo，通常需要代理。可以二选一：
 
+```powershell
+$env:ETF_STRATEGY_PROXY="http://127.0.0.1:7897"
+```
+
+或者在命令里显式传：
+
+```powershell
+--proxy http://127.0.0.1:7897
+```
+
+## 命令说明
+
+### 1. 下载并标准化小米港股数据
+
+```powershell
+py -3.13 main.py download --start 2024-01-01 --end 2026-05-22 --proxy http://127.0.0.1:7897
+```
+
+默认输出到 `data/processed/xiaomi_1810_hk_daily.csv`。
+
+### 2. 样本内参数搜索
+
+```powershell
+py -3.13 main.py optimize --data data/processed/xiaomi_1810_hk_daily.csv
+```
+
+输出目录默认是 `outputs/optimize/`，会生成：
+
+- `in_sample_window.csv`
+- `in_sample_grid_search.csv`
+- `in_sample_best_*.csv`
+
+### 3. 使用指定参数做 2026 样本外验证
+
+```powershell
+py -3.13 main.py backtest --data data/processed/xiaomi_1810_hk_daily.csv --grid-spacing 0.06 --grid-count 7 --take-profit 0.03
+```
+
+输出目录默认是 `outputs/validation/`。
+
+### 4. 直接生成图表和中文报告
+
+```powershell
+py -3.13 main.py report --data data/processed/xiaomi_1810_hk_daily.csv
+```
+
+会重新执行样本内寻参与样本外验证，并输出到：
+
+- 中间结果：`outputs/`
+- 报告目录：`reports/`
+
+### 5. 一键执行完整流程
+
+```powershell
+py -3.13 main.py run --start 2024-01-01 --end 2026-05-22 --proxy http://127.0.0.1:7897
+```
+
+该命令会依次完成：
+
+1. 下载 Yahoo 数据
+2. 样本内寻参
+3. 2026 样本外验证
+4. 生成图表和中文报告
+
+## 验证
+
+```powershell
+py -3.13 -m unittest tests.test_grid_strategy
+```
+
+## 输出说明
+
+- `outputs/`：运行时中间文件，默认忽略版本控制
+- `reports/`：图表与正式中文报告
+- `log/`：日志输出
+
+## 设计取舍
+
+- 使用 `backtesting.py` 做订单撮合和权益曲线，避免继续维护手写回测循环
+- Yahoo 数据优先走 `yfinance`，失败后自动回退到 Yahoo Chart API，解决大陆环境限流和区域限制
+- 报告里同时保留收益、回撤、成本摊薄，不把“摊薄成本”误当成“绝对赚钱”

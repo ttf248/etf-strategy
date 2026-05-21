@@ -1,7 +1,7 @@
 backtesting==0.6.5
-loguru==0.7.2
+loguru==0.7.3
 matplotlib==3.9.2
-numpy==2.1.1
-pandas==2.2.3
-requests==2.32.3
-yfinance==0.2.54
+numpy==2.3.2
+pandas==2.3.2
+requests==2.32.5
+yfinance==0.2.65
