@@ -6,9 +6,11 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
-            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
             "internalConsoleOptions": "openOnSessionStart",
             "redirectOutput": true,
+            "justMyCode": true,
             "env": {
                 "PYTHONUTF8": "1",
                 "PYTHONIOENCODING": "utf-8"
@@ -26,9 +28,11 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
-            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
             "internalConsoleOptions": "openOnSessionStart",
             "redirectOutput": true,
+            "justMyCode": true,
             "env": {
                 "PYTHONUTF8": "1",
                 "PYTHONIOENCODING": "utf-8"

@@ -117,20 +117,48 @@
 
 ### 修改默认调试入口
 
-当前仓库只保留两条 VS Code 一键调试配置：
+当前仓库按微软官方文档拆成 3 份 VS Code 配置：
+
+- `.vscode/launch.json`：只负责 Python 调试
+- `.vscode/tasks.json`：只负责终端任务执行
+- `.vscode/settings.json`：只负责工作区级调试与终端行为
+
+其中 `launch.json` 当前只保留两条一键调试配置：
 
 - 基于 `data/processed/1810_hk_daily.csv` 的日线正式报告重算
 - 基于 `data/processed/1810_hk_15m.csv` 的 15 分钟正式报告重算
 
-这两条配置当前统一使用 VS Code 集成终端执行：
+这两条调试配置当前统一使用调试控制台：
 
-- 运行时可以直接看控制台里的 `INFO` 级别提示
+- `console=internalConsole`
+- `internalConsoleOptions=openOnSessionStart`
+- `redirectOutput=true`
+- 运行时可以直接看调试控制台里的 `INFO` 级别提示
 - 更详细的定位日志仍写入 `log/etf_strategy_YYYY-MM-DD.log`
 - `main.py` 会主动尝试把 Windows 控制台切到 UTF-8，`.vscode/launch.json` 也会显式传入 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`
 - `report` 命令会输出 `[1/2] -> [2/2]` 进度，`run` 命令会输出 `[1/3] -> [2/3] -> [3/3]` 顶层进度
-- 如果集成终端没有自动切到前台，调试控制台也会自动打开，并通过 `redirectOutput` 同步显示输出
 
-之所以不再使用外部终端，是因为默认一键入口执行很快；如果窗口自动关闭，用户往往来不及看到进度和异常信息。
+另外补了一层 `tasks.json` 终端任务入口：
+
+- 终端生成日线正式报告
+- 终端生成 15 分钟正式报告
+
+这两条任务按任务系统显式配置：
+
+- `presentation.reveal=always`
+- `presentation.focus=true`
+- `presentation.panel=dedicated`
+- `presentation.clear=true`
+
+也就是用户如果想稳定看终端窗口输出，就直接跑任务，而不是把“看终端输出”这件事绑死在调试器行为上。
+
+`settings.json` 里额外固定：
+
+- `debug.openDebug=openOnSessionStart`
+- `terminal.integrated.defaultProfile.windows=PowerShell -NoProfile`
+- `terminal.integrated.automationProfile.windows=PowerShell -NoProfile`
+
+这样可以减少 PowerShell Profile 对调试和任务终端的干扰。
 
 如果代码改动会影响：
 
@@ -139,7 +167,7 @@
 - 默认 symbol / interval
 - 报告生成入口
 
-就必须同步更新 `.vscode/launch.json`，并实际执行对应命令确认它还能跑通。
+就必须同步更新 `.vscode/launch.json`、`.vscode/tasks.json` 和需要受影响的 `.vscode/settings.json`，并实际执行对应命令确认它还能跑通。
 
 ## 文档更新触发条件
 

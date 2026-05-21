@@ -54,16 +54,47 @@ class RepoContractTests(unittest.TestCase):
         self.assertEqual(config_names, {"一键生成日线正式报告", "一键生成15分钟正式报告"})
         for config in configurations:
             self.assertEqual(config["program"], "${workspaceFolder}/main.py")
+            self.assertEqual(config["cwd"], "${workspaceFolder}")
             self.assertEqual(config["args"][0], "report")
-            self.assertEqual(config["console"], "integratedTerminal")
+            self.assertEqual(config["console"], "internalConsole")
             self.assertEqual(config["internalConsoleOptions"], "openOnSessionStart")
             self.assertTrue(config["redirectOutput"])
+            self.assertTrue(config["justMyCode"])
             self.assertEqual(config["env"]["PYTHONUTF8"], "1")
             self.assertEqual(config["env"]["PYTHONIOENCODING"], "utf-8")
 
     def test_vscode_settings_open_debug_view_on_session_start(self) -> None:
         settings_payload = json.loads((REPO_ROOT / ".vscode" / "settings.json").read_text(encoding="utf-8"))
         self.assertEqual(settings_payload["debug.openDebug"], "openOnSessionStart")
+        self.assertEqual(settings_payload["terminal.integrated.defaultProfile.windows"], "PowerShell -NoProfile")
+        self.assertEqual(
+            settings_payload["terminal.integrated.automationProfile.windows"]["source"],
+            "PowerShell",
+        )
+        self.assertEqual(
+            settings_payload["terminal.integrated.automationProfile.windows"]["args"],
+            ["-NoProfile"],
+        )
+
+    def test_vscode_tasks_keep_two_terminal_report_entries(self) -> None:
+        tasks_payload = json.loads((REPO_ROOT / ".vscode" / "tasks.json").read_text(encoding="utf-8"))
+        tasks = tasks_payload.get("tasks", [])
+        self.assertEqual(len(tasks), 2)
+        task_names = {task["label"] for task in tasks}
+        self.assertEqual(task_names, {"终端生成日线正式报告", "终端生成 15 分钟正式报告"})
+        for task in tasks:
+            self.assertEqual(task["type"], "process")
+            self.assertEqual(task["command"], "py")
+            self.assertEqual(task["args"][1], "${workspaceFolder}/main.py")
+            self.assertEqual(task["args"][2], "report")
+            self.assertEqual(task["options"]["cwd"], "${workspaceFolder}")
+            self.assertEqual(task["options"]["env"]["PYTHONUTF8"], "1")
+            self.assertEqual(task["options"]["env"]["PYTHONIOENCODING"], "utf-8")
+            self.assertEqual(task["presentation"]["reveal"], "always")
+            self.assertTrue(task["presentation"]["focus"])
+            self.assertEqual(task["presentation"]["panel"], "dedicated")
+            self.assertTrue(task["presentation"]["clear"])
+            self.assertFalse(task["presentation"]["showReuseMessage"])
 
     def test_reports_keep_two_layer_structure(self) -> None:
         report_files = [

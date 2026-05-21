@@ -33,6 +33,7 @@
 - [x] 补充 run 命令分步骤进度提示
 - [x] 修正 VS Code 控制台闪退问题
 - [x] 增加 VS Code 调试控制台兜底输出
+- [x] 按微软文档重构 VS Code 配置
 
 ## 项目规划整理
 
@@ -886,6 +887,52 @@
 
 - 不同机器上的 VS Code 面板行为可能不同，只依赖集成终端是否自动弹出不够稳。
 - 让调试控制台自动打开并同步输出后，至少能保证一键启动时总有一个可见位置能看到日志和异常。
+
+## 按微软文档重构 VS Code 配置
+
+### 状态
+
+已完成。
+
+### 修改方案
+
+参考微软官方文档，把之前不断打补丁式调整的 VS Code 配置整体重构成 3 层：
+
+- `launch.json` 负责 Python 调试
+- `tasks.json` 负责终端任务执行
+- `settings.json` 负责工作区级调试和终端行为
+
+这样把“调试输出”和“终端输出”拆开，各自有明确入口，不再依赖某一条配置同时兼顾所有场景。
+
+### 修改内容
+
+- `.vscode/launch.json`：
+  - 两条一键报告配置改成 `internalConsole`
+  - 显式补上 `cwd`
+  - 保留 `internalConsoleOptions=openOnSessionStart`
+  - 保留 `redirectOutput=true`
+  - 新增 `justMyCode=true`
+- `.vscode/tasks.json`：
+  - 新增两条终端任务：
+    - `终端生成日线正式报告`
+    - `终端生成 15 分钟正式报告`
+  - 按任务系统配置 `presentation.reveal/focus/panel/clear`
+- `.vscode/settings.json`：
+  - 保留 `debug.openDebug=openOnSessionStart`
+  - 新增 `PowerShell -NoProfile` 的默认终端与自动化终端设置
+- `tests/test_repo_contracts.py`：
+  - 更新调试配置契约
+  - 新增终端任务配置契约
+  - 新增工作区设置契约
+- `README.md`、`doc/development_guide.md`：
+  - 全部改成新的三层配置口径
+  - 明确区分“调试控制台入口”和“终端任务入口”
+
+### 设计规则、原因和收益
+
+- 调试器适合看断点、异常和调试控制台输出，不适合再额外承担“确保终端面板一定弹出”的职责。
+- VS Code 任务系统原生就支持 `presentation` 行为配置，更适合解决“我就是想稳定看到终端输出”的需求。
+- `PowerShell -NoProfile` 可以减少本机 profile 脚本干扰，避免终端启动时先输出一堆无关信息甚至报错。
 
 ## 产物清单
 

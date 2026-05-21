@@ -165,36 +165,71 @@ task.md          AI 任务记录
 - `reports/`：正式中文报告、图表和交易记录展示
 - `log/`：日志输出
 
-## VS Code 调试
+## VS Code 运行与调试
 
-仓库已提供 `.vscode/launch.json`，现在只保留 2 个最稳妥的一键入口：
+这次按微软官方文档，把 `.vscode/` 重整成 3 个职责明确的文件：
+
+- `.vscode/launch.json`：只放 Python 调试配置
+- `.vscode/tasks.json`：只放“稳定显示终端输出”的运行任务
+- `.vscode/settings.json`：只放工作区级调试与终端行为设置
+
+### 调试入口
+
+`launch.json` 现在仍只保留 2 个最稳妥的一键调试入口：
 
 - 一键生成日线正式报告
 - 一键生成 15 分钟正式报告
 
-之所以只保留这两项，是因为它们直接基于仓库内置正式样本重算报告：
+它们都直接基于仓库内置正式样本重算报告：
 
 - 不依赖 Yahoo 网络连接
 - 不依赖本地代理是否可用
 - 更适合日常改代码后的快速回归验证
 
-现在这两条配置统一在 VS Code 集成终端里执行，不再弹出系统外部终端窗口。
+这两条调试配置现在改成走 VS Code `调试控制台`：
 
-之所以改成集成终端，是因为正式报告重算通常结束很快；如果用外部终端，窗口容易一闪而过，看不到过程日志和报错信息。
+- `console=internalConsole`
+- `internalConsoleOptions=openOnSessionStart`
+- `redirectOutput=true`
 
-另外做了一个兜底：即使集成终端因为你的 VS Code 面板状态没有自动弹出，调试控制台也会在启动时自动打开，并同步显示标准输出和错误输出。
+这样点启动后，调试控制台会自动打开，标准输出和错误输出也会直接显示在那里，不再依赖终端面板是否刚好弹出。
 
-为了尽量避免 Windows 终端里的中文乱码，项目入口 `main.py` 现在会主动把控制台切到 UTF-8，VS Code 调试环境也显式设置了：
+### 终端入口
 
-- `PYTHONUTF8=1`
-- `PYTHONIOENCODING=utf-8`
+如果你想明确看到“真实终端里的执行过程”，再用 `Terminal: Run Task` 运行这两条任务：
 
-运行期间你会同时看到两类信息：
+- 终端生成日线正式报告
+- 终端生成 15 分钟正式报告
 
-- 控制台：会实时打印 `INFO` 级别进度，例如开始生成报告、下载完成、文件写入完成。
-- 日志文件：会额外写入 `log/etf_strategy_YYYY-MM-DD.log`，里面保留更详细的 `DEBUG` 级别定位信息。
+这两条任务按微软任务系统配置了：
 
-当前控制台常见提示包括：
+- `presentation.reveal=always`
+- `presentation.focus=true`
+- `presentation.panel=dedicated`
+- `presentation.clear=true`
+
+也就是每次执行都会主动切出独立终端面板，并清空旧输出。
+
+### 工作区设置
+
+`settings.json` 里额外固定了：
+
+- `debug.openDebug=openOnSessionStart`
+- `terminal.integrated.defaultProfile.windows=PowerShell -NoProfile`
+- `terminal.integrated.automationProfile.windows=PowerShell -NoProfile`
+
+目的是减少 PowerShell Profile 干扰，并让调试控制台、任务终端和自动化终端的行为尽量一致。
+
+### 运行时你会看到什么
+
+运行期间你会同时有两类输出位置：
+
+- 调试控制台：用于 `F5` / 调试配置启动时看日志和报错
+- 终端面板：用于 `Run Task` 时看完整终端输出
+
+日志文件仍会额外写到 `log/etf_strategy_YYYY-MM-DD.log`，用于更细的排错。
+
+当前常见提示包括：
 
 - 收到哪个命令，例如 `report` / `run`
 - 分步骤进度，例如 `[1/2]`、`[2/2]` 或完整流程里的 `[1/3]`、`[2/3]`、`[3/3]`
@@ -202,13 +237,11 @@ task.md          AI 任务记录
 - 开始执行样本内寻参、样本外验证、正式报告生成
 - 每个大步骤完成后的输出路径和耗时
 
-其中 `run` 命令现在会明确按 3 个顶层阶段打印：
+其中 `run` 命令会明确按 3 个顶层阶段打印：
 
 - `[1/3]` 下载并合并最新行情
 - `[2/3]` 执行完整回测工作流
 - `[3/3]` 生成正式报告
-
-所以日常看执行进度，优先看 VS Code 底部终端；如果终端面板没有自动切出来，就直接看调试控制台。只有排查更细的问题时，再去看 `log/` 目录下的日志文件。
 
 ## 验证
 
