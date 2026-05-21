@@ -2,112 +2,34 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "下载日线数据",
+            "name": "一键生成日线正式报告",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "args": [
-                "download",
-                "--start",
-                "2024-01-01",
-                "--end",
-                "2026-05-22"
-            ],
-            "env": {
-                "ETF_STRATEGY_PROXY": "http://127.0.0.1:7897"
-            }
+                "report",
+                "--data",
+                "data/processed/1810_hk_daily.csv",
+                "--symbol",
+                "1810.HK"
+            ]
         },
         {
-            "name": "下载15分钟数据",
+            "name": "一键生成15分钟正式报告",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "args": [
-                "download",
+                "report",
+                "--data",
+                "data/processed/1810_hk_15m.csv",
                 "--symbol",
                 "1810.HK",
                 "--interval",
-                "15m",
-                "--period",
-                "60d"
-            ],
-            "env": {
-                "ETF_STRATEGY_PROXY": "http://127.0.0.1:7897"
-            }
-        },
-        {
-            "name": "日线样本内寻参",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/main.py",
-            "console": "integratedTerminal",
-            "args": [
-                "optimize",
-                "--data",
-                "data/processed/xiaomi_1810_hk_daily.csv"
-            ]
-        },
-        {
-            "name": "日线生成报告",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/main.py",
-            "console": "integratedTerminal",
-            "args": [
-                "report",
-                "--data",
-                "data/processed/xiaomi_1810_hk_daily.csv"
-            ]
-        },
-        {
-            "name": "15分钟生成报告",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/main.py",
-            "console": "integratedTerminal",
-            "args": [
-                "report",
-                "--data",
-                "data/processed/xiaomi_1810_hk_15m.csv",
-                "--interval",
                 "15m"
             ]
-        },
-        {
-            "name": "日线完整流程",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/main.py",
-            "console": "integratedTerminal",
-            "args": [
-                "run",
-                "--start",
-                "2024-01-01",
-                "--end",
-                "2026-05-22"
-            ],
-            "env": {
-                "ETF_STRATEGY_PROXY": "http://127.0.0.1:7897"
-            }
-        },
-        {
-            "name": "15分钟完整流程",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/main.py",
-            "console": "integratedTerminal",
-            "args": [
-                "run",
-                "--interval",
-                "15m",
-                "--period",
-                "60d"
-            ],
-            "env": {
-                "ETF_STRATEGY_PROXY": "http://127.0.0.1:7897"
-            }
         }
     ]
 }

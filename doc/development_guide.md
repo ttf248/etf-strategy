@@ -72,6 +72,7 @@
 - `etf_strategy/cli.py`
 - `etf_strategy/data/yahoo.py`
 - `README.md`
+- `.vscode/launch.json`
 - 对应测试
 
 ### 修改样本切分规则
@@ -111,7 +112,24 @@
 - `etf_strategy/cli.py`
 - `doc/glossary.md`
 - `doc/minute_grid_research.md`
+- `.vscode/launch.json`
 - `task.md`
+
+### 修改默认调试入口
+
+当前仓库只保留两条 VS Code 一键调试配置：
+
+- 基于 `data/processed/1810_hk_daily.csv` 的日线正式报告重算
+- 基于 `data/processed/1810_hk_15m.csv` 的 15 分钟正式报告重算
+
+如果代码改动会影响：
+
+- 运行命令
+- 默认样本路径
+- 默认 symbol / interval
+- 报告生成入口
+
+就必须同步更新 `.vscode/launch.json`，并实际执行对应命令确认它还能跑通。
 
 ## 文档更新触发条件
 

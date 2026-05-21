@@ -1,3 +1,4 @@
+import json
 import re
 import unittest
 from pathlib import Path
@@ -44,6 +45,16 @@ class RepoContractTests(unittest.TestCase):
         top_block = "\n".join(readme_lines)
         self.assertIn("reports/1810_hk_grid_report.md", top_block)
         self.assertIn("reports/minute/1810_hk_15m_grid_report.md", top_block)
+
+    def test_vscode_launch_only_keeps_one_click_report_configs(self) -> None:
+        launch_payload = json.loads((REPO_ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))
+        configurations = launch_payload.get("configurations", [])
+        self.assertEqual(len(configurations), 2)
+        config_names = {config["name"] for config in configurations}
+        self.assertEqual(config_names, {"一键生成日线正式报告", "一键生成15分钟正式报告"})
+        for config in configurations:
+            self.assertEqual(config["program"], "${workspaceFolder}/main.py")
+            self.assertEqual(config["args"][0], "report")
 
     def test_reports_keep_two_layer_structure(self) -> None:
         report_files = [
