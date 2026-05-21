@@ -217,17 +217,21 @@ def build_report_markdown(
         validation_title = "2026 样本外验证"
         conclusion_tail = "如果后续继续扩展策略，优先方向应该是加入趋势过滤或分阶段停手机制，而不是单纯增加网格层数。"
 
-    conclusion = (
-        "在这轮下跌样本里，网格交易能明显摊薄持仓成本，但不足以把组合收益拉回正值。"
-        if best_summary["ReturnPct"] < 0 and validation_summary["ReturnPct"] < 0
-        else "网格交易在本轮样本里既带来了成本摊薄，也对收益有正向帮助。"
-    )
+    if best_summary["ReturnPct"] <= 0 and validation_summary["ReturnPct"] <= 0:
+        conclusion = "在这轮样本里，网格交易能摊薄持仓成本，但还没有把总账户稳定拉回正收益。"
+    elif best_summary["ReturnPct"] > 0 and validation_summary["ReturnPct"] > 0:
+        conclusion = "网格交易在本轮样本里同时改善了成本和总收益，参数延续性相对更强。"
+    else:
+        conclusion = "这轮样本里，网格交易的效果呈现阶段性差异，需要结合是否真正触发建仓一起理解。"
     validation_scope = "分钟线样本外区间" if workflow_type == "minute" else "2026 样本外区间"
-    validation_comment = (
-        f"{validation_scope}延续了成本摊薄，但收益仍为负，说明策略更像风险缓冲而不是单独的反转信号。"
-        if validation_summary["ReturnPct"] < 0
-        else f"{validation_scope}收益转正，说明最优参数在新阶段仍具一定延续性。"
-    )
+    if not validation_words["triggered_entry"]:
+        validation_comment = f"{validation_scope}没有触发 10% 回撤建仓，因此这段结果更像“策略没有出手”，不能直接用来证明参数有效或失效。"
+    elif validation_summary["ReturnPct"] < 0:
+        validation_comment = f"{validation_scope}延续了成本摊薄，但收益仍为负，说明策略更像风险缓冲而不是单独的反转信号。"
+    elif validation_summary["ReturnPct"] > 0:
+        validation_comment = f"{validation_scope}收益转正，说明最优参数在新阶段仍具一定延续性。"
+    else:
+        validation_comment = f"{validation_scope}最终回到盈亏平衡附近，说明这套参数至少没有在这段样本里造成新的损失。"
 
     total_pnl_text = "盈利" if in_sample_words["total_pnl"] >= 0 else "亏损"
     validation_total_pnl_text = "盈利" if validation_words["total_pnl"] >= 0 else "亏损"
