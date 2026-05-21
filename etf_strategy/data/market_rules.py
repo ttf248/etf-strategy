@@ -38,9 +38,9 @@ def infer_symbol_from_data_path(data_path: str | Path) -> str | None:
     stem = Path(data_path).stem
     normalized_stem = stem.lower()
 
-    hk_match = re.search(r"(?P<code>\d{1,5})_hk(?:_|$)", normalized_stem)
-    if hk_match:
-        return f"{hk_match.group('code').upper()}.HK"
+    exchange_match = re.search(r"(?P<code>[a-z0-9\-\^=]+)_(?P<suffix>hk|ss|sz)(?:_|$)", normalized_stem)
+    if exchange_match:
+        return f"{exchange_match.group('code').upper()}.{exchange_match.group('suffix').upper()}"
 
     parts = stem.split("_")
     if len(parts) >= 2 and parts[-1].lower() in DATA_INTERVAL_SUFFIXES:
@@ -70,6 +70,14 @@ def resolve_lot_size_rule(symbol: str) -> LotSizeRule:
             market="HK",
             lot_size=lot_size,
             source="AASTOCKS 快照页 Lot Size",
+        )
+
+    if normalized_symbol.endswith((".SS", ".SZ")):
+        return LotSizeRule(
+            symbol=normalized_symbol,
+            market="CN",
+            lot_size=100,
+            source="A 股和沪深 ETF 默认 100 股",
         )
 
     if "." not in normalized_symbol and not normalized_symbol.startswith("^"):

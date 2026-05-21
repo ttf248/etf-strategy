@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -92,15 +93,28 @@ class YahooDataTests(unittest.TestCase):
                 }
             )
 
-        from unittest.mock import patch
-
         with patch("etf_strategy.data.yahoo._load_from_yfinance", side_effect=fake_loader):
-            frame = download_price_bars(symbol="1810.HK", interval="1d")
+            frame = download_price_bars(symbol="1810.HK", interval="1d", proxy="http://127.0.0.1:7897")
 
+        self.assertEqual(captured["proxy"], "http://127.0.0.1:7897")
         self.assertEqual(captured["period"], DEFAULT_DAILY_PERIOD)
         self.assertIsNone(captured["start_date"])
         self.assertIsNone(captured["end_date"])
         self.assertEqual(len(frame), 1)
+
+    def test_download_price_bars_requires_proxy(self) -> None:
+        with self.assertRaisesRegex(ValueError, "必须配置代理"):
+            download_price_bars(symbol="1810.HK", interval="15m", period="60d")
+
+    def test_download_price_bars_stops_when_yahoo_fails(self) -> None:
+        with patch("etf_strategy.data.yahoo._load_from_yfinance", side_effect=RuntimeError("rate limited")):
+            with self.assertRaisesRegex(ValueError, "Yahoo 行情下载失败"):
+                download_price_bars(
+                    symbol="1810.HK",
+                    interval="15m",
+                    period="60d",
+                    proxy="http://127.0.0.1:7897",
+                )
 
 
 if __name__ == "__main__":

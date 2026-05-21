@@ -1,21 +1,23 @@
 # ETF Strategy
 
-基于 Yahoo Finance 数据的小型策略回测项目，当前默认用 `1810.HK` 作为开发验证样本，研究“不预先建底仓、只在网格触发价投入现金”的固定股数网格回测流程。
+基于 Yahoo Finance 数据的小型策略回测项目，当前默认用 `15m` 分钟 K 线作为计算样本，研究“不预先建底仓、只在网格触发价投入现金”的固定股数网格回测流程。所有 Yahoo 下载命令必须配置代理，Yahoo 下载失败时流程会直接停止并输出错误。
 
-## 快速跳转
+## 报告索引
 
-- [最新日线正式报告](reports/1810_hk_grid_report.md)
-- [最新 15 分钟正式报告](reports/minute/1810_hk_15m_grid_report.md)
-- [参数筛选方法说明](doc/grid_parameter_search.md)
-- [回测报告阅读指南](doc/report_reading_guide.md)
-- [项目导航与阅读顺序](doc/index.md)
+| 分类 | 标的 | 名称 | 周期 | 样本外收益 | 最大回撤 | 状态/备注 | 报告 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 批量总览 | hstech_plus_513050 | 恒生科技 30 只成分股 + 513050.SS | 15m | 见索引 | 见索引 | Yahoo 最近 60 天分钟线，下载必须配置代理 | [打开索引](reports/batch/hstech_15m_report_index.md) |
+| 默认样本 | 1810.HK | 小米集团-W | 15m | 见报告 | 见报告 | 单标的分钟线正式报告 | [打开报告](reports/minute/1810_hk_15m_grid_report.md) |
+| 方法文档 | - | 参数筛选方法说明 | - | - | - | 解释寻参和稳健性评分 | [打开文档](doc/grid_parameter_search.md) |
+| 阅读指南 | - | 回测报告阅读指南 | - | - | - | 解释报告图表与指标 | [打开文档](doc/report_reading_guide.md) |
 
 这个仓库现在的定位不是“一次性脚本”，而是“可重复运行的策略研究工程”：
 
 - 所有命令统一从根目录 `main.py` 进入
-- 只保留 Yahoo 数据链路，降低维护面
+- 数据链路只使用 Yahoo Finance；下载必须配置代理，失败后直接停止，避免静默切换数据源导致口径不一致
 - 同时输出中间结果、图表、交易记录和中文报告，方便复盘
 - 回测命令默认使用 `realistic` 执行口径，计入可配置的手续费、滑点、仓位上限、停手机制和左侧行情强制退出对照
+- 批量入口默认支持恒生科技 30 只成分股和 `513050.SS` 的分钟线研究
 
 ## 你先从哪里开始
 
@@ -35,7 +37,7 @@
 
 它们分别对应：
 
-- 日线主流程默认输入快照
+- 日线显式回测输入快照
 - `15m` 分钟线研究默认输入快照
 
 测试临时 CSV 和一次性研究样本不会一起纳入版本控制。
@@ -54,27 +56,28 @@
 py -3.13 -m pip install -r requirements.txt
 ```
 
-### 2. 直接生成日线报告
+### 2. 直接生成 15 分钟线报告
 
 ```powershell
-py -3.13 main.py report --data data/processed/1810_hk_daily.csv --symbol 1810.HK
-```
-
-输出：
-
-- 中间结果：`outputs/`
-- 正式报告：`reports/1810_hk_grid_report.md`
-
-### 3. 直接生成 15 分钟线报告
-
-```powershell
-py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK --interval 15m
+py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK
 ```
 
 输出：
 
 - 中间结果：`outputs/minute/`
 - 正式报告：`reports/minute/1810_hk_15m_grid_report.md`
+
+### 3. 批量生成恒生科技分钟线报告
+
+```powershell
+py -3.13 main.py batch --symbol-set hstech_plus_513050 --download --proxy http://127.0.0.1:7897 --jobs auto --cache-dir outputs/cache
+```
+
+输出：
+
+- 批量汇总：`outputs/batch/batch_summary.csv`
+- 报告索引：`reports/batch/hstech_15m_report_index.md`
+- 单标的报告：`reports/batch/<symbol>/`
 
 ## 文档导航
 
@@ -98,39 +101,42 @@ py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK -
 
 ## 常用命令速查
 
-### 下载日线数据
+### 下载默认分钟线数据
 
 ```powershell
 py -3.13 main.py download --symbol 1810.HK --proxy http://127.0.0.1:7897
 ```
 
+说明：
+
+- 默认周期是 `15m`
+- 分钟线免费数据通常只有最近 `60d`；如果 Yahoo 返回限流、空数据或连接错误，流程会直接停止并输出报错
+- 项目会先把这次下载结果和本地 `data/processed/1810_hk_15m.csv` 做时间戳合并，再进入后续回测
+
+### 下载日线数据
+
+如果你要显式下载日线，传 `--interval 1d`：
+
+```powershell
+py -3.13 main.py download --symbol 1810.HK --interval 1d --proxy http://127.0.0.1:7897
+```
+
 如果你只想下载某一段日线区间，也可以显式传：
 
 ```powershell
-py -3.13 main.py download --symbol 1810.HK --start 2024-01-01 --end 2026-05-22 --proxy http://127.0.0.1:7897
+py -3.13 main.py download --symbol 1810.HK --interval 1d --start 2024-01-01 --end 2026-05-22 --proxy http://127.0.0.1:7897
 ```
-
-### 下载默认分钟线数据
-
-```powershell
-py -3.13 main.py download --symbol 1810.HK --interval 15m --period 60d --proxy http://127.0.0.1:7897
-```
-
-说明：
-
-- 分钟线免费数据通常只有最近 `60d`
-- 项目会先把这次下载结果和本地 `data/processed/1810_hk_15m.csv` 做时间戳合并，再进入后续回测
 
 ### 样本内参数搜索
 
 ```powershell
-py -3.13 main.py optimize --data data/processed/1810_hk_daily.csv --symbol 1810.HK
+py -3.13 main.py optimize --data data/processed/1810_hk_15m.csv --symbol 1810.HK
 ```
 
 ### 样本外验证
 
 ```powershell
-py -3.13 main.py backtest --data data/processed/1810_hk_daily.csv --symbol 1810.HK --grid-spacing 0.07 --grid-count 5 --take-profit 0.03
+py -3.13 main.py backtest --data data/processed/1810_hk_15m.csv --symbol 1810.HK --grid-spacing 0.04 --grid-count 7 --take-profit 0.01
 ```
 
 ### 执行口径与风控参数
@@ -146,7 +152,7 @@ py -3.13 main.py backtest --data data/processed/1810_hk_daily.csv --symbol 1810.
 如果需要复现旧的简化研究口径，可以显式传：
 
 ```powershell
-py -3.13 main.py report --data data/processed/1810_hk_daily.csv --symbol 1810.HK --execution-profile research
+py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK --execution-profile research
 ```
 
 常用覆盖参数：
@@ -168,7 +174,7 @@ py -3.13 main.py report --data data/processed/1810_hk_daily.csv --symbol 1810.HK
 py -3.13 main.py run --symbol 1810.HK --proxy http://127.0.0.1:7897
 ```
 
-如果你希望限定这次日线完整流程只使用某个时间段，也可以显式传 `--start` 和 `--end`。
+如果你希望跑日线完整流程，显式传 `--interval 1d`。如果你希望限定这次日线完整流程只使用某个时间段，也可以同时传 `--start` 和 `--end`。
 
 如果你在中国大陆直连 Yahoo，通常需要代理。可以设置：
 
@@ -208,14 +214,14 @@ task.md          AI 任务记录
 
 `launch.json` 当前只保留 2 个一键入口：
 
-- 一键生成日线正式报告
-- 一键生成 15 分钟正式报告
+- 一键生成恒科批量分钟报告
+- 一键生成 1810 分钟正式报告
 
-它们都直接基于仓库内置正式样本重算报告：
+其中 1810 单标的入口直接基于仓库内置正式样本重算报告；恒科批量入口会先下载 Yahoo 分钟线，因此必须配置代理。
 
-- 不依赖 Yahoo 网络连接
-- 不依赖本地代理是否可用
-- 更适合日常改代码后的快速回归验证
+- 单标的报告入口不依赖 Yahoo 网络连接
+- 批量下载入口必须确保本机 `http://127.0.0.1:7897` 代理可用，或按需修改 `launch.json` 中的 `--proxy`
+- Yahoo 下载失败时，批量流程会直接停止并输出错误
 
 这两条配置保留你给的集成终端启动风格，但调试器类型使用微软当前 Python 调试文档推荐的 `debugpy`：
 
@@ -260,12 +266,13 @@ task.md          AI 任务记录
 如果本地已经有对应标准化 CSV，可以批量运行：
 
 ```powershell
-py -3.13 main.py batch --symbols 1810.HK,SPY --interval 1d --jobs auto --cache-dir outputs/cache
+py -3.13 main.py batch --symbol-set hstech_plus_513050 --download --proxy http://127.0.0.1:7897 --jobs auto --cache-dir outputs/cache
 ```
 
 输出：
 
 - 批量汇总：`outputs/batch/batch_summary.csv`
+- 批量报告索引：`reports/batch/hstech_15m_report_index.md`
 - 单标的中间结果：`outputs/batch/<symbol>/`
 - 单标的报告：`reports/batch/<symbol>/`
 

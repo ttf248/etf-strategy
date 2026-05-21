@@ -6,7 +6,7 @@ from unittest.mock import ANY, Mock, patch
 import pandas as pd
 
 from etf_strategy.cli import build_parser, handle_batch, handle_download, handle_run
-from etf_strategy.config import DEFAULT_DATA_PATH, DEFAULT_OUTPUT_DIR
+from etf_strategy.config import DEFAULT_DATA_PATH, DEFAULT_MINUTE_DATA_PATH, DEFAULT_MINUTE_OUTPUT_DIR
 from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
 from etf_strategy.settings import build_execution_config
 from etf_strategy.strategy.grid import (
@@ -124,9 +124,43 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(execution.left_side_policy, "force_exit")
         self.assertAlmostEqual(execution.force_exit_loss_pct, 0.03)
 
-    def test_handle_download_allows_daily_without_range_and_merges_existing(self) -> None:
+    def test_handle_download_defaults_to_intraday_and_merges_existing(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["download", "--symbol", "1810.HK"])
+        args = parser.parse_args(["download", "--symbol", "1810.HK", "--proxy", "http://127.0.0.1:7897"])
+        bars = pd.DataFrame(
+            {
+                "Date": ["2026-05-20"],
+                "Open": [10.0],
+                "High": [10.2],
+                "Low": [9.8],
+                "Close": [10.1],
+                "Volume": [100],
+            }
+        )
+
+        with (
+            patch("etf_strategy.cli.download_price_bars", return_value=bars) as mock_download,
+            patch("etf_strategy.cli.save_price_bars", return_value=DEFAULT_MINUTE_DATA_PATH) as mock_save,
+            patch("builtins.print"),
+        ):
+            result = handle_download(args)
+
+        self.assertEqual(result, 0)
+        mock_download.assert_called_once_with(
+            symbol="1810.HK",
+            interval="15m",
+            start_date=None,
+            end_date=None,
+            period="60d",
+            proxy="http://127.0.0.1:7897",
+        )
+        mock_save.assert_called_once_with(bars, DEFAULT_MINUTE_DATA_PATH, interval="15m", merge_with_existing=True)
+
+    def test_handle_download_allows_explicit_daily_without_range_and_merges_existing(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["download", "--symbol", "1810.HK", "--interval", "1d", "--proxy", "http://127.0.0.1:7897"]
+        )
         bars = pd.DataFrame(
             {
                 "Date": ["2026-05-20"],
@@ -152,13 +186,13 @@ class GridStrategyTests(unittest.TestCase):
             start_date=None,
             end_date=None,
             period=None,
-            proxy=None,
+            proxy="http://127.0.0.1:7897",
         )
         mock_save.assert_called_once_with(bars, DEFAULT_DATA_PATH, interval="1d", merge_with_existing=True)
 
-    def test_handle_run_allows_daily_without_range_and_merges_before_workflow(self) -> None:
+    def test_handle_run_defaults_to_intraday_and_merges_before_workflow(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["run", "--symbol", "1810.HK"])
+        args = parser.parse_args(["run", "--symbol", "1810.HK", "--proxy", "http://127.0.0.1:7897"])
         bars = pd.DataFrame(
             {
                 "Date": ["2026-05-20"],
@@ -193,9 +227,9 @@ class GridStrategyTests(unittest.TestCase):
 
         with (
             patch("etf_strategy.cli.download_price_bars", return_value=bars) as mock_download,
-            patch("etf_strategy.cli.save_price_bars", return_value=DEFAULT_DATA_PATH) as mock_save,
-            patch("etf_strategy.cli.run_full_workflow", return_value=workflow_result) as mock_workflow,
-            patch("etf_strategy.cli.build_report_markdown", return_value="reports/1810_hk_grid_report.md"),
+            patch("etf_strategy.cli.save_price_bars", return_value=DEFAULT_MINUTE_DATA_PATH) as mock_save,
+            patch("etf_strategy.cli.run_minute_full_workflow", return_value=workflow_result) as mock_workflow,
+            patch("etf_strategy.cli.build_minute_report_markdown", return_value="reports/minute/1810_hk_15m_grid_report.md"),
             patch("builtins.print"),
         ):
             result = handle_run(args)
@@ -203,19 +237,18 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(result, 0)
         mock_download.assert_called_once_with(
             symbol="1810.HK",
-            interval="1d",
+            interval="15m",
             start_date=None,
             end_date=None,
-            period=None,
-            proxy=None,
+            period="60d",
+            proxy="http://127.0.0.1:7897",
         )
-        mock_save.assert_called_once_with(bars, DEFAULT_DATA_PATH, interval="1d", merge_with_existing=True)
+        mock_save.assert_called_once_with(bars, DEFAULT_MINUTE_DATA_PATH, interval="15m", merge_with_existing=True)
         mock_workflow.assert_called_once_with(
-            data_path=DEFAULT_DATA_PATH,
+            data_path=DEFAULT_MINUTE_DATA_PATH,
             symbol="1810.HK",
-            output_dir=DEFAULT_OUTPUT_DIR,
-            validation_start="2026-01-01",
-            lookback_days=120,
+            output_dir=DEFAULT_MINUTE_OUTPUT_DIR,
+            validation_ratio=0.25,
             execution_config=ANY,
             wf_window_count=3,
             wf_min_window_size=20,
@@ -247,6 +280,17 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(args.jobs, "auto")
         self.assertEqual(args.cache_dir, "outputs/cache")
         self.assertEqual(args.execution_profile, "realistic")
+
+    def test_batch_parser_reads_symbol_set_and_defaults_to_intraday(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(["batch", "--symbol-set", "hstech_plus_513050"])
+
+        self.assertEqual(args.command, "batch")
+        self.assertEqual(args.symbol_set, "hstech_plus_513050")
+        self.assertIsNone(args.symbols)
+        self.assertEqual(args.interval, "15m")
+        self.assertEqual(args.period, "60d")
 
     def test_handle_batch_writes_summary_for_existing_data(self) -> None:
         parser = build_parser()
@@ -280,6 +324,8 @@ class GridStrategyTests(unittest.TestCase):
                     "batch",
                     "--symbols",
                     "1810.HK",
+                    "--interval",
+                    "1d",
                     "--output-dir",
                     str(Path(temp_dir) / "out"),
                     "--report-dir",
@@ -295,12 +341,43 @@ class GridStrategyTests(unittest.TestCase):
 
             summary_path = Path(temp_dir) / "out" / "batch_summary.csv"
             summary = pd.read_csv(summary_path, encoding="utf-8-sig")
+            index_path = Path(temp_dir) / "reports" / "batch_1d_report_index.md"
+            index_exists = index_path.exists()
 
         self.assertEqual(result, 0)
         self.assertEqual(summary.iloc[0]["Status"], "ok")
+        self.assertTrue(index_exists)
         mock_workflow.assert_called_once()
         self.assertEqual(mock_workflow.call_args.kwargs["jobs"], 1)
         self.assertEqual(mock_workflow.call_args.kwargs["execution_config"].profile, "realistic")
+
+    def test_handle_batch_stops_when_download_fails(self) -> None:
+        parser = build_parser()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            args = parser.parse_args(
+                [
+                    "batch",
+                    "--symbols",
+                    "1810.HK",
+                    "--download",
+                    "--proxy",
+                    "http://127.0.0.1:7897",
+                    "--output-dir",
+                    str(Path(temp_dir) / "out"),
+                    "--report-dir",
+                    str(Path(temp_dir) / "reports"),
+                ]
+            )
+            with (
+                patch("etf_strategy.cli.download_price_bars", side_effect=ValueError("Yahoo 行情下载失败")) as mock_download,
+                patch("etf_strategy.cli._write_failed_batch_report") as mock_failed_report,
+            ):
+                with self.assertRaisesRegex(ValueError, "Yahoo 行情下载失败"):
+                    handle_batch(args)
+
+        mock_download.assert_called_once()
+        mock_failed_report.assert_not_called()
 
     def test_backtest_parser_reads_grid_parameters(self) -> None:
         parser = build_parser()
@@ -335,6 +412,7 @@ class GridStrategyTests(unittest.TestCase):
 
     def test_infer_symbol_from_data_path(self) -> None:
         self.assertEqual(infer_symbol_from_data_path("data/processed/1810_hk_daily.csv"), "1810.HK")
+        self.assertEqual(infer_symbol_from_data_path("data/processed/513050_ss_15m.csv"), "513050.SS")
         self.assertEqual(infer_symbol_from_data_path("data/processed/spy_1d.csv"), "SPY")
         self.assertEqual(infer_symbol_from_data_path("data/processed/brk-b_15m.csv"), "BRK-B")
 
@@ -342,6 +420,12 @@ class GridStrategyTests(unittest.TestCase):
         rule = resolve_lot_size_rule("SPY")
         self.assertEqual(rule.market, "US")
         self.assertEqual(rule.lot_size, 1)
+
+    def test_resolve_lot_size_rule_for_cn_etf_symbol(self) -> None:
+        rule = resolve_lot_size_rule("513050.SS")
+        self.assertEqual(rule.market, "CN")
+        self.assertEqual(rule.lot_size, 100)
+        self.assertIn("100 股", rule.source)
 
     @patch("etf_strategy.data.market_rules.requests.get")
     def test_resolve_lot_size_rule_for_hk_symbol(self, mock_get: Mock) -> None:

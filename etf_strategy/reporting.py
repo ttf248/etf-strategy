@@ -810,7 +810,7 @@ def build_report_markdown(
         report_path = target_dir / artifact_names["report"]
         summary_lines = [
             f"- 标的：`{symbol}`",
-            f"- 数据周期：Yahoo Finance 最近 60 天 `{interval}`",
+            f"- 数据周期：Yahoo Finance 最近 60 天 `{interval}`；下载必须配置代理，Yahoo 失败时流程直接停止",
             f"- 样本内窗口：{decline_window.sample_start} 至 {decline_window.sample_end}",
             f"- 样本外窗口：{decline_window.validation_start} 至 {validation_summary['EndDate']}",
             f"- 切分方式：最近分钟线样本按 `75% / 25%` 拆分样本内与样本外",

@@ -42,6 +42,7 @@
 - [x] 增加批量研究与寻参缓存并行
 - [x] 拆分策略辅助模块
 - [x] 抽取更多仓库通用规则
+- [x] 默认分钟线批量研究与 Yahoo 下载强制代理
 
 ## 项目规划整理
 
@@ -1233,6 +1234,54 @@
 - `py -3.13 -m unittest tests.test_grid_strategy tests.test_repo_contracts tests.test_yahoo_data`
 - `py -3.13 main.py report --data data/processed/1810_hk_daily.csv --symbol 1810.HK --output-dir outputs --report-dir reports --execution-profile realistic --grid-mode cash --left-side-policy both --force-exit-loss-pct 0.05`
 - `py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK --interval 15m --output-dir outputs/minute --report-dir reports/minute --execution-profile realistic --grid-mode cash --left-side-policy both --force-exit-loss-pct 0.05`
+
+## 默认分钟线批量研究与 Yahoo 下载强制代理
+
+### 状态
+
+已完成。
+
+### 修改方案
+
+把命令默认计算样本切到 `15m` 分钟线，新增固定的 `hstech_plus_513050` 标的池用于恒生科技 30 只成分股加 `513050.SS` 的批量研究。同时按最新数据规则收敛下载链路：只使用 Yahoo Finance，下载必须显式配置代理；如果 Yahoo 下载失败，CLI 输出错误并直接返回失败码，不再继续后续标的或切换数据源。
+
+### 修改内容
+
+- 新增 `etf_strategy/symbols.py`：
+  - 固定维护恒生科技 30 只成分股。
+  - 追加国内 ETF `513050.SS`。
+  - 记录成分来源和分类，供批量报告索引展示。
+- CLI：
+  - `download`、`optimize`、`backtest`、`report`、`run`、`batch` 默认周期改为 `15m`。
+  - `batch` 支持 `--symbol-set hstech_plus_513050`，并生成批量报告索引。
+  - `main()` 捕获业务异常，只输出 `错误: ...`，避免把 Python 调用栈暴露给用户。
+  - 批量下载阶段失败时立即停止，不再继续剩余标的。
+- 数据：
+  - `download_price_bars()` 强制要求 `--proxy` 或 `ETF_STRATEGY_PROXY`。
+  - Yahoo 下载异常统一转成“Yahoo 行情下载失败，流程已停止”。
+  - 移除东方财富回退尝试，保持单一数据源口径。
+  - 最小交易单位规则补充 `.SS/.SZ`，默认 100 股。
+- 报告与文档：
+  - README 顶部报告索引改成表格，链接到批量报告索引和默认 1810 分钟线报告。
+  - `.vscode/launch.json` 的批量入口显式配置 `--proxy http://127.0.0.1:7897`。
+  - `reports/batch/` 提交当前环境下的 31 份失败记录和总索引，说明因未配置代理无法下载 Yahoo 数据；没有提交错误口径的回退图表。
+- 测试：
+  - 增加 Yahoo 下载必须配置代理、下载失败即停止的测试。
+  - 更新默认分钟线、内置标的池、A 股 ETF 文件名推断和 100 股交易单位测试。
+
+### 设计取舍
+
+- 不再使用备用数据源，牺牲当前环境下的自动批量成功率，换取数据口径一致和失败可见。
+- 批量下载失败直接停止，避免“前几只失败、后几只成功”的混合数据源或混合网络状态报告被误读。
+- 当前仓库仍提交批量失败记录，是为了保留 README 报告索引的可跳转结构；真实回测报告需要在代理可用后重新运行批量命令生成。
+
+### 验证
+
+- `py -3.13 -m unittest tests.test_yahoo_data tests.test_grid_strategy tests.test_repo_contracts`
+- `py -3.13 main.py download --symbol 1810.HK`
+  - 预期失败：`错误: 下载 Yahoo 行情必须配置代理，请通过 --proxy 或 ETF_STRATEGY_PROXY 提供代理地址。`
+- `py -3.13 main.py batch --symbol-set hstech_plus_513050 --download --interval 15m --period 60d --jobs 1 --cache-dir outputs/cache --output-dir outputs/batch --report-dir reports/batch`
+  - 预期失败并停止在首个标的：`下载 Yahoo 行情必须配置代理...`
 
 ## 产物清单
 

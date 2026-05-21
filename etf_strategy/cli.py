@@ -41,6 +41,7 @@ from etf_strategy.settings import (
     DEFAULT_WALK_FORWARD_WINDOW_COUNT,
     build_execution_config,
 )
+from etf_strategy.symbols import SYMBOL_SETS, SymbolSpec
 from etf_strategy.workflow import (
     run_full_workflow,
     run_minute_full_workflow,
@@ -63,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
     download_parser.add_argument("--symbol", default=DEFAULT_SYMBOL, help="Yahoo Finance 标的代码")
     download_parser.add_argument("--start", help="开始日期，格式 YYYY-MM-DD；日线不传时默认下载可用全历史")
     download_parser.add_argument("--end", help="结束日期，格式 YYYY-MM-DD；和 --start 一起使用")
-    download_parser.add_argument("--interval", default="1d", help="K 线周期，例如 1d、5m、15m、60m")
+    download_parser.add_argument("--interval", default=DEFAULT_MINUTE_INTERVAL, help="K 线周期，例如 1d、5m、15m、60m")
     download_parser.add_argument(
         "--period",
         default=DEFAULT_MINUTE_PERIOD,
@@ -72,7 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     download_parser.add_argument(
         "--proxy",
         default=os.getenv("ETF_STRATEGY_PROXY"),
-        help="访问 Yahoo 所需的代理地址，例如 http://127.0.0.1:7897",
+        help="访问 Yahoo 必须配置的代理地址，例如 http://127.0.0.1:7897",
     )
     download_parser.add_argument(
         "--output",
@@ -83,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     optimize_parser = subparsers.add_parser("optimize", help="执行样本内参数搜索")
     optimize_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
     optimize_parser.add_argument("--symbol", default=None, help="Yahoo Finance 标的代码；不传时尝试从文件名推断")
-    optimize_parser.add_argument("--interval", default="1d", help="数据周期，决定使用日线还是分钟线工作流")
+    optimize_parser.add_argument("--interval", default=DEFAULT_MINUTE_INTERVAL, help="数据周期，决定使用日线还是分钟线工作流")
     optimize_parser.add_argument("--output-dir", default=None, help="参数搜索结果输出目录")
     optimize_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
     optimize_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="样本内回看天数")
@@ -97,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
     backtest_parser = subparsers.add_parser("backtest", help="执行样本外验证")
     backtest_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
     backtest_parser.add_argument("--symbol", default=None, help="Yahoo Finance 标的代码；不传时尝试从文件名推断")
-    backtest_parser.add_argument("--interval", default="1d", help="数据周期，决定使用日线还是分钟线工作流")
+    backtest_parser.add_argument("--interval", default=DEFAULT_MINUTE_INTERVAL, help="数据周期，决定使用日线还是分钟线工作流")
     backtest_parser.add_argument(
         "--grid-spacing",
         type=float,
@@ -125,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser = subparsers.add_parser("report", help="生成图表与中文报告")
     report_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
     report_parser.add_argument("--symbol", default=None, help="Yahoo Finance 标的代码；不传时尝试从文件名推断")
-    report_parser.add_argument("--interval", default="1d", help="数据周期，决定使用日线还是分钟线工作流")
+    report_parser.add_argument("--interval", default=DEFAULT_MINUTE_INTERVAL, help="数据周期，决定使用日线还是分钟线工作流")
     report_parser.add_argument("--output-dir", default=None, help="工作流中间文件目录")
     report_parser.add_argument("--report-dir", default=None, help="图表与 Markdown 报告输出目录")
     report_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
@@ -141,12 +142,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--symbol", default=DEFAULT_SYMBOL, help="Yahoo Finance 标的代码")
     run_parser.add_argument("--start", help="开始日期，格式 YYYY-MM-DD；日线不传时默认下载可用全历史")
     run_parser.add_argument("--end", help="结束日期，格式 YYYY-MM-DD；和 --start 一起使用")
-    run_parser.add_argument("--interval", default="1d", help="K 线周期，例如 1d、5m、15m、60m")
+    run_parser.add_argument("--interval", default=DEFAULT_MINUTE_INTERVAL, help="K 线周期，例如 1d、5m、15m、60m")
     run_parser.add_argument("--period", default=DEFAULT_MINUTE_PERIOD, help="分钟 K 线优先使用的区间，例如 5d、30d、60d")
     run_parser.add_argument(
         "--proxy",
         default=os.getenv("ETF_STRATEGY_PROXY"),
-        help="访问 Yahoo 所需的代理地址，例如 http://127.0.0.1:7897",
+        help="访问 Yahoo 必须配置的代理地址，例如 http://127.0.0.1:7897",
     )
     run_parser.add_argument("--output-dir", default=None, help="完整工作流输出目录")
     run_parser.add_argument("--report-dir", default=None, help="图表与 Markdown 报告输出目录")
@@ -160,11 +161,12 @@ def build_parser() -> argparse.ArgumentParser:
     _add_execution_arguments(run_parser)
 
     batch_parser = subparsers.add_parser("batch", help="批量执行多个标的的完整研究流程")
-    batch_parser.add_argument("--symbols", required=True, help="逗号分隔的 Yahoo Finance 标的代码，例如 1810.HK,SPY")
-    batch_parser.add_argument("--interval", default="1d", help="K 线周期，例如 1d、15m")
+    batch_parser.add_argument("--symbols", default=None, help="逗号分隔的 Yahoo Finance 标的代码，例如 1810.HK,SPY")
+    batch_parser.add_argument("--symbol-set", choices=sorted(SYMBOL_SETS), default=None, help="内置批量标的池")
+    batch_parser.add_argument("--interval", default=DEFAULT_MINUTE_INTERVAL, help="K 线周期，例如 1d、15m")
     batch_parser.add_argument("--period", default=DEFAULT_MINUTE_PERIOD, help="分钟 K 线下载窗口，例如 60d")
     batch_parser.add_argument("--download", action="store_true", help="批量运行前先下载并合并行情")
-    batch_parser.add_argument("--proxy", default=os.getenv("ETF_STRATEGY_PROXY"), help="访问 Yahoo 所需的代理地址")
+    batch_parser.add_argument("--proxy", default=os.getenv("ETF_STRATEGY_PROXY"), help="访问 Yahoo 必须配置的代理地址")
     batch_parser.add_argument("--output-dir", default="outputs/batch", help="批量中间结果与汇总输出目录")
     batch_parser.add_argument("--report-dir", default="reports/batch", help="批量报告输出目录")
     batch_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="日线样本外起始日期")
@@ -524,12 +526,170 @@ def _batch_symbol_slug(symbol: str) -> str:
     return symbol.strip().lower().replace(".", "_").replace("^", "index_")
 
 
+def _resolve_batch_symbols(args: argparse.Namespace) -> tuple[list[str], dict[str, SymbolSpec]]:
+    """解析批量标的，支持内置标的池和显式 symbols 叠加。"""
+    specs_by_symbol: dict[str, SymbolSpec] = {}
+    symbols: list[str] = []
+
+    if args.symbol_set:
+        for spec in SYMBOL_SETS[args.symbol_set]:
+            normalized = spec.symbol.upper()
+            specs_by_symbol[normalized] = spec
+            symbols.append(normalized)
+
+    if args.symbols:
+        for item in args.symbols.split(","):
+            normalized = item.strip().upper()
+            if not normalized:
+                continue
+            if normalized not in specs_by_symbol:
+                specs_by_symbol[normalized] = SymbolSpec(
+                    symbol=normalized,
+                    name=normalized,
+                    category="自定义标的",
+                    source="命令行 --symbols",
+                )
+                symbols.append(normalized)
+
+    deduplicated = list(dict.fromkeys(symbols))
+    if not deduplicated:
+        raise ValueError("batch 需要提供 --symbols 或 --symbol-set。")
+    return deduplicated, specs_by_symbol
+
+
+def _relative_markdown_link(target: str | Path, base_dir: Path) -> str:
+    """生成报告索引用的相对 Markdown 链接路径。"""
+    target_path = Path(target)
+    if not target_path.is_absolute():
+        target_path = target_path.resolve()
+    relative_path = target_path.relative_to(base_dir.resolve())
+    return relative_path.as_posix()
+
+
+def _build_batch_report_index(
+    report_root: Path,
+    rows: list[dict[str, object]],
+    specs_by_symbol: dict[str, SymbolSpec],
+    interval: str,
+    symbol_set: str | None,
+) -> Path:
+    """生成批量报告索引，README 和人工复盘都直接链接这里。"""
+    report_root.mkdir(parents=True, exist_ok=True)
+    if symbol_set == "hstech_plus_513050" and interval == DEFAULT_MINUTE_INTERVAL:
+        target = report_root / "hstech_15m_report_index.md"
+    else:
+        target = report_root / f"batch_{interval}_report_index.md"
+    ok_rows = [row for row in rows if row.get("Status") == "ok"]
+    failed_rows = [row for row in rows if row.get("Status") != "ok"]
+    source_notes = sorted(
+        {spec.source for spec in specs_by_symbol.values() if spec.source and spec.category == "恒生科技成分股"}
+    )
+
+    table_rows: list[str] = []
+    for row in rows:
+        symbol = str(row["Symbol"])
+        spec = specs_by_symbol.get(
+            symbol,
+            SymbolSpec(symbol=symbol, name=symbol, category="自定义标的", source="命令行 --symbols"),
+        )
+        status = str(row.get("Status", ""))
+        if status == "ok" and row.get("ReportPath"):
+            report_link = f"[打开报告]({_relative_markdown_link(str(row['ReportPath']), report_root)})"
+            validation_return = f"{float(row.get('ValidationNetReturnPct', 0.0)):.2f}%"
+            max_drawdown = f"{float(row.get('ValidationMaxDrawdownPct', 0.0)):.2f}%"
+            note = (
+                f"间距 {float(row.get('GridSpacingPct', 0.0)):.2f}% / "
+                f"层数 {int(row.get('GridCount', 0))} / "
+                f"止盈 {float(row.get('TakeProfitPct', 0.0)):.2f}%"
+            )
+        else:
+            report_link = (
+                f"[查看失败记录]({_relative_markdown_link(str(row['ReportPath']), report_root)})"
+                if row.get("ReportPath")
+                else "未生成"
+            )
+            validation_return = "-"
+            max_drawdown = "-"
+            note = str(row.get("Error", "批量回测失败"))
+
+        table_rows.append(
+            "| "
+            + " | ".join(
+                [
+                    spec.category,
+                    symbol,
+                    spec.name,
+                    interval,
+                    validation_return,
+                    max_drawdown,
+                    status,
+                    note.replace("|", "/"),
+                    report_link,
+                ]
+            )
+            + " |"
+        )
+
+    source_block = "\n".join(f"- {source}" for source in source_notes) or "- 命令行自定义标的。"
+    content = "\n".join(
+        [
+            "# 恒生科技分钟线批量回测报告索引",
+            "",
+            "## 汇总备注",
+            "",
+            f"- 标的池：`{symbol_set or 'custom'}`，共 `{len(rows)}` 个标的，成功 `{len(ok_rows)}` 个，失败 `{len(failed_rows)}` 个。",
+            f"- 周期：`{interval}`；使用 Yahoo Finance 最近 `60d` 分钟线，下载必须配置代理，并按 `75% / 25%` 切分样本内与样本外。",
+            "- 策略口径：纯现金网格，`realistic` 执行口径，默认同时计算 `hold` 与 `force_exit` 左侧处理。",
+            "- 本报告只用于策略研究复盘，不构成实盘交易建议。",
+            "",
+            "## 成分来源",
+            "",
+            source_block,
+            "",
+            "## 报告列表",
+            "",
+            "| 分类 | 标的 | 名称 | 周期 | 样本外收益 | 最大回撤 | 状态 | 备注 | 报告 |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+            *table_rows,
+            "",
+        ]
+    )
+    target.write_text(content, encoding="utf-8")
+    return target
+
+
+def _write_failed_batch_report(
+    symbol_report_dir: Path,
+    symbol: str,
+    spec: SymbolSpec,
+    interval: str,
+    error: Exception,
+) -> Path:
+    """为失败标的生成可点击的失败报告，保证索引表每一行都有落点。"""
+    symbol_report_dir.mkdir(parents=True, exist_ok=True)
+    target = symbol_report_dir / f"{_batch_symbol_slug(symbol)}_{interval}_grid_report.md"
+    content = "\n".join(
+        [
+            f"# {symbol} 批量回测失败记录",
+            "",
+            f"- 标的：`{symbol}`",
+            f"- 名称：{spec.name}",
+            f"- 分类：{spec.category}",
+            "- 状态：failed",
+            f"- 错误：`{str(error)}`",
+            "",
+            "该文件用于批量报告索引跳转。请先检查数据下载、Yahoo 限流、代理或交易单位解析问题后重跑。",
+            "",
+        ]
+    )
+    target.write_text(content, encoding="utf-8")
+    return target
+
+
 def handle_batch(args: argparse.Namespace) -> int:
     """批量执行多个标的的完整研究流程。"""
     started_at = perf_counter()
-    symbols = [item.strip().upper() for item in args.symbols.split(",") if item.strip()]
-    if not symbols:
-        raise ValueError("--symbols 至少需要提供一个标的。")
+    symbols, specs_by_symbol = _resolve_batch_symbols(args)
 
     intraday_mode = is_intraday_interval(args.interval)
     output_root = Path(args.output_dir)
@@ -541,10 +701,12 @@ def handle_batch(args: argparse.Namespace) -> int:
 
     for symbol in symbols:
         symbol_started_at = perf_counter()
+        spec = specs_by_symbol[symbol]
         slug = _batch_symbol_slug(symbol)
         data_path = _resolve_download_output_path(symbol, args.interval, args.period, output=None)
         symbol_output_dir = output_root / slug
         symbol_report_dir = report_root / slug
+        download_completed = False
         try:
             if args.download:
                 logger.info("[batch] 开始下载并合并行情: symbol={} interval={}", symbol, args.interval)
@@ -557,6 +719,7 @@ def handle_batch(args: argparse.Namespace) -> int:
                     proxy=args.proxy,
                 )
                 save_price_bars(bars, data_path, interval=args.interval, merge_with_existing=True)
+                download_completed = True
             if not data_path.exists():
                 raise FileNotFoundError(f"行情文件不存在，请先下载或传 --download: {data_path}")
 
@@ -593,6 +756,8 @@ def handle_batch(args: argparse.Namespace) -> int:
             rows.append(
                 {
                     "Symbol": symbol,
+                    "Name": spec.name,
+                    "Category": spec.category,
                     "Status": "ok",
                     "Interval": args.interval,
                     "ReportPath": str(report_path),
@@ -607,11 +772,18 @@ def handle_batch(args: argparse.Namespace) -> int:
             )
             logger.info("[batch] 标的完成: symbol={} report={}", symbol, report_path)
         except Exception as exc:
+            if args.download and not download_completed:
+                logger.error("[batch] Yahoo 数据下载失败，批量流程停止: symbol={} error={}", symbol, exc)
+                raise
+            failed_report_path = _write_failed_batch_report(symbol_report_dir, symbol, spec, args.interval, exc)
             rows.append(
                 {
                     "Symbol": symbol,
+                    "Name": spec.name,
+                    "Category": spec.category,
                     "Status": "failed",
                     "Interval": args.interval,
+                    "ReportPath": str(failed_report_path),
                     "Error": str(exc),
                     "ElapsedSeconds": perf_counter() - symbol_started_at,
                 }
@@ -621,9 +793,16 @@ def handle_batch(args: argparse.Namespace) -> int:
     output_root.mkdir(parents=True, exist_ok=True)
     summary_path = output_root / "batch_summary.csv"
     pd.DataFrame(rows).to_csv(summary_path, index=False, encoding="utf-8-sig")
+    index_path = _build_batch_report_index(
+        report_root=report_root,
+        rows=rows,
+        specs_by_symbol=specs_by_symbol,
+        interval=args.interval,
+        symbol_set=args.symbol_set,
+    )
     ok_count = sum(1 for row in rows if row["Status"] == "ok")
-    print(f"批量流程完成: 成功 {ok_count}/{len(rows)}，汇总文件: {summary_path}")
-    logger.info("batch 命令完成: summary={} elapsed={:.2f}s", summary_path, perf_counter() - started_at)
+    print(f"批量流程完成: 成功 {ok_count}/{len(rows)}，汇总文件: {summary_path}，报告索引: {index_path}")
+    logger.info("batch 命令完成: summary={} index={} elapsed={:.2f}s", summary_path, index_path, perf_counter() - started_at)
     return 0 if ok_count == len(rows) else 1
 
 
@@ -641,4 +820,9 @@ def main(argv: list[str] | None = None) -> int:
         "run": handle_run,
         "batch": handle_batch,
     }
-    return handlers[args.command](args)
+    try:
+        return handlers[args.command](args)
+    except Exception as exc:
+        logger.error("命令执行失败: {}", exc)
+        print(f"错误: {exc}")
+        return 1

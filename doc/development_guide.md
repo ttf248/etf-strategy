@@ -58,7 +58,7 @@
 
 负责：
 
-- Yahoo 数据下载与标准化
+- Yahoo 数据下载与标准化；下载必须配置代理，失败后直接停止
 - 交易单位规则
 - 日线全历史默认下载口径
 - 分钟线本地样本增量合并
@@ -124,7 +124,7 @@
 
 其中 `launch.json` 当前只保留两条一键调试配置：
 
-- 基于 `data/processed/1810_hk_daily.csv` 的日线正式报告重算
+- 基于 `hstech_plus_513050` 标的池的一键批量分钟线报告
 - 基于 `data/processed/1810_hk_15m.csv` 的 15 分钟正式报告重算
 
 使用这些配置的前提是 VS Code 已安装 Microsoft 的 Python / Python Debugger 扩展，否则 `debugpy` 调试类型不会被注册。
@@ -141,7 +141,7 @@
 - 更详细的定位日志仍写入 `log/etf_strategy_YYYY-MM-DD.log`
 - `main.py` 会主动尝试把 Windows 控制台切到 UTF-8，`.vscode/launch.json` 也会显式传入 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`
 - `report` 命令会输出 `[1/2] -> [2/2]` 进度，`run` 命令会输出 `[1/3] -> [2/3] -> [3/3]` 顶层进度
-- `batch` 命令用于多标的研究汇总，默认把单标的结果写到 `outputs/batch/<symbol>/`，批量汇总写到 `outputs/batch/batch_summary.csv`
+- `batch` 命令用于多标的研究汇总，默认分钟线周期为 `15m`，把单标的结果写到 `outputs/batch/<symbol>/`，批量汇总写到 `outputs/batch/batch_summary.csv`，批量报告索引写到 `reports/batch/hstech_15m_report_index.md`
 
 这里没有继续使用参考示例里的 `type=python`，因为微软当前 Python 调试文档已经把 `debugpy` 作为 Python Debugger 扩展的调试类型；旧写法在部分 VS Code 环境里会导致无法启动调试。
 

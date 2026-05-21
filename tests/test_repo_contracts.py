@@ -41,9 +41,9 @@ class RepoContractTests(unittest.TestCase):
                 )
 
     def test_readme_top_has_report_shortcuts(self) -> None:
-        readme_lines = (REPO_ROOT / "README.md").read_text(encoding="utf-8").splitlines()[:20]
+        readme_lines = (REPO_ROOT / "README.md").read_text(encoding="utf-8").splitlines()[:45]
         top_block = "\n".join(readme_lines)
-        self.assertIn("reports/1810_hk_grid_report.md", top_block)
+        self.assertIn("reports/batch/hstech_15m_report_index.md", top_block)
         self.assertIn("reports/minute/1810_hk_15m_grid_report.md", top_block)
 
     def test_vscode_launch_only_keeps_one_click_report_configs(self) -> None:
@@ -51,12 +51,12 @@ class RepoContractTests(unittest.TestCase):
         configurations = launch_payload.get("configurations", [])
         self.assertEqual(len(configurations), 2)
         config_names = {config["name"] for config in configurations}
-        self.assertEqual(config_names, {"一键生成日线正式报告", "一键生成15分钟正式报告"})
+        self.assertEqual(config_names, {"一键生成恒科批量分钟报告", "一键生成1810分钟正式报告"})
         for config in configurations:
             self.assertEqual(config["type"], "debugpy")
             self.assertEqual(config["program"], "${workspaceFolder}/main.py")
             self.assertEqual(config["cwd"], "${workspaceFolder}")
-            self.assertEqual(config["args"][0], "report")
+            self.assertIn(config["args"][0], {"batch", "report"})
             self.assertEqual(config["console"], "integratedTerminal")
             self.assertEqual(config["env"]["PYTHONUTF8"], "1")
             self.assertEqual(config["env"]["PYTHONIOENCODING"], "utf-8")

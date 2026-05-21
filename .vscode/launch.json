@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "一键生成日线正式报告",
+            "name": "一键生成恒科批量分钟报告",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
@@ -13,11 +13,24 @@
                 "PYTHONIOENCODING": "utf-8"
             },
             "args": [
-                "report",
-                "--data",
-                "data/processed/1810_hk_daily.csv",
-                "--symbol",
-                "1810.HK",
+                "batch",
+                "--symbol-set",
+                "hstech_plus_513050",
+                "--download",
+                "--interval",
+                "15m",
+                "--period",
+                "60d",
+                "--proxy",
+                "http://127.0.0.1:7897",
+                "--jobs",
+                "auto",
+                "--cache-dir",
+                "outputs/cache",
+                "--output-dir",
+                "outputs/batch",
+                "--report-dir",
+                "reports/batch",
                 "--execution-profile",
                 "realistic",
                 "--grid-mode",
@@ -29,7 +42,7 @@
             ]
         },
         {
-            "name": "一键生成15分钟正式报告",
+            "name": "一键生成1810分钟正式报告",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
