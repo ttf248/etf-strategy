@@ -1,4 +1,17 @@
 from __future__ import annotations
+"""网格策略核心实现。
+
+这里同时承担三类职责：
+
+1. 定义 backtesting.py 直接调用的策略类。
+2. 提供日线 / 分钟线样本切分和评分规则。
+3. 对外暴露单次回测、参数搜索和产物保存能力。
+
+之所以没有继续拆更细，是因为这些逻辑共享同一套口径：
+- 样本起点直接建底仓
+- 底仓和网格都按固定股数执行
+- 成本摊薄、网格已实现收益和总账户收益需要使用同一批中间状态计算
+"""
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -43,12 +56,18 @@ class XiaomiGridStrategy(Strategy):
     lot_size = 1
 
     def init(self) -> None:
+        """在样本第一根 K 线上完成底仓初始化。
+
+        backtesting.py 会在 `init()` 之后立刻开始逐 bar 调 `next()`，
+        因此底仓、网格层级和首笔快照都必须在这里准备好。
+        """
         first_close = float(self.data.Close[0])
         first_date = pd.Timestamp(self.data.index[0])
 
         self.high_water_mark = first_close
         self.peak_date = first_date
 
+        # 底仓与网格预留资金在整个样本期内固定，后续只改变实际持仓股数。
         self.base_cash_budget = self.total_capital * self.initial_cash_ratio
         self.reserve_cash_budget = self.total_capital * (1 - self.initial_cash_ratio)
 
@@ -66,6 +85,7 @@ class XiaomiGridStrategy(Strategy):
         self._record_snapshot(first_date, first_close)
 
     def next(self) -> None:
+        """按收盘价驱动网格开平仓，并记录账户状态快照。"""
         current_date = pd.Timestamp(self.data.index[-1])
         close_price = float(self.data.Close[-1])
 
@@ -73,12 +93,14 @@ class XiaomiGridStrategy(Strategy):
             self.high_water_mark = close_price
             self.peak_date = current_date
 
+        # 先处理止盈，再处理新的买入，避免同一根 K 线既卖又立刻回补导致口径混乱。
         self._handle_grid_exits(current_date, close_price)
         self._handle_grid_entries(current_date, close_price)
 
         self._record_snapshot(current_date, close_price)
 
     def _enter_base_position(self, current_date: pd.Timestamp, close_price: float) -> None:
+        """建立底仓，并据此生成整套网格价位。"""
         units = self._build_base_units(close_price)
         self.buy(size=units, tag="base")
 
@@ -102,6 +124,7 @@ class XiaomiGridStrategy(Strategy):
         )
 
     def _build_base_units(self, close_price: float) -> int:
+        """根据底仓预算和最小交易单位，向下取整出可交易股数。"""
         raw_units = int(self.base_cash_budget / close_price)
         units = self._round_down_to_lot(raw_units)
         if units <= 0:
@@ -111,6 +134,11 @@ class XiaomiGridStrategy(Strategy):
         return units
 
     def _build_grid_units_per_level(self, base_price: float) -> int:
+        """把单层预算折算成统一的固定股数。
+
+        这里故意用样本起点价格而不是逐层触发价来估算，
+        目的是让所有网格层保持相同仓位大小，避免回测重新退化成“每层不同金额”。
+        """
         per_level_budget = self.reserve_cash_budget / self.grid_count
         raw_units = int(per_level_budget / base_price)
         units = self._round_down_to_lot(raw_units)
@@ -121,6 +149,11 @@ class XiaomiGridStrategy(Strategy):
         return units
 
     def _build_grid_levels(self, base_price: float) -> list[dict[str, float | int | bool]]:
+        """根据底仓价格预生成所有网格层。
+
+        这里仅记录未来触发阈值和统一股数，不实际下单；
+        是否进场由后续 `next()` 中的价格触发决定。
+        """
         levels: list[dict[str, float | int | bool]] = []
 
         for level_index in range(1, self.grid_count + 1):
@@ -137,6 +170,7 @@ class XiaomiGridStrategy(Strategy):
         return levels
 
     def _handle_grid_entries(self, current_date: pd.Timestamp, close_price: float) -> None:
+        """当价格跌破阈值时，为尚未激活的网格层补仓。"""
         for level in self.grid_levels:
             if level["active"]:
                 continue
@@ -146,6 +180,7 @@ class XiaomiGridStrategy(Strategy):
             units = int(level["units"])
             tag = self._grid_tag(int(level["level"]))
             self.buy(size=units, tag=tag)
+            # 只记录真实成交价，不使用预设阈值作为成本，否则止盈和成本口径都会失真。
             level["active"] = True
             level["entry_price"] = close_price
 
@@ -162,6 +197,7 @@ class XiaomiGridStrategy(Strategy):
             )
 
     def _handle_grid_exits(self, current_date: pd.Timestamp, close_price: float) -> None:
+        """当价格满足止盈条件时，仅平掉对应网格层。"""
         for level in self.grid_levels:
             if not level["active"]:
                 continue
@@ -171,6 +207,7 @@ class XiaomiGridStrategy(Strategy):
             if close_price < take_profit_price:
                 continue
 
+            # 通过 tag 查找当前层的活动交易，避免误平其他层或底仓。
             active_trade = next(
                 (trade for trade in self.trades if trade.tag == self._grid_tag(int(level["level"]))),
                 None,
@@ -198,6 +235,11 @@ class XiaomiGridStrategy(Strategy):
             )
 
     def _record_snapshot(self, current_date: pd.Timestamp, close_price: float) -> None:
+        """记录当前 bar 的持仓、成本和收益快照。
+
+        报告里的成本摊薄、价格图和账户状态表都直接依赖这里的历史记录，
+        因此必须把底仓、未平网格和已实现利润拆开计算。
+        """
         open_grid_cost = 0.0
         open_grid_units = 0
         open_grid_levels = 0
@@ -212,6 +254,7 @@ class XiaomiGridStrategy(Strategy):
 
         total_units = self.base_units + open_grid_units
         gross_cost = self.base_units * self.base_entry_price + open_grid_cost
+        # 已落袋的网格利润会抵减剩余持仓的等效成本，但不会改变市场价值。
         effective_cost_basis = gross_cost - self.realized_grid_profit
         effective_cost = effective_cost_basis / total_units if total_units else 0.0
         market_value = total_units * close_price
@@ -273,7 +316,11 @@ def build_sample_window(
     validation_start: str = "2026-01-01",
     lookback_days: int = 120,
 ) -> DeclineWindow:
-    """构建日线样本内/样本外窗口摘要。"""
+    """构建日线样本内/样本外窗口摘要。
+
+    当前项目已经移除“先等 10% 回撤再建仓”的旧规则，
+    所以窗口起点就是样本内的首个交易日。
+    """
     validation_timestamp = pd.Timestamp(validation_start)
     sample_end_ts = validation_timestamp - pd.Timedelta(days=1)
     sample_start_ts = sample_end_ts - pd.Timedelta(days=lookback_days)
@@ -297,15 +344,21 @@ def build_sample_window(
 
 
 def _compute_score(return_pct: float, max_drawdown_pct: float, cost_reduction_pct: float) -> float:
-    """收益/回撤综合评分。"""
+    """收益/回撤综合评分。
+
+    这不是通用金融指标，而是当前项目为了平衡三件事的内部评分：
+    总收益、回撤可控性、以及摊薄剩余持仓成本的能力。
+    """
     return return_pct - abs(max_drawdown_pct) * 0.7 + cost_reduction_pct * 0.5
 
 
 def _history_to_frame(history: list[dict[str, object]]) -> pd.DataFrame:
+    """把策略内部快照列表转成统一 DataFrame。"""
     return pd.DataFrame(history) if history else pd.DataFrame()
 
 
 def _events_to_frame(events: list[dict[str, object]]) -> pd.DataFrame:
+    """把事件流水转成统一 DataFrame。"""
     return pd.DataFrame(events) if events else pd.DataFrame()
 
 
@@ -313,7 +366,10 @@ def build_intraday_sample_window(
     data: pd.DataFrame,
     validation_start: pd.Timestamp,
 ) -> DeclineWindow:
-    """构建分钟线样本内/样本外窗口摘要。"""
+    """构建分钟线样本内/样本外窗口摘要。
+
+    分钟线窗口来源于最近样本按比例切分，因此这里不再使用固定日历日期回看。
+    """
     if data.empty:
         raise ValueError("分钟样本内区间为空，无法构建样本窗口。")
 
@@ -345,7 +401,11 @@ def run_grid_backtest(
     lot_size_source: str,
     total_capital: float = TOTAL_CAPITAL,
 ) -> dict[str, object]:
-    """运行单次网格回测。"""
+    """运行单次网格回测。
+
+    返回值既包含给报告使用的汇总数据，也保留明细表和 backtesting 原始统计，
+    这样工作流、图表和测试都能共用同一次回测结果。
+    """
     backtest = Backtest(
         data,
         XiaomiGridStrategy,
@@ -374,6 +434,7 @@ def run_grid_backtest(
     return_pct = float(stats["Return [%]"])
     cost_reduction_pct = float(latest_snapshot.get("CostReductionPct", 0.0))
 
+    # summary 是项目内部统一口径的“最小汇总单元”，CSV、报告和参数搜索都依赖这些字段。
     summary = {
         "Symbol": symbol,
         "Market": market,
@@ -430,7 +491,10 @@ def optimize_grid_parameters(
     lot_size: int,
     lot_size_source: str,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
-    """对网格参数做穷举搜索并返回最优结果。"""
+    """对网格参数做穷举搜索并返回最优结果。
+
+    当前项目故意使用穷举而不是随机搜索，优先保证结果可重复和可解释。
+    """
     rows: list[dict[str, object]] = []
     best_run: dict[str, object] | None = None
     best_score = float("-inf")
@@ -483,7 +547,11 @@ def split_intraday_in_sample_and_validation(
     data: pd.DataFrame,
     validation_ratio: float = 0.25,
 ) -> tuple[DeclineWindow, pd.DataFrame, pd.DataFrame]:
-    """按最近分钟线样本拆分样本内和样本外数据。"""
+    """按最近分钟线样本拆分样本内和样本外数据。
+
+    免费分钟线通常只有最近 60 天，不能照搬日线那套跨年的固定切分方式，
+    所以这里按时间顺序做比例切分。
+    """
     if not 0 < validation_ratio < 0.5:
         raise ValueError("validation_ratio 必须在 0 和 0.5 之间。")
     if len(data) < 20:
@@ -501,7 +569,10 @@ def split_intraday_in_sample_and_validation(
 
 
 def save_run_artifacts(output_dir: str | Path, prefix: str, run_result: dict[str, object]) -> dict[str, Path]:
-    """保存单次回测产生的明细文件。"""
+    """保存单次回测产生的明细文件。
+
+    文件拆分得比较细，是为了让参数搜索、人工复盘和报告生成可以独立复用。
+    """
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
 

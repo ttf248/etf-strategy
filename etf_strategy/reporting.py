@@ -1,4 +1,11 @@
 from __future__ import annotations
+"""报告与图表输出层。
+
+这里不重新实现回测逻辑，只负责把工作流产出的结构化结果翻译成：
+- 图表
+- Markdown 表格
+- 更接近投资者视角的中文说明
+"""
 
 from pathlib import Path
 
@@ -34,6 +41,7 @@ def plot_run_result(run_result: dict[str, object], output_path: str | Path, titl
     date_column = equity_curve.columns[0]
     equity_curve.rename(columns={date_column: "Date"}, inplace=True)
     equity_curve["Date"] = pd.to_datetime(equity_curve["Date"])
+    # 权益曲线沿用回测账户总资金口径，不能硬编码，否则未来改资金规模会画错。
     total_capital = float(run_result["summary"].get("TotalCapital", 200000.0))
     equity_curve["ReturnPct"] = (equity_curve["Equity"] / total_capital - 1) * 100
     equity_curve["DrawdownPct"] = equity_curve["DrawdownPct"] * 100
@@ -44,6 +52,7 @@ def plot_run_result(run_result: dict[str, object], output_path: str | Path, titl
     axes[0].plot(history["Date"], history["Close"], color="#1f77b4", linewidth=1.6, label="收盘价")
     axes[0].plot(history["Date"], history["EffectiveCost"], color="#d62728", linewidth=1.4, label="持仓有效成本")
     if not events.empty:
+        # 价格图上的散点只负责帮助人眼定位关键交易，不承载收益计算逻辑。
         marker_map = {
             "base_buy": ("^", "#e6550d", "初始建仓"),
             "grid_buy": ("v", "#31a354", "网格买入"),
@@ -99,6 +108,7 @@ def _describe_run_in_plain_words(run_result: dict[str, object], total_capital: f
         base_units = int(base_buy["Units"])
         base_cash_flow = float(base_buy["CashFlow"])
         base_cash_left = total_capital - base_cash_flow
+        # 这里构造“只拿底仓不做网格”的对照组，方便解释网格究竟贡献了多少。
         base_only_equity = base_cash_left + base_units * end_price
     else:
         base_only_equity = total_capital
@@ -121,6 +131,10 @@ def _format_markdown_value(value: object) -> str:
 
 
 def _build_markdown_table(frame: pd.DataFrame, columns: list[str], rename_map: dict[str, str]) -> str:
+    """把 DataFrame 安全地转成 Markdown 表格。
+
+    这里只输出调用方显式允许的列，避免把 backtesting.py 的内部字段原样泄露到报告里。
+    """
     if frame.empty:
         return "暂无记录。"
 
@@ -152,6 +166,12 @@ def _build_event_table(run_result: dict[str, object]) -> str:
 
 
 def _build_trade_table(run_result: dict[str, object]) -> str:
+    """生成成交结果表。
+
+    交易表和事件表并存，是因为两者回答的问题不同：
+    - 事件表看执行过程
+    - 交易表看单笔盈亏归因
+    """
     trades = run_result["trades"].copy()
     if trades.empty:
         return "暂无记录。"
@@ -191,6 +211,7 @@ def plot_grid_search(results: pd.DataFrame, output_path: str | Path) -> Path:
     """绘制参数搜索热力图。"""
     configure_matplotlib()
 
+    # 热力图只按“层数 x 间距”聚合，止盈维度通过取最大评分折叠，避免图表过于拥挤。
     grid = (
         results.pivot_table(index="GridCount", columns="GridSpacingPct", values="Score", aggfunc="max")
         .sort_index()
@@ -299,6 +320,7 @@ def build_report_markdown(
         validation_title = "2026 样本外验证"
         conclusion_tail = "如果后续继续扩展策略，优先方向应该是加入趋势过滤或分阶段停手机制，而不是单纯增加网格层数。"
 
+    # 结论语句是报告层的解释模板，不参与回测结果计算。
     if best_summary["ReturnPct"] <= 0 and validation_summary["ReturnPct"] <= 0:
         conclusion = "在这轮样本里，网格交易能摊薄持仓成本，但还没有把总账户稳定拉回正收益。"
     elif best_summary["ReturnPct"] > 0 and validation_summary["ReturnPct"] > 0:
@@ -319,6 +341,7 @@ def build_report_markdown(
     validation_total_pnl_text = "盈利" if validation_words["total_pnl"] >= 0 else "亏损"
     grid_vs_base_text = "多赚了" if in_sample_words["grid_vs_base_only"] >= 0 else "多亏了"
     if validation_words["triggered_entry"]:
+        # 验证段尽量复用结构化字段，避免在报告层二次推导造成口径漂移。
         validation_extra_lines = f"""- 期末有效持仓成本：{validation_summary["EffectiveCost"]:.2f}
 - 相对样本外首笔建仓成本下降：{validation_summary["CostReductionPct"]:.2f}%
 - 网格已实现收益：{validation_summary["RealizedGridProfit"]:.2f}

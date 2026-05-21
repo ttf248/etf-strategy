@@ -1,4 +1,11 @@
 from __future__ import annotations
+"""工作流编排层。
+
+这里负责把“数据加载、样本切分、最小交易单位解析、参数搜索、验证、产物落盘”
+组织成可直接被 CLI 调用的高层流程。
+
+策略细节不放在这里实现，避免 CLI 和报告层直接依赖回测内部状态。
+"""
 
 from pathlib import Path
 
@@ -31,6 +38,7 @@ def run_optimization_workflow(
     grid_counts = grid_counts or [4, 5, 6, 7]
     take_profits = take_profits or [0.03, 0.05, 0.07]
 
+    # 先解析 symbol 和 lot rule，避免回测跑到一半才发现交易单位不支持。
     resolved_symbol = _resolve_symbol(symbol, data_path)
     lot_rule = resolve_lot_size_rule(resolved_symbol)
     data = load_price_frame(data_path)
@@ -115,7 +123,11 @@ def run_full_workflow(
     grid_counts: list[int] | None = None,
     take_profits: list[float] | None = None,
 ) -> dict[str, object]:
-    """串联样本内寻参和样本外验证。"""
+    """串联样本内寻参和样本外验证。
+
+    这里复用样本内最优参数直接做样本外，不在验证阶段再次寻参，
+    目的是让报告清楚区分“历史上调出来的参数”和“新样本上的延续性”。
+    """
     optimization = run_optimization_workflow(
         data_path=data_path,
         symbol=symbol,
@@ -291,6 +303,11 @@ def run_minute_full_workflow(
 
 
 def _resolve_symbol(symbol: str | None, data_path: str | Path) -> str:
+    """统一处理显式 symbol 与文件名推断。
+
+    对非标准文件名直接报错，而不是静默猜测，
+    是为了避免把错误标的代码带进最小交易单位查询和最终报告。
+    """
     if symbol:
         return symbol.strip().upper()
 
