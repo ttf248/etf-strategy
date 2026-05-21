@@ -1,14 +1,22 @@
 # ETF Strategy
 
-基于 Yahoo Finance 数据的小型策略回测项目，当前默认用 `15m` 分钟 K 线作为计算样本，研究“不预先建底仓、只在网格触发价投入现金”的固定股数网格回测流程。所有 Yahoo 下载命令必须配置代理，Yahoo 下载失败时流程会直接停止并输出错误。
+基于 Yahoo Finance 数据的小型策略回测项目。仓库当前保留两条研究主线：
+
+- 现有固定股数纯现金网格
+- 面向 `1810.HK` 的日线/分钟线多策略对比研究
+
+所有 Yahoo 下载命令必须配置代理，Yahoo 下载失败时流程会直接停止并输出错误。
 
 ## 报告索引
 
 | 分类 | 标的 | 名称 | 周期 | 样本外收益 | 最大回撤 | 状态/备注 | 报告 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 汇总索引 | hstech_15m | 恒生科技 30 只成分股 + 513050.SS | 15m | 见索引 | 见索引 | 索引落在 `reports/` 根目录，单标的各自归档到自己的目录 | [打开索引](reports/hstech_15m_report_index.md) |
-| 默认样本 | 1810.HK | 小米集团-W | 15m | 见报告 | 见报告 | 单标的分钟线正式报告 | [打开报告](reports/1810_hk/minute/1810_hk_15m_grid_report.md) |
+| 默认样本 | 1810.HK | 小米集团-W 分钟多策略对比 | 15m | 见报告 | 见报告 | 默认优先阅读入口 | [打开报告](reports/1810_hk/minute/1810_hk_15m_strategy_compare_report.md) |
+| 默认样本 | 1810.HK | 小米集团-W 日线多策略对比 | 1d | 见报告 | 见报告 | 日线左侧反弹专项研究 | [打开报告](reports/1810_hk/daily/1810_hk_daily_strategy_compare_report.md) |
+| 基线报告 | 1810.HK | 小米集团-W 网格分钟报告 | 15m | 见报告 | 见报告 | 保留作对照基准 | [打开报告](reports/1810_hk/minute/1810_hk_15m_grid_report.md) |
 | 方法文档 | - | 参数筛选方法说明 | - | - | - | 解释寻参和稳健性评分 | [打开文档](doc/grid_parameter_search.md) |
+| 专题文档 | - | 小米多策略研究说明 | - | - | - | 汇总日线与分钟线结论 | [打开文档](doc/xiaomi_strategy_research.md) |
 | 阅读指南 | - | 回测报告阅读指南 | - | - | - | 解释报告图表与指标 | [打开文档](doc/report_reading_guide.md) |
 
 这个仓库现在的定位不是“一次性脚本”，而是“可重复运行的策略研究工程”：
@@ -56,16 +64,27 @@
 py -3.13 -m pip install -r requirements.txt
 ```
 
-### 2. 直接生成 15 分钟线报告
+### 2. 直接生成 15 分钟线多策略报告
 
 ```powershell
-py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK
+py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK --interval 15m --compare-strategies --jobs auto --cache-dir outputs/cache/minute_compare
 ```
 
 输出：
 
-- 中间结果：`outputs/minute/`
-- 正式报告：`reports/1810_hk/minute/1810_hk_15m_grid_report.md`
+- 中间结果：`outputs/compare/minute/`
+- 正式报告：`reports/1810_hk/minute/1810_hk_15m_strategy_compare_report.md`
+
+### 2.1 生成日线多策略报告
+
+```powershell
+py -3.13 main.py report --data data/processed/1810_hk_daily.csv --symbol 1810.HK --interval 1d --compare-strategies --jobs auto --cache-dir outputs/cache/daily_compare
+```
+
+输出：
+
+- 中间结果：`outputs/compare/daily/`
+- 正式报告：`reports/1810_hk/daily/1810_hk_daily_strategy_compare_report.md`
 
 ### 3. 批量生成恒生科技分钟线报告
 
@@ -94,6 +113,7 @@ py -3.13 main.py batch --symbol-set hstech_plus_513050 --download --proxy http:/
 
 - [日线网格参数测试方法](doc/grid_parameter_search.md)
 - [Yahoo 分钟线支持与 15 分钟回测说明](doc/minute_grid_research.md)
+- [小米多策略研究说明](doc/xiaomi_strategy_research.md)
 
 维护者入口：
 
@@ -130,7 +150,7 @@ py -3.13 main.py download --symbol 1810.HK --interval 1d --start 2024-01-01 --en
 ### 样本内参数搜索
 
 ```powershell
-py -3.13 main.py optimize --data data/processed/1810_hk_15m.csv --symbol 1810.HK
+py -3.13 main.py optimize --data data/processed/1810_hk_15m.csv --symbol 1810.HK --strategy minute_rebound
 ```
 
 ### 样本外验证
@@ -157,6 +177,8 @@ py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK -
 
 常用覆盖参数：
 
+- `--strategy`：`grid`、`daily_rebound`、`minute_rebound`、`minute_rebound_with_fade_filter`
+- `--compare-strategies`：在当前周期下同时输出多策略对比报告
 - `--commission-bps`：单边手续费，单位 bps
 - `--slippage-bps`：单边滑点，单位 bps
 - `--max-position-ratio`：最大仓位占总资金比例，例如 `0.95`
@@ -215,9 +237,9 @@ task.md          AI 任务记录
 `launch.json` 当前只保留 2 个一键入口：
 
 - 一键生成恒科批量分钟报告
-- 一键生成 1810 分钟正式报告
+- 一键生成 1810 分钟多策略报告
 
-其中 1810 单标的入口直接基于仓库内置正式样本重算报告；恒科批量入口会先下载 Yahoo 分钟线，因此必须配置代理。
+其中 1810 单标的入口直接基于仓库内置正式样本重算多策略报告；恒科批量入口会先下载 Yahoo 分钟线，因此必须配置代理。
 
 - 单标的报告入口不依赖 Yahoo 网络连接
 - 批量下载入口必须确保本机 `http://127.0.0.1:7897` 代理可用，或按需修改 `launch.json` 中的 `--proxy`

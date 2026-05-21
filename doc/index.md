@@ -13,18 +13,21 @@
 1. [README](../README.md)
 2. [回测报告阅读指南](report_reading_guide.md)
 3. 正式报告：
-   - [日线报告](../reports/1810_hk/daily/1810_hk_grid_report.md)
-   - [15 分钟线报告](../reports/1810_hk/minute/1810_hk_15m_grid_report.md)
+   - [日线多策略对比报告](../reports/1810_hk/daily/1810_hk_daily_strategy_compare_report.md)
+   - [15 分钟线多策略对比报告](../reports/1810_hk/minute/1810_hk_15m_strategy_compare_report.md)
+   - [15 分钟线网格基线报告](../reports/1810_hk/minute/1810_hk_15m_grid_report.md)
 4. 再按需要看专题文档：
    - [日线网格参数测试方法](grid_parameter_search.md)
    - [Yahoo 分钟线支持与 15 分钟回测说明](minute_grid_research.md)
+   - [小米多策略研究说明](xiaomi_strategy_research.md)
 
 ## 如果你只关心结果
 
 直接看：
 
 - [日线报告](../reports/1810_hk/daily/1810_hk_grid_report.md)
-- [15 分钟线报告](../reports/1810_hk/minute/1810_hk_15m_grid_report.md)
+- [日线多策略对比报告](../reports/1810_hk/daily/1810_hk_daily_strategy_compare_report.md)
+- [15 分钟线多策略对比报告](../reports/1810_hk/minute/1810_hk_15m_strategy_compare_report.md)
 - [回测报告阅读指南](report_reading_guide.md)
 
 这样做的原因是：报告现在已经按“先看结论、再看细节”的双层结构组织，阅读门槛比直接翻源码低很多。
@@ -36,6 +39,7 @@
 1. [术语表与口径说明](glossary.md)
 2. [日线网格参数测试方法](grid_parameter_search.md)
 3. [Yahoo 分钟线支持与 15 分钟回测说明](minute_grid_research.md)
+4. [小米多策略研究说明](xiaomi_strategy_research.md)
 
 这三份文档分别解决：
 
@@ -88,6 +92,8 @@ task.md          AI 任务记录
   - 日线专题方法说明
 - `doc/minute_grid_research.md`
   - 分钟线专题方法说明
+- `doc/xiaomi_strategy_research.md`
+  - 小米日线/分钟线多策略研究结论
 - `doc/development_guide.md`
   - 面向维护者的改动入口和更新约定
 

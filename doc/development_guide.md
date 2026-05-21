@@ -32,6 +32,7 @@
 负责：
 
 - 串起样本切分、样本内寻参、样本外验证、结果落盘
+- 根据 `strategy_kind` 在网格与反转类策略之间分发
 
 它是编排层，不适合继续堆大量文案解释。
 
@@ -43,6 +44,15 @@
 - 样本切分
 - 参数搜索
 - 综合评分
+
+### `etf_strategy/strategy/rebound.py`
+
+负责：
+
+- 日线超跌反弹
+- 分钟急跌反抽
+- 分钟反抽 + 冲高回落过滤
+- 反转类策略的参数搜索与权益曲线产物
 
 ### `etf_strategy/reporting.py`
 
@@ -90,6 +100,7 @@
 至少同步更新：
 
 - `etf_strategy/reporting.py`
+- `doc/xiaomi_strategy_research.md`
 - [回测报告阅读指南](report_reading_guide.md)
 - 示例报告
 - `task.md`
@@ -125,7 +136,7 @@
 其中 `launch.json` 当前只保留两条一键调试配置：
 
 - 基于 `hstech_plus_513050` 标的池的一键批量分钟线报告
-- 基于 `data/processed/1810_hk_15m.csv` 的 15 分钟正式报告重算
+- 基于 `data/processed/1810_hk_15m.csv` 的 15 分钟多策略报告重算
 
 使用这些配置的前提是 VS Code 已安装 Microsoft 的 Python / Python Debugger 扩展，否则 `debugpy` 调试类型不会被注册。
 

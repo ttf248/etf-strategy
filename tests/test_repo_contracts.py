@@ -25,6 +25,7 @@ class RepoContractTests(unittest.TestCase):
             REPO_ROOT / "doc" / "glossary.md",
             REPO_ROOT / "doc" / "grid_parameter_search.md",
             REPO_ROOT / "doc" / "minute_grid_research.md",
+            REPO_ROOT / "doc" / "xiaomi_strategy_research.md",
             REPO_ROOT / "doc" / "development_guide.md",
         ]
 
@@ -44,6 +45,8 @@ class RepoContractTests(unittest.TestCase):
         readme_lines = (REPO_ROOT / "README.md").read_text(encoding="utf-8").splitlines()[:45]
         top_block = "\n".join(readme_lines)
         self.assertIn("reports/hstech_15m_report_index.md", top_block)
+        self.assertIn("reports/1810_hk/daily/1810_hk_daily_strategy_compare_report.md", top_block)
+        self.assertIn("reports/1810_hk/minute/1810_hk_15m_strategy_compare_report.md", top_block)
         self.assertIn("reports/1810_hk/minute/1810_hk_15m_grid_report.md", top_block)
 
     def test_vscode_launch_only_keeps_one_click_report_configs(self) -> None:
@@ -51,7 +54,7 @@ class RepoContractTests(unittest.TestCase):
         configurations = launch_payload.get("configurations", [])
         self.assertEqual(len(configurations), 2)
         config_names = {config["name"] for config in configurations}
-        self.assertEqual(config_names, {"一键生成恒科批量分钟报告", "一键生成1810分钟正式报告"})
+        self.assertEqual(config_names, {"一键生成恒科批量分钟报告", "一键生成1810分钟多策略报告"})
         for config in configurations:
             self.assertEqual(config["type"], "debugpy")
             self.assertEqual(config["program"], "${workspaceFolder}/main.py")
@@ -77,6 +80,8 @@ class RepoContractTests(unittest.TestCase):
         report_files = [
             REPO_ROOT / "reports" / "1810_hk" / "daily" / "1810_hk_grid_report.md",
             REPO_ROOT / "reports" / "1810_hk" / "minute" / "1810_hk_15m_grid_report.md",
+            REPO_ROOT / "reports" / "1810_hk" / "daily" / "1810_hk_daily_strategy_compare_report.md",
+            REPO_ROOT / "reports" / "1810_hk" / "minute" / "1810_hk_15m_strategy_compare_report.md",
         ]
         required_sections = [
             "## 第一层：先看结论",

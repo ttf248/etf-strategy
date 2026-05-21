@@ -1453,3 +1453,22 @@
 - `py -3.13 -m unittest tests.test_grid_strategy tests.test_repo_contracts`
 - `py -3.13 -m compileall etf_strategy tests`
 - `git diff --check`
+
+### 第二阶段补充
+
+- 已生成正式多策略报告：
+  - `reports/1810_hk/daily/1810_hk_daily_strategy_compare_report.md`
+  - `reports/1810_hk/minute/1810_hk_15m_strategy_compare_report.md`
+- 当前样本结论：
+  - 日线层面，`daily_rebound` 样本外净收益率 `9.66%`，优于网格的 `-1.71%`
+  - 分钟线层面，网格样本外 `0.00% / 0.00%`，优于两种分钟反抽策略的 `-0.84% / 2.19%`
+- 同步更新：
+  - `README.md`
+  - `doc/index.md`
+  - `doc/development_guide.md`
+  - `doc/xiaomi_strategy_research.md`
+  - `.vscode/launch.json`
+  - `tests/test_repo_contracts.py`
+- 运行时取舍：
+  - 原分钟过滤策略参数空间达到 `3888` 组，正式报告耗时过长
+  - 已把分钟线默认参数空间收紧到 `96 + 192` 组，保留对比能力，同时让正式报告能在可接受时间内完成

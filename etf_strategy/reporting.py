@@ -734,6 +734,20 @@ def _policy_label(policy: str) -> str:
     return labels.get(policy, policy)
 
 
+def _strategy_display_name(summary: dict[str, object], fallback: str | None = None) -> str:
+    explicit = str(summary.get("StrategyName", "")).strip()
+    if explicit and explicit.lower() != "strategy":
+        return explicit
+    strategy_kind = str(summary.get("StrategyKind", fallback or "grid"))
+    mapping = {
+        "grid": "网格",
+        "daily_rebound": "日线超跌反弹",
+        "minute_rebound": "分钟急跌反抽",
+        "minute_rebound_with_fade_filter": "分钟反抽+冲高回落过滤",
+    }
+    return mapping.get(strategy_kind, strategy_kind)
+
+
 def _build_policy_comparison_table(in_sample_run: dict[str, object], validation_run: dict[str, object]) -> str:
     """展示 hold 与 force_exit 两种左侧处理方式的结果差异。"""
     in_sample_policies = in_sample_run.get("policy_results")
@@ -1020,7 +1034,7 @@ def plot_strategy_comparison(
         curve["Date"] = pd.to_datetime(curve["Date"])
         capital = float(summary.get("TotalCapital", 200000.0))
         curve["NetValue"] = curve["Equity"] / capital
-        axis.plot(curve["Date"], curve["NetValue"], linewidth=1.6, label=str(summary.get("StrategyName", strategy_kind)))
+        axis.plot(curve["Date"], curve["NetValue"], linewidth=1.6, label=_strategy_display_name(summary, strategy_kind))
 
     axis.set_title(title)
     axis.set_ylabel("净值")
@@ -1041,7 +1055,7 @@ def _comparison_rows(strategy_results: dict[str, dict[str, object]]) -> list[lis
         validation_summary = workflow_result["validation"]["run"]["summary"]
         rows.append(
             [
-                str(best_summary.get("StrategyName", best_summary.get("StrategyKind", "strategy"))),
+                _strategy_display_name(best_summary),
                 str(best_summary.get("StrategyKind", "grid")),
                 f"{float(best_summary.get('NetReturnPct', best_summary.get('ReturnPct', 0.0))):.2f}%",
                 f"{float(best_summary.get('MaxDrawdownPct', 0.0)):.2f}%",
@@ -1098,7 +1112,7 @@ def build_strategy_comparison_report(
     )
 
     recommended_text = (
-        f"当前更推荐 `{recommended_best.get('StrategyName', recommended_best.get('StrategyKind', 'strategy'))}`，"
+        f"当前更推荐 `{_strategy_display_name(recommended_best)}`，"
         f"因为它在样本外给出了 `{float(recommended_validation.get('NetReturnPct', recommended_validation.get('ReturnPct', 0.0))):.2f}%` 的净收益率，"
         f"同时最大回撤控制在 `{float(recommended_validation.get('MaxDrawdownPct', 0.0)):.2f}%`。"
     )
@@ -1106,7 +1120,7 @@ def build_strategy_comparison_report(
     for workflow_result in strategy_results.values():
         best_summary = workflow_result["optimization"]["best_run"]["summary"]
         validation_summary = workflow_result["validation"]["run"]["summary"]
-        strategy_name = str(best_summary.get("StrategyName", best_summary.get("StrategyKind", "strategy")))
+        strategy_name = _strategy_display_name(best_summary)
         parameter_bits = []
         for key in [
             "rsi_window",
@@ -1141,7 +1155,7 @@ def build_strategy_comparison_report(
             "",
             f"- 标的：`{symbol}`",
             f"- 周期：`{interval}`",
-            f"- 策略集合：{', '.join(str(workflow_result['optimization']['best_run']['summary'].get('StrategyName', key)) for key, workflow_result in strategy_results.items())}",
+            f"- 策略集合：{', '.join(_strategy_display_name(workflow_result['optimization']['best_run']['summary'], key) for key, workflow_result in strategy_results.items())}",
             f"- 推荐结论：{recommended_text}",
             "- 报告重点回答：在左侧下跌、偶尔反抽和日内冲高回落的结构下，是否有比网格更契合的做多策略。",
             "",
@@ -1170,7 +1184,7 @@ def build_strategy_comparison_report(
             "",
             "## 最终结论",
             "",
-            f"- 推荐策略：`{recommended_best.get('StrategyName', recommended_best.get('StrategyKind', 'strategy'))}`。",
+            f"- 推荐策略：`{_strategy_display_name(recommended_best)}`。",
             f"- 推荐依据：样本外净收益率 `{float(recommended_validation.get('NetReturnPct', recommended_validation.get('ReturnPct', 0.0))):.2f}%`，最大回撤 `{float(recommended_validation.get('MaxDrawdownPct', 0.0)):.2f}%`。",
             "- 这份报告只基于仓库当前小米样本，不构成实盘建议；后续若扩到更多港股，应继续做跨标的稳健性检验。",
             "",
