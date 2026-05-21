@@ -43,6 +43,7 @@
 - [x] 拆分策略辅助模块
 - [x] 抽取更多仓库通用规则
 - [x] 默认分钟线批量研究与 Yahoo 下载强制代理
+- [x] 重建恒科批量报告索引并提交报告产物
 
 ## 项目规划整理
 
@@ -1282,6 +1283,42 @@
   - 预期失败：`错误: 下载 Yahoo 行情必须配置代理，请通过 --proxy 或 ETF_STRATEGY_PROXY 提供代理地址。`
 - `py -3.13 main.py batch --symbol-set hstech_plus_513050 --download --interval 15m --period 60d --jobs 1 --cache-dir outputs/cache --output-dir outputs/batch --report-dir reports/batch`
   - 预期失败并停止在首个标的：`下载 Yahoo 行情必须配置代理...`
+
+## 重建恒科批量报告索引并提交报告产物
+
+### 状态
+
+已完成。
+
+### 修改方案
+
+基于现有 `outputs/batch/batch_summary.csv` 和已经生成的 `reports/batch/<symbol>/` 单标的报告，重新生成 `reports/batch/hstech_15m_report_index.md`，不重新下载数据、不重跑批量回测。
+
+### 修改内容
+
+- 重新生成批量索引：
+  - 标的池：`hstech_plus_513050`
+  - 总数：`31`
+  - 成功：`28`
+  - 失败：`3`
+- 提交 `reports/batch/` 下全部单标的 Markdown 报告和成功标的图表。
+- 失败标的保留失败报告：
+  - `0981.HK`：单层网格预算不足以买入 1 手。
+  - `0700.HK`：单层网格预算不足以买入 1 手。
+  - `1347.HK`：单层网格预算不足以买入 1 手。
+- 同步保留重新生成后的默认 `1810.HK` 分钟线报告。
+
+### 设计取舍
+
+- 本轮只提交报告产物，不提交 `outputs/` 缓存和中间结果。
+- `data/processed/` 下批量下载得到的 CSV 暂不纳入本轮报告提交，避免把数据快照策略和报告提交混在一起。
+
+### 验证
+
+- `py -3.13 -m unittest tests.test_repo_contracts`
+- `git diff --check`
+- 重新生成索引命令：
+  - `py -3.13 -` 内联调用 `_build_batch_report_index()`，输入为 `outputs/batch/batch_summary.csv`。
 
 ## 产物清单
 
