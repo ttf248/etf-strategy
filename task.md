@@ -1804,3 +1804,70 @@
 ### 验证
 
 - 已执行 `py -3.13 -m unittest tests.test_grid_strategy tests.test_repo_contracts tests.test_yahoo_data`
+
+## 指数 ETF 实际运行验证与 1m 文件名修复
+
+### 状态
+
+已完成，已基于真实下载到的分钟数据完成三只 ETF 的实际回测、正式报告生成和结果核对。
+
+### 修改方案
+
+先按真实环境执行 `1m` 下载与批量验证；运行中发现 Yahoo 当前不支持这三只深市 ETF 的 `60d 1m` 请求，于是改为先下载实际可用的 `8d 1m` 数据，再用本地模式批量回测。过程中同时修复分钟工作流没有把真实 `interval` 透传给报告命名的问题，避免 `1m` 报告错误落成 `15m` 文件名。
+
+### 修改内容
+
+- 实际运行：
+  - 成功下载：
+    - `data/processed/159941_sz_1m.csv`
+    - `data/processed/159605_sz_1m.csv`
+    - `data/processed/159866_sz_1m.csv`
+  - 成功生成正式报告：
+    - `reports/159941_sz/minute/159941_sz_1m_index_grid_report.md`
+    - `reports/159605_sz/minute/159605_sz_1m_index_grid_report.md`
+    - `reports/159866_sz/minute/159866_sz_1m_index_grid_report.md`
+  - 统一索引已回写：
+    - `reports/report_index.md`
+    - `reports/report_registry.csv`
+- 代码修复：
+  - `etf_strategy/workflow.py`
+    - `run_minute_full_workflow()` 增加 `interval` 参数
+    - 返回结果里的 `interval` 改为使用真实传入值
+  - `etf_strategy/cli.py`
+    - `run_minute_full_workflow()` 调用点补传 `args.interval`
+  - `tests/test_grid_strategy.py`
+    - 同步更新分钟工作流调用断言
+
+### 设计取舍
+
+- 这次没有改下载链路去绕过 Yahoo 的 `1m` 限制，而是直接按真实平台约束收窄到 `8d`，因为用户当前要的是“实际运行验证”，不是改造一套新的数据供应链。
+- 下载得到的 `1m` CSV 属于临时本地样本，不纳入本次提交；正式报告和统一索引属于正式产物，纳入提交。
+- 运行中生成的错误 `15m` 命名报告和失败占位文件已清理，只保留最终正确的 `1m` 正式报告。
+
+### 实际结果
+
+- `159941.SZ`
+  - 样本外净收益率：`1.13%`
+  - 买入持有收益率：`2.27%`
+  - 相对买入持有：`-113.44`
+  - 结论：未跑赢
+- `159605.SZ`
+  - 样本外净收益率：`-1.21%`
+  - 买入持有收益率：`-2.36%`
+  - 相对买入持有：`+114.73`
+  - 结论：跑赢
+- `159866.SZ`
+  - 样本外净收益率：`1.07%`
+  - 买入持有收益率：`2.14%`
+  - 相对买入持有：`-107.03`
+  - 结论：未跑赢
+
+### 验证
+
+- 已执行 `py -3.13 -m unittest tests.test_grid_strategy tests.test_repo_contracts`
+- 已执行实际下载：
+  - `py -3.13 main.py download --symbol 159941.SZ --interval 1m --period 8d --proxy http://127.0.0.1:7897`
+  - `py -3.13 main.py download --symbol 159605.SZ --interval 1m --period 8d --proxy http://127.0.0.1:7897`
+  - `py -3.13 main.py download --symbol 159866.SZ --interval 1m --period 8d --proxy http://127.0.0.1:7897`
+- 已执行实际批量回测：
+  - `py -3.13 main.py batch --symbol-set index_grid_etfs --strategy minute_index_grid_retrace --interval 1m --local-only --jobs auto --cache-dir outputs/cache/index_grid_1m --output-dir outputs/index_grid --report-dir reports --execution-profile realistic`

@@ -289,6 +289,7 @@ class GridStrategyTests(unittest.TestCase):
             data_path=DEFAULT_MINUTE_DATA_PATH,
             symbol="1810.HK",
             output_dir=str(DEFAULT_MINUTE_OUTPUT_DIR),
+            interval="15m",
             validation_ratio=0.25,
             strategy_kind="grid",
             execution_config=ANY,

@@ -602,6 +602,7 @@ def run_minute_full_workflow(
     data_path: str | Path,
     symbol: str | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR / "minute",
+    interval: str = "15m",
     validation_ratio: float = DEFAULT_VALIDATION_RATIO,
     strategy_kind: StrategyKind = "grid",
     spacings: list[float] | None = None,
@@ -665,7 +666,7 @@ def run_minute_full_workflow(
 
     return {
         "workflow_type": "minute",
-        "interval": "15m",
+        "interval": interval,
         "strategy_kind": strategy_kind,
         "validation_ratio": validation_ratio,
         "optimization": optimization,

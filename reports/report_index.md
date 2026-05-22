@@ -2,7 +2,7 @@
 
 ## 汇总说明
 
-- 正式报告总数：`666`，成功 `594`，失败 `72`。
+- 正式报告总数：`669`，成功 `597`，失败 `72`。
 - 这份文件是唯一正式汇总报告；单个合约、批量合约、单策略报告和多策略对比报告都收录在同一张表里。
 - 主键口径：`symbol + interval + report_view`；同一视图重复生成时会覆盖旧记录。
 - 样本外净收益率高于 `5.00%` 的记录会在总表中加粗，便于先看高收益候选。
@@ -43,6 +43,9 @@
 | 恒生科技成分股 | 9961.HK | TRIP.COM - S | 15m | grid | 网格 | -3.64% | 5.11% | ok | 间距 1.50% / 层数 4 / 止盈 2.00% | [打开报告](9961_hk/minute/9961_hk_15m_grid_report.md) |
 | 恒生科技成分股 | 9988.HK | BABA - W | 15m | grid | 网格 | 0.00% | 0.00% | ok | 间距 4.00% / 层数 7 / 止盈 3.00% | [打开报告](9988_hk/minute/9988_hk_15m_grid_report.md) |
 | 恒生科技成分股 | 9999.HK | NTES - S | 15m | grid | 网格 | 0.48% | 0.87% | ok | 间距 1.00% / 层数 5 / 止盈 1.50% | [打开报告](9999_hk/minute/9999_hk_15m_grid_report.md) |
+| 指数ETF | 159605.SZ | 中概互联网ETF | 1m | minute_index_grid_retrace | 指数回落反弹网格 | -1.21% | 1.64% | ok | rise_trigger=2.00% sell_pullback=0.50% decline_trigger=2.00% buy_rebound=0.50% base=50.00% grid_trade=20.00% score=-3.63 | [打开报告](159605_sz/minute/159605_sz_1m_index_grid_report.md) |
+| 指数ETF | 159866.SZ | 日经ETF | 1m | minute_index_grid_retrace | 指数回落反弹网格 | 1.07% | 0.58% | ok | rise_trigger=3.00% sell_pullback=0.80% decline_trigger=3.00% buy_rebound=0.80% base=50.00% grid_trade=20.00% score=-3.66 | [打开报告](159866_sz/minute/159866_sz_1m_index_grid_report.md) |
+| 指数ETF | 159941.SZ | 纳指ETF | 1m | minute_index_grid_retrace | 指数回落反弹网格 | 1.13% | 0.41% | ok | rise_trigger=2.00% sell_pullback=0.50% decline_trigger=2.00% buy_rebound=0.50% base=50.00% grid_trade=20.00% score=-1.67 | [打开报告](159941_sz/minute/159941_sz_1m_index_grid_report.md) |
 | 港股通沪ETF | 2800.HK | 盈富基金 | 1d | grid | 网格 | 2.04% | 0.67% | ok | grid_spacing=3.00% grid_count=4 take_profit=3.00% score=0.00 | [打开报告](2800_hk/daily/2800_hk_grid_report.md) |
 | 港股通沪ETF | 2801.HK | 安硕中国 | 1d | grid | 网格 | 1.97% | 3.59% | ok | grid_spacing=3.00% grid_count=4 take_profit=3.00% score=0.00 | [打开报告](2801_hk/daily/2801_hk_grid_report.md) |
 | 港股通沪ETF | 2825.HK | 标智香港１００ | 1d | grid | 网格 | 3.21% | 1.56% | ok | grid_spacing=3.00% grid_count=4 take_profit=3.00% score=0.00 | [打开报告](2825_hk/daily/2825_hk_grid_report.md) |
