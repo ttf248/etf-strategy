@@ -49,6 +49,7 @@ from etf_strategy.settings import (
 )
 from etf_strategy.strategy.artifacts import load_price_frame, save_decline_window, save_run_artifacts
 from etf_strategy.strategy.grid import optimize_grid_parameters
+from etf_strategy.strategy.index_grid import run_index_grid_backtest
 from etf_strategy.strategy.rebound import optimize_rebound_parameters, run_rebound_backtest
 from etf_strategy.strategy.sampling import split_intraday_in_sample_and_validation, split_in_sample_and_validation
 
@@ -135,6 +136,8 @@ def run_optimization_workflow(
 ) -> dict[str, object]:
     """执行样本内参数搜索并保存结果。"""
     started_at = perf_counter()
+    if strategy_kind == "minute_index_grid_retrace":
+        raise ValueError("minute_index_grid_retrace 仅支持分钟线工作流，请使用 interval=1m。")
     execution = execution_config or build_execution_config("research")
     resolved_symbol = _resolve_symbol(symbol, data_path)
     effective_lot_rule = lot_rule or resolve_lot_size_rule(resolved_symbol)
@@ -239,6 +242,8 @@ def run_validation_workflow(
     lot_rule: LotSizeRule | None = None,
 ) -> dict[str, object]:
     """执行 2026 样本外验证。"""
+    if strategy_kind == "minute_index_grid_retrace":
+        raise ValueError("minute_index_grid_retrace 仅支持分钟线工作流，请使用 interval=1m。")
     from etf_strategy.strategy.grid import run_grid_backtest
 
     started_at = perf_counter()
@@ -406,7 +411,25 @@ def run_minute_optimization_workflow(
         data=price_frame,
         validation_ratio=validation_ratio,
     )
-    if strategy_kind == "grid":
+    if strategy_kind == "minute_index_grid_retrace":
+        logger.info(
+            "[1/2] 开始执行分钟线固定参数验证: strategy={} symbol={} data={} rows={}",
+            strategy_kind,
+            effective_lot_rule.symbol,
+            data_path,
+            len(price_frame),
+        )
+        best_run = run_index_grid_backtest(
+            data=in_sample,
+            scenario_name="minute_in_sample",
+            symbol=effective_lot_rule.symbol,
+            market=effective_lot_rule.market,
+            lot_size=effective_lot_rule.lot_size,
+            lot_size_source=effective_lot_rule.source,
+            execution_config=execution,
+        )
+        results = pd.DataFrame([best_run["summary"]])
+    elif strategy_kind == "grid":
         spacings = spacings or list(INTRADAY_SPACINGS)
         grid_counts = grid_counts or list(INTRADAY_GRID_COUNTS)
         take_profits = take_profits or list(INTRADAY_TAKE_PROFITS)
@@ -500,26 +523,43 @@ def run_minute_validation_workflow(
     lot_rule: LotSizeRule | None = None,
 ) -> dict[str, object]:
     """执行分钟线样本外验证。"""
-    from etf_strategy.strategy.grid import run_grid_backtest
-
     started_at = perf_counter()
     resolved_symbol = _resolve_symbol(symbol, data_path)
     effective_lot_rule = lot_rule or resolve_lot_size_rule(resolved_symbol)
     execution = execution_config or build_execution_config("research")
     price_frame = data if data is not None else load_price_frame(data_path)
-    logger.info(
-        "[2/2] 开始执行分钟线样本外验证: symbol={} data={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
-        effective_lot_rule.symbol,
-        data_path,
-        grid_spacing_pct * 100,
-        grid_count,
-        take_profit_pct * 100,
-    )
     _, _, validation = split_intraday_in_sample_and_validation(
         data=price_frame,
         validation_ratio=validation_ratio,
     )
-    if strategy_kind == "grid":
+    if strategy_kind == "minute_index_grid_retrace":
+        logger.info(
+            "[2/2] 开始执行分钟线样本外验证: strategy={} symbol={} data={}",
+            strategy_kind,
+            effective_lot_rule.symbol,
+            data_path,
+        )
+        validation_run = run_index_grid_backtest(
+            data=validation,
+            scenario_name="minute_validation",
+            symbol=effective_lot_rule.symbol,
+            market=effective_lot_rule.market,
+            lot_size=effective_lot_rule.lot_size,
+            lot_size_source=effective_lot_rule.source,
+            execution_config=execution,
+        )
+        prefix = "minute_validation_minute_index_grid_retrace"
+    elif strategy_kind == "grid":
+        from etf_strategy.strategy.grid import run_grid_backtest
+
+        logger.info(
+            "[2/2] 开始执行分钟线样本外验证: symbol={} data={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
+            effective_lot_rule.symbol,
+            data_path,
+            grid_spacing_pct * 100,
+            grid_count,
+            take_profit_pct * 100,
+        )
         validation_run = run_grid_backtest(
             data=validation,
             scenario_name="minute_validation",

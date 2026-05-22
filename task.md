@@ -1720,3 +1720,45 @@
 ### 验证
 
 - 待执行单元测试、编译检查和本地模式 smoke test。
+
+## 指数 ETF 回落反弹网格策略首阶段
+
+### 状态
+
+已完成核心策略、分钟工作流、CLI 接入和单元测试，待补报告/文档后继续提交后续子任务。
+
+### 修改方案
+
+新增一套独立于现有纯现金网格的 `minute_index_grid_retrace` 分钟线策略，专门验证三只指数 ETF 的“50% 底仓 + 20% 固定交易单元 + 动态高低点回落/反弹触发”打法，并接入当前分钟工作流和 `backtest/run/report/batch` 主链路。
+
+### 修改内容
+
+- `etf_strategy/strategy/index_grid.py`
+  - 新增指数 ETF 动态回落/反弹网格策略模块
+  - 固定支持 `159941.SZ`、`159605.SZ`、`159866.SZ`
+  - 实现首根 K 线底仓建仓、动态高低点触发、网格单 FIFO 卖出、买入持有基准对照
+- `etf_strategy/settings.py`
+  - `StrategyKind` 增加 `minute_index_grid_retrace`
+- `etf_strategy/workflow.py`
+  - 分钟线样本内/样本外流程增加新策略分支
+  - 新策略不再寻参，而是直接按 symbol 固定参数运行并输出单行结果
+- `etf_strategy/cli.py`
+  - `--strategy` 增加 `minute_index_grid_retrace`
+  - `backtest` 允许新策略在不传网格参数时直接运行
+  - 参数摘要文案增加新策略专用说明
+- `etf_strategy/symbols.py`
+  - 新增三只指数 ETF 的批量标的池 `index_grid_etfs`
+- `tests/test_grid_strategy.py`
+  - 新增新策略 parser 测试
+  - 新增不支持标的报错测试
+  - 新增底仓长期持有、回落买入、反弹卖出语义测试
+
+### 设计取舍
+
+- 新策略没有复用原来的 `grid.py`，因为“首根建底仓 + 动态极值确认 + 固定总资金 20% 交易单元”与原有纯现金网格的状态机差异太大，硬塞进去只会让老策略更难维护。
+- 这一阶段故意不做自由寻参，直接验证用户给定的参数能不能跑赢各自买入持有，避免把需求从“验证固定打法”变成“重新调参找最优”。
+- 由于总资金固定为 `10000` 且 A 股 ETF 最小交易单位是 `100` 股，策略天然会受到“价格太高时 50% 底仓买不进一手”的约束；测试也按更真实的 ETF 价格区间构造样本。
+
+### 验证
+
+- 已执行 `py -3.13 -m unittest tests.test_grid_strategy`

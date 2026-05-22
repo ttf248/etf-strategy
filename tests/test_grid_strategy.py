@@ -20,6 +20,7 @@ from etf_strategy.strategy.grid import (
     split_intraday_in_sample_and_validation,
     split_in_sample_and_validation,
 )
+from etf_strategy.strategy.index_grid import resolve_index_grid_spec, run_index_grid_backtest
 from etf_strategy.strategy.rebound import run_rebound_backtest
 
 
@@ -792,6 +793,28 @@ class GridStrategyTests(unittest.TestCase):
         self.assertIsNone(args.commission_bps)
         self.assertIsNone(args.slippage_bps)
 
+    def test_backtest_parser_accepts_index_grid_retrace_without_grid_arguments(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(
+            [
+                "backtest",
+                "--data",
+                "data/processed/159941_sz_1m.csv",
+                "--symbol",
+                "159941.SZ",
+                "--interval",
+                "1m",
+                "--strategy",
+                "minute_index_grid_retrace",
+            ]
+        )
+
+        self.assertEqual(args.strategy, "minute_index_grid_retrace")
+        self.assertIsNone(args.grid_spacing)
+        self.assertIsNone(args.grid_count)
+        self.assertIsNone(args.take_profit)
+
     def test_infer_symbol_from_data_path(self) -> None:
         self.assertEqual(infer_symbol_from_data_path("data/processed/1810_hk_daily.csv"), "1810.HK")
         self.assertEqual(infer_symbol_from_data_path("data/processed/513050_ss_15m.csv"), "513050.SS")
@@ -1010,6 +1033,56 @@ class GridStrategyTests(unittest.TestCase):
         self.assertGreaterEqual(summary["StopLossEvents"], 1)
         self.assertGreaterEqual(summary["RiskSkipEvents"], 1)
         self.assertIn("risk_stop_loss", set(events["EventType"]))
+
+    def test_resolve_index_grid_spec_rejects_unsupported_symbol(self) -> None:
+        with self.assertRaisesRegex(ValueError, "仅支持以下标的"):
+            resolve_index_grid_spec("510300.SS")
+
+    def test_run_index_grid_backtest_uses_base_position_and_retrace_grid(self) -> None:
+        prices = [10.0, 9.75, 9.81, 10.06, 9.99, 10.04]
+        dates = pd.date_range(start="2026-04-01 09:30:00", periods=len(prices), freq="1min")
+        frame = pd.DataFrame(
+            {
+                "Open": prices,
+                "High": [price * 1.002 for price in prices],
+                "Low": [price * 0.998 for price in prices],
+                "Close": prices,
+                "Volume": [1000] * len(prices),
+            },
+            index=dates,
+        )
+        frame.index.name = "Date"
+
+        result = run_index_grid_backtest(
+            data=frame,
+            scenario_name="minute_index_grid_unit_test",
+            symbol="159941.SZ",
+            market="CN",
+            lot_size=100,
+            lot_size_source="unit test",
+            execution_config=build_execution_config(
+                "research",
+                commission_bps=0,
+                slippage_bps=0,
+                max_position_ratio=0.95,
+            ),
+        )
+
+        summary = result["summary"]
+        events = result["events"]
+
+        self.assertEqual(summary["StrategyKind"], "minute_index_grid_retrace")
+        self.assertEqual(summary["BaseUnits"], summary["BasePositionUnits"])
+        self.assertEqual(summary["GridUnitsPerTrade"] % 100, 0)
+        self.assertTrue(summary["TriggeredGridEntry"])
+        self.assertEqual(summary["GridBuyCount"], 1)
+        self.assertEqual(summary["GridSellCount"], 1)
+        self.assertEqual(summary["GridCyclesCompleted"], 1)
+        self.assertEqual(summary["PositionUnits"], summary["BasePositionUnits"])
+        self.assertIn("base_buy", set(events["EventType"]))
+        self.assertIn("retrace_buy", set(events["EventType"]))
+        self.assertIn("retrace_sell", set(events["EventType"]))
+        self.assertEqual(int(events.iloc[0]["Units"]), int(summary["BasePositionUnits"]))
 
     def test_split_intraday_in_sample_and_validation(self) -> None:
         dates = pd.date_range(start="2026-04-01 09:30:00", periods=40, freq="15min")

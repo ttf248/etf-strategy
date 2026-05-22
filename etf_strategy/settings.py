@@ -24,7 +24,13 @@ WorkflowMode = Literal["daily", "intraday"]
 ExecutionProfile = Literal["research", "realistic"]
 GridMode = Literal["cash"]
 LeftSidePolicy = Literal["hold", "force_exit", "both"]
-StrategyKind = Literal["grid", "daily_rebound", "minute_rebound", "minute_rebound_with_fade_filter"]
+StrategyKind = Literal[
+    "grid",
+    "daily_rebound",
+    "minute_rebound",
+    "minute_rebound_with_fade_filter",
+    "minute_index_grid_retrace",
+]
 
 DEFAULT_VALIDATION_START = "2026-01-01"
 DEFAULT_LOOKBACK_DAYS = 120

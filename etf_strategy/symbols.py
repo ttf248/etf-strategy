@@ -58,6 +58,10 @@ HSTECH_CONSTITUENTS: tuple[SymbolSpec, ...] = (
 )
 
 CN_ETF_513050 = SymbolSpec("513050.SS", "中概互联网ETF", "国内ETF", "用户指定追加标的")
+INDEX_GRID_ETF_SOURCE = "用户指定的指数 ETF 网格验证样本"
+INDEX_GRID_159941 = SymbolSpec("159941.SZ", "纳指ETF", "指数ETF", INDEX_GRID_ETF_SOURCE)
+INDEX_GRID_159605 = SymbolSpec("159605.SZ", "中概互联网ETF", "指数ETF", INDEX_GRID_ETF_SOURCE)
+INDEX_GRID_159866 = SymbolSpec("159866.SZ", "日经ETF", "指数ETF", INDEX_GRID_ETF_SOURCE)
 
 
 def _build_southbound_shanghai_constituents() -> tuple[SymbolSpec, ...]:
@@ -83,4 +87,5 @@ SOUTHBOUND_SHANGHAI_CONSTITUENTS: tuple[SymbolSpec, ...] = _build_southbound_sha
 SYMBOL_SETS: dict[str, tuple[SymbolSpec, ...]] = {
     "hstech_plus_513050": (*HSTECH_CONSTITUENTS, CN_ETF_513050),
     "southbound_shanghai_all": SOUTHBOUND_SHANGHAI_CONSTITUENTS,
+    "index_grid_etfs": (INDEX_GRID_159941, INDEX_GRID_159605, INDEX_GRID_159866),
 }

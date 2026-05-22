@@ -117,19 +117,19 @@ def build_parser() -> argparse.ArgumentParser:
     backtest_parser.add_argument(
         "--grid-spacing",
         type=float,
-        required=True,
+        required=False,
         help="网格间距比例，例如 0.05 表示每跌 5%% 再开下一层网格",
     )
     backtest_parser.add_argument(
         "--grid-count",
         type=int,
-        required=True,
+        required=False,
         help="网格层数，例如 7 表示最多允许开启 7 层固定股数网格仓位",
     )
     backtest_parser.add_argument(
         "--take-profit",
         type=float,
-        required=True,
+        required=False,
         help="单层止盈比例，例如 0.03 表示某层买入后反弹 3%% 就卖出该层",
     )
     backtest_parser.add_argument("--output-dir", default=None, help="样本外验证输出目录")
@@ -247,7 +247,7 @@ def _add_execution_arguments(parser: argparse.ArgumentParser) -> None:
 def _add_strategy_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--strategy",
-        choices=["grid", "daily_rebound", "minute_rebound", "minute_rebound_with_fade_filter"],
+        choices=["grid", "daily_rebound", "minute_rebound", "minute_rebound_with_fade_filter", "minute_index_grid_retrace"],
         default="grid",
         help="策略类型：grid 为现有网格；其余为反转类策略",
     )
@@ -299,6 +299,7 @@ def _strategy_display_name(strategy_kind: str) -> str:
         "daily_rebound": "日线超跌反弹",
         "minute_rebound": "分钟急跌反抽",
         "minute_rebound_with_fade_filter": "分钟反抽+冲高回落过滤",
+        "minute_index_grid_retrace": "指数回落反弹网格",
         "compare": "多策略对比",
     }
     return labels.get(strategy_kind, strategy_kind)
@@ -430,6 +431,16 @@ def _resolve_report_symbol(explicit_symbol: str | None, data_path: str | Path | 
 def _format_best_parameter_summary(summary: dict[str, object]) -> str:
     strategy_kind = str(summary.get("StrategyKind", "grid"))
     score = float(summary.get("Score", 0.0))
+    if strategy_kind == "minute_index_grid_retrace":
+        return (
+            f"rise_trigger={float(summary.get('RiseTriggerPct', 0.0)):.2f}% "
+            f"sell_pullback={float(summary.get('SellPullbackPct', 0.0)):.2f}% "
+            f"decline_trigger={float(summary.get('DeclineTriggerPct', 0.0)):.2f}% "
+            f"buy_rebound={float(summary.get('BuyReboundPct', 0.0)):.2f}% "
+            f"base={float(summary.get('BasePositionRatioPct', 0.0)):.2f}% "
+            f"grid_trade={float(summary.get('GridTradeRatioPct', 0.0)):.2f}% "
+            f"score={score:.2f}"
+        )
     if strategy_kind == "grid":
         return (
             f"grid_spacing={float(summary['GridSpacingPct']):.2f}% "
@@ -607,43 +618,67 @@ def handle_optimize(args: argparse.Namespace) -> int:
 def handle_backtest(args: argparse.Namespace) -> int:
     """执行样本外验证。"""
     started_at = perf_counter()
-    if args.strategy != "grid":
-        raise ValueError("backtest 命令当前仅支持 grid；反转类策略请使用 optimize/report/run 自动选参与验证。")
-    logger.info(
-        "收到 backtest 命令: data={} interval={} strategy={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
-        args.data,
-        args.interval,
-        args.strategy,
-        args.grid_spacing * 100,
-        args.grid_count,
-        args.take_profit * 100,
-    )
     execution_config = _build_execution_from_args(args)
-    if is_intraday_interval(args.interval):
+    if args.strategy == "minute_index_grid_retrace":
+        if not is_intraday_interval(args.interval):
+            raise ValueError("minute_index_grid_retrace 仅支持分钟线数据，请使用 --interval 1m。")
+        logger.info(
+            "收到 backtest 命令: data={} interval={} strategy={}",
+            args.data,
+            args.interval,
+            args.strategy,
+        )
         output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR / "validation")
         result = run_minute_validation_workflow(
             data_path=args.data,
-            grid_spacing_pct=args.grid_spacing,
-            grid_count=args.grid_count,
-            take_profit_pct=args.take_profit,
+            grid_spacing_pct=0.0,
+            grid_count=0,
+            take_profit_pct=0.0,
             symbol=args.symbol,
             output_dir=output_dir,
             validation_ratio=args.validation_ratio,
+            strategy_kind=args.strategy,
             execution_config=execution_config,
         )
+    elif args.strategy == "grid":
+        if args.grid_spacing is None or args.grid_count is None or args.take_profit is None:
+            raise ValueError("grid 策略执行 backtest 时必须同时提供 --grid-spacing、--grid-count 和 --take-profit。")
+        logger.info(
+            "收到 backtest 命令: data={} interval={} strategy={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
+            args.data,
+            args.interval,
+            args.strategy,
+            args.grid_spacing * 100,
+            args.grid_count,
+            args.take_profit * 100,
+        )
+        if is_intraday_interval(args.interval):
+            output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR / "validation")
+            result = run_minute_validation_workflow(
+                data_path=args.data,
+                grid_spacing_pct=args.grid_spacing,
+                grid_count=args.grid_count,
+                take_profit_pct=args.take_profit,
+                symbol=args.symbol,
+                output_dir=output_dir,
+                validation_ratio=args.validation_ratio,
+                execution_config=execution_config,
+            )
+        else:
+            output_dir = args.output_dir or str(DEFAULT_OUTPUT_DIR / "validation")
+            result = run_validation_workflow(
+                data_path=args.data,
+                grid_spacing_pct=args.grid_spacing,
+                grid_count=args.grid_count,
+                take_profit_pct=args.take_profit,
+                symbol=args.symbol,
+                output_dir=output_dir,
+                validation_start=args.validation_start,
+                lookback_days=args.lookback_days,
+                execution_config=execution_config,
+            )
     else:
-        output_dir = args.output_dir or str(DEFAULT_OUTPUT_DIR / "validation")
-        result = run_validation_workflow(
-            data_path=args.data,
-            grid_spacing_pct=args.grid_spacing,
-            grid_count=args.grid_count,
-            take_profit_pct=args.take_profit,
-            symbol=args.symbol,
-            output_dir=output_dir,
-            validation_start=args.validation_start,
-            lookback_days=args.lookback_days,
-            execution_config=execution_config,
-        )
+        raise ValueError("backtest 命令当前仅支持 grid 和 minute_index_grid_retrace；其他策略请使用 optimize/report/run。")
     summary = result["run"]["summary"]
     print(
         "样本外验证完成: "
