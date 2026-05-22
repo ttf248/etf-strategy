@@ -280,7 +280,7 @@ class GridStrategyTests(unittest.TestCase):
             execution_config=ANY,
             wf_window_count=3,
             wf_min_window_size=20,
-            jobs=1,
+            jobs=8,
             cache_dir=None,
         )
         execution_config = mock_workflow.call_args.kwargs["execution_config"]
@@ -319,6 +319,7 @@ class GridStrategyTests(unittest.TestCase):
         self.assertIsNone(args.symbols)
         self.assertEqual(args.interval, "15m")
         self.assertEqual(args.period, "60d")
+        self.assertEqual(args.jobs, "8")
 
     def test_batch_parser_reads_southbound_shanghai_symbol_set(self) -> None:
         parser = build_parser()
@@ -410,7 +411,7 @@ class GridStrategyTests(unittest.TestCase):
         self.assertIn("1810.HK", index_content)
         self.assertIn("| grid | 网格 |", index_content)
         mock_workflow.assert_called_once()
-        self.assertEqual(mock_workflow.call_args.kwargs["jobs"], 1)
+        self.assertEqual(mock_workflow.call_args.kwargs["jobs"], 8)
         self.assertEqual(mock_workflow.call_args.kwargs["execution_config"].profile, "realistic")
 
     def test_handle_batch_compare_updates_unified_report_index(self) -> None:

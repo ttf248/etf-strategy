@@ -206,7 +206,7 @@ py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK -
 - `--grid-mode`：当前支持 `cash`，表示不预先建仓的现金网格
 - `--left-side-policy`：`hold`、`force_exit` 或 `both`
 - `--force-exit-loss-pct`：强制退出阈值，例如 `0.05` 表示未平网格浮亏达到总资金 5% 后清仓
-- `--jobs`：寻参并行进程数，可传整数或 `auto`
+- `--jobs`：寻参并行进程数，默认 `8`，可传整数或 `auto`
 - `--cache-dir`：候选参数回测缓存目录，适合反复调报告模板时复用
 
 ### 一键执行完整流程

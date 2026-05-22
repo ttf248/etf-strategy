@@ -1668,14 +1668,17 @@
   - 同步改成模块级任务函数 + `ProcessPoolExecutor`
 - `etf_strategy/cli.py`
   - `--jobs` 帮助文案改成“并行进程数”
+- `etf_strategy/settings.py`
+  - 默认 `DEFAULT_JOBS` 从 `1` 提升到 `8`
 - `README.md`
-  - 同步 `--jobs` 参数说明
+  - 同步 `--jobs` 参数说明和默认值
 
 ### 设计取舍
 
 - Windows 下进程池要求任务函数可 pickle，所以不能继续用 `optimize_*` 里的闭包 `run_candidate()`，需要改成模块级函数。
 - 这一轮只改“单标的内部寻参并发”，不同时引入“多标的并发”，避免两层并发把 CPU、内存和 Yahoo 下载都打满。
 - 共享上下文改成初始化后只读复用，避免每个参数候选重复拼装大对象。
+- 默认值固定为 `8`，优先满足当前这台机器的批量回测吞吐；仍保留 `--jobs auto` 和显式整数覆盖。
 
 ### 验证
 
