@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "一键生成恒科批量分钟报告",
+            "name": "一键生成指数ETF 1分钟报告",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
@@ -15,10 +15,12 @@
             "args": [
                 "batch",
                 "--symbol-set",
-                "hstech_plus_513050",
+                "index_grid_etfs",
+                "--strategy",
+                "minute_index_grid_retrace",
                 "--download",
                 "--interval",
-                "15m",
+                "1m",
                 "--period",
                 "60d",
                 "--proxy",
@@ -26,19 +28,13 @@
                 "--jobs",
                 "auto",
                 "--cache-dir",
-                "outputs/cache",
+                "outputs/cache/index_grid_1m",
                 "--output-dir",
-                "outputs/batch",
+                "outputs/index_grid",
                 "--report-dir",
                 "reports",
                 "--execution-profile",
-                "realistic",
-                "--grid-mode",
-                "cash",
-                "--left-side-policy",
-                "both",
-                "--force-exit-loss-pct",
-                "0.05"
+                "realistic"
             ]
         },
         {

@@ -27,8 +27,15 @@ from etf_strategy.config import (
     DEFAULT_REPORT_ROOT,
     DEFAULT_SYMBOL,
 )
-from etf_strategy.symbols import CN_ETF_513050, HSTECH_CONSTITUENTS, SymbolSpec
-from etf_strategy.symbols import SOUTHBOUND_SHANGHAI_CONSTITUENTS
+from etf_strategy.symbols import (
+    CN_ETF_513050,
+    HSTECH_CONSTITUENTS,
+    INDEX_GRID_159605,
+    INDEX_GRID_159866,
+    INDEX_GRID_159941,
+    SOUTHBOUND_SHANGHAI_CONSTITUENTS,
+    SymbolSpec,
+)
 
 
 GOOD_RETURN_HIGHLIGHT_THRESHOLD_PCT = 5.0
@@ -63,6 +70,9 @@ REPORT_INDEX_COLUMNS = [
 def _symbol_specs_by_symbol() -> dict[str, SymbolSpec]:
     specs = {spec.symbol.upper(): spec for spec in HSTECH_CONSTITUENTS}
     specs[CN_ETF_513050.symbol.upper()] = CN_ETF_513050
+    specs[INDEX_GRID_159941.symbol.upper()] = INDEX_GRID_159941
+    specs[INDEX_GRID_159605.symbol.upper()] = INDEX_GRID_159605
+    specs[INDEX_GRID_159866.symbol.upper()] = INDEX_GRID_159866
     for spec in SOUTHBOUND_SHANGHAI_CONSTITUENTS:
         specs.setdefault(spec.symbol.upper(), spec)
     return specs
@@ -355,6 +365,9 @@ def plot_run_result(run_result: dict[str, object], output_path: str | Path, titl
             "grid_buy": ("v", "#31a354", "网格买入"),
             "grid_sell": ("o", "#756bb1", "网格卖出"),
             "force_exit_sell": ("x", "#de2d26", "强制卖出"),
+            "base_buy": ("^", "#1f78b4", "底仓买入"),
+            "retrace_buy": ("v", "#33a02c", "反弹买入"),
+            "retrace_sell": ("o", "#ff7f00", "回落卖出"),
         }
         for event_type, (marker, color, label) in marker_map.items():
             subset = events[events["EventType"] == event_type]
@@ -536,6 +549,7 @@ def _build_trade_table(run_result: dict[str, object]) -> str:
     trades["ReturnPctDisplay"] = trades["ReturnPct"].astype("float64") * 100
     trades["Level"] = trades["Tag"].fillna("").astype(str).str.replace("grid_", "网格 ", regex=False)
     trades.loc[trades["Tag"] == "base", "Level"] = "历史底仓"
+    trades.loc[trades["Tag"] == "retrace_grid", "Level"] = "网格仓"
     return _build_markdown_table(
         trades,
         columns=[
@@ -1039,6 +1053,7 @@ def _strategy_display_name(summary: dict[str, object], fallback: str | None = No
         "daily_rebound": "日线超跌反弹",
         "minute_rebound": "分钟急跌反抽",
         "minute_rebound_with_fade_filter": "分钟反抽+冲高回落过滤",
+        "minute_index_grid_retrace": "指数回落反弹网格",
     }
     return mapping.get(strategy_kind, strategy_kind)
 
@@ -1301,11 +1316,177 @@ def build_report_markdown(
     return report_path
 
 
+def _build_index_grid_report_markdown(
+    workflow_result: dict[str, object],
+    report_dir: str | Path,
+) -> Path:
+    """生成指数 ETF 动态回落/反弹网格报告。"""
+    started_at = perf_counter()
+    optimization = workflow_result["optimization"]
+    validation = workflow_result["validation"]
+    decline_window = optimization["decline_window"]
+    best_summary = optimization["best_run"]["summary"]
+    validation_summary = validation["run"]["summary"]
+    symbol = str(best_summary["Symbol"])
+    interval = str(workflow_result.get("interval", "1m"))
+    target_dir = Path(report_dir)
+    figure_dir = target_dir / "figures"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    slug = _symbol_to_slug(symbol)
+    report_path = target_dir / f"{slug}_{interval}_index_grid_report.md"
+    in_sample_chart = plot_run_result(
+        optimization["best_run"],
+        figure_dir / f"{slug}_{interval}_in_sample_index_grid.png",
+        f"{symbol} 1 分钟样本内指数回落反弹网格",
+    )
+    validation_chart = plot_run_result(
+        validation["run"],
+        figure_dir / f"{slug}_{interval}_validation_index_grid.png",
+        f"{symbol} 1 分钟样本外指数回落反弹网格",
+    )
+    in_sample_words = _describe_run_in_plain_words(optimization["best_run"], total_capital=float(best_summary["TotalCapital"]))
+    validation_words = _describe_run_in_plain_words(validation["run"], total_capital=float(validation_summary["TotalCapital"]))
+    logger.info("[2/2] 开始生成指数 ETF 正式报告: symbol={} report_dir={}", symbol, report_dir)
+
+    outperform_validation = bool(validation_summary.get("OutperformBuyHold", False))
+    if outperform_validation:
+        conclusion = "这套固定参数在当前样本外窗口里跑赢了同标的买入持有，说明低买高卖至少没有被底仓拖累。"
+    elif float(validation_summary.get("StrategyVsBuyHold", 0.0)) == 0:
+        conclusion = "这套固定参数在当前样本外窗口里和买入持有基本持平，暂时看不出明显优势。"
+    else:
+        conclusion = "这套固定参数在当前样本外窗口里没有跑赢同标的买入持有，说明最近 60 天的波动结构还不足以支撑这套网格占优。"
+
+    quick_table = _build_simple_markdown_table(
+        ["问题", "样本内", "样本外"],
+        [
+            ["策略净收益率", f"{float(best_summary['NetReturnPct']):.2f}%", f"{float(validation_summary['NetReturnPct']):.2f}%"],
+            ["相对买入持有", f"{float(best_summary['StrategyVsBuyHold']):.2f}", f"{float(validation_summary['StrategyVsBuyHold']):.2f}"],
+            ["是否跑赢买入持有", "是" if bool(best_summary["OutperformBuyHold"]) else "否", "是" if outperform_validation else "否"],
+            ["网格已实现利润", f"{float(best_summary['GridRealizedProfit']):.2f}", f"{float(validation_summary['GridRealizedProfit']):.2f}"],
+            ["底仓浮动盈亏", f"{float(best_summary['BaseUnrealizedPnl']):.2f}", f"{float(validation_summary['BaseUnrealizedPnl']):.2f}"],
+            ["网格浮动盈亏", f"{float(best_summary['GridUnrealizedPnl']):.2f}", f"{float(validation_summary['GridUnrealizedPnl']):.2f}"],
+        ],
+    )
+    benchmark_table = _build_simple_markdown_table(
+        ["对比项", "样本内", "样本外"],
+        [
+            ["策略期末权益", f"{float(best_summary['FinalEquity']):.2f}", f"{float(validation_summary['FinalEquity']):.2f}"],
+            ["买入持有期末权益", f"{float(best_summary['BuyHoldFinalEquity']):.2f}", f"{float(validation_summary['BuyHoldFinalEquity']):.2f}"],
+            ["策略相对买入持有", f"{float(best_summary['StrategyVsBuyHold']):.2f}", f"{float(validation_summary['StrategyVsBuyHold']):.2f}"],
+            ["最大回撤", f"{float(best_summary['MaxDrawdownPct']):.2f}%", f"{float(validation_summary['MaxDrawdownPct']):.2f}%"],
+            ["网格买入次数", f"{int(best_summary['GridBuyCount'])}", f"{int(validation_summary['GridBuyCount'])}"],
+            ["网格卖出次数", f"{int(best_summary['GridSellCount'])}", f"{int(validation_summary['GridSellCount'])}"],
+        ],
+    )
+    rule_table = _build_simple_markdown_table(
+        ["规则", "参数"],
+        [
+            ["总资金", f"{float(best_summary['TotalCapital']):.2f}"],
+            ["底仓比例", f"{float(best_summary['BasePositionRatioPct']):.2f}%"],
+            ["单次网格比例", f"{float(best_summary['GridTradeRatioPct']):.2f}%"],
+            ["上涨触发", f"{float(best_summary['RiseTriggerPct']):.2f}%"],
+            ["上涨后回落卖出", f"{float(best_summary['SellPullbackPct']):.2f}%"],
+            ["下跌触发", f"{float(best_summary['DeclineTriggerPct']):.2f}%"],
+            ["下跌后反弹买入", f"{float(best_summary['BuyReboundPct']):.2f}%"],
+            ["底仓股数", f"{int(best_summary['BasePositionUnits'])}"],
+            ["单次网格股数", f"{int(best_summary['GridUnitsPerTrade'])}"],
+        ],
+    )
+    in_sample_chart_summary = _build_run_chart_summary(optimization["best_run"], in_sample_words)
+    validation_chart_summary = _build_run_chart_summary(validation["run"], validation_words)
+    in_sample_event_table = _build_event_table(optimization["best_run"])
+    validation_event_table = _build_event_table(validation["run"])
+    in_sample_trade_table = _build_trade_table(optimization["best_run"])
+    validation_trade_table = _build_trade_table(validation["run"])
+
+    report_content = f"""# {symbol} 指数回落反弹网格报告
+
+## 摘要
+
+- 标的：`{symbol}`
+- 数据周期：Yahoo Finance 最近 60 天 `1m`
+- 样本内窗口：{decline_window.sample_start} 至 {decline_window.sample_end}
+- 样本外窗口：{decline_window.validation_start} 至 {validation_summary['EndDate']}
+- 切分方式：最近分钟线样本按 `75% / 25%` 拆分样本内与样本外
+- 交易假设：首根 K 线买入 `50%` 长期底仓，其余资金按总资金 `20%` 的固定单元做网格
+- 触发语义：先达到涨跌阈值，再等待从局部高低点回落/反弹确认后成交
+- 最小交易单位：{int(best_summary['LotSize'])} 股，来源：{best_summary['LotSizeSource']}
+- 费用口径：`{best_summary.get('ExecutionProfile', 'research')}`，手续费 `{float(best_summary.get('CommissionBps', 0.0)):.2f}` bps，滑点 `{float(best_summary.get('SlippageBps', 0.0)):.2f}` bps
+
+{conclusion}
+
+## 第一层：先看结论
+
+### 先回答关键问题
+
+{quick_table}
+
+### 一句话判断
+
+- {conclusion}
+- 这套策略的收益来源不是“猜趋势”，而是底仓承接指数长期上涨、网格去吃短周期波动里的低买高卖。
+- 真正要盯的是“策略相对买入持有多赚了多少”，而不是只看网格已实现利润。
+
+## 第二层：展开细节
+
+### 固定参数与交易单元
+
+{rule_table}
+
+### 和买入持有相比到底有没有优势
+
+{benchmark_table}
+
+### 样本内回测图
+
+{in_sample_chart_summary}
+
+![样本内回测图](figures/{in_sample_chart.name})
+
+### 样本外回测图
+
+{validation_chart_summary}
+
+![样本外回测图](figures/{validation_chart.name})
+
+### 交易记录和明细
+
+#### 样本内事件流水
+
+{in_sample_event_table}
+
+#### 样本内成交结果
+
+{in_sample_trade_table}
+
+#### 样本外事件流水
+
+{validation_event_table}
+
+#### 样本外成交结果
+
+{validation_trade_table}
+
+## 最终结论
+
+- 样本外相对买入持有差额：`{float(validation_summary['StrategyVsBuyHold']):.2f}`。
+- 样本外底仓浮动盈亏：`{float(validation_summary['BaseUnrealizedPnl']):.2f}`；网格浮动盈亏：`{float(validation_summary['GridUnrealizedPnl']):.2f}`。
+- 样本外网格已实现利润：`{float(validation_summary['GridRealizedProfit']):.2f}`，网格买卖次数 `买 {int(validation_summary['GridBuyCount'])} / 卖 {int(validation_summary['GridSellCount'])}`。
+- 这份报告只代表最近 60 天 `1m` 粒度下的结果，不等同于长期稳健结论；后续如果要提高可信度，应继续积累本地 1 分钟历史后重复验证。
+"""
+    report_path.write_text(report_content, encoding="utf-8")
+    logger.info("指数 ETF 正式报告生成完成: report={} elapsed={:.2f}s", report_path, perf_counter() - started_at)
+    return report_path
+
+
 def build_minute_report_markdown(
     workflow_result: dict[str, object],
     report_dir: str | Path = DEFAULT_MINUTE_REPORT_DIR,
 ) -> Path:
     """生成分钟线专用报告。"""
+    strategy_kind = str(workflow_result["optimization"]["best_run"]["summary"].get("StrategyKind", "grid"))
+    if strategy_kind == "minute_index_grid_retrace":
+        return _build_index_grid_report_markdown(workflow_result, report_dir=report_dir)
     return build_report_markdown(workflow_result, report_dir=report_dir)
 
 

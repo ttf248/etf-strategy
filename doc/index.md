@@ -20,6 +20,7 @@
 4. 再按需要看专题文档：
    - [日线网格参数测试方法](grid_parameter_search.md)
    - [Yahoo 分钟线支持与 15 分钟回测说明](minute_grid_research.md)
+   - [指数 ETF 1 分钟回落反弹网格说明](index_grid_research.md)
    - [小米多策略研究说明](xiaomi_strategy_research.md)
 
 ## 如果你只关心结果
@@ -43,7 +44,8 @@
 1. [术语表与口径说明](glossary.md)
 2. [日线网格参数测试方法](grid_parameter_search.md)
 3. [Yahoo 分钟线支持与 15 分钟回测说明](minute_grid_research.md)
-4. [小米多策略研究说明](xiaomi_strategy_research.md)
+4. [指数 ETF 1 分钟回落反弹网格说明](index_grid_research.md)
+5. [小米多策略研究说明](xiaomi_strategy_research.md)
 
 这三份文档分别解决：
 
@@ -96,6 +98,8 @@ task.md          AI 任务记录
   - 日线专题方法说明
 - `doc/minute_grid_research.md`
   - 分钟线专题方法说明
+- `doc/index_grid_research.md`
+  - 三只指数 ETF 的 `1m` 回落反弹网格固定参数与命令入口
 - `doc/xiaomi_strategy_research.md`
   - 小米日线/分钟线多策略研究结论
 - `doc/development_guide.md`
@@ -116,6 +120,14 @@ task.md          AI 任务记录
 - 数据范围：Yahoo 最近 `60d`
 - 下载口径：每次先把最近 `60d` 新数据和本地 CSV 做增量合并
 - 切分方式：`75% / 25%`
+
+指数 ETF `1m` 研究流程：
+
+- 标的池：`index_grid_etfs`
+- 策略：`minute_index_grid_retrace`
+- 数据范围：Yahoo 最近 `60d`
+- 下载口径：每次拉最近 `60d` 的 `1m` 数据并和本地 CSV 合并
+- 目标：验证固定参数是否跑赢各自买入持有
 
 ## 关于 `task.md`
 

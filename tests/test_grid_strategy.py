@@ -9,7 +9,13 @@ import etf_strategy.data.market_rules as market_rules
 from etf_strategy.cli import build_parser, handle_batch, handle_download, handle_run
 from etf_strategy.config import DEFAULT_DATA_PATH, DEFAULT_MINUTE_DATA_PATH, DEFAULT_MINUTE_OUTPUT_DIR
 from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
-from etf_strategy.reporting import build_report_index_entry, build_unified_report_index, load_report_registry, register_report_index_entries
+from etf_strategy.reporting import (
+    build_minute_report_markdown,
+    build_report_index_entry,
+    build_unified_report_index,
+    load_report_registry,
+    register_report_index_entries,
+)
 from etf_strategy.settings import build_execution_config
 from etf_strategy.symbols import SymbolSpec
 from etf_strategy.strategy.grid import (
@@ -1083,6 +1089,86 @@ class GridStrategyTests(unittest.TestCase):
         self.assertIn("retrace_buy", set(events["EventType"]))
         self.assertIn("retrace_sell", set(events["EventType"]))
         self.assertEqual(int(events.iloc[0]["Units"]), int(summary["BasePositionUnits"]))
+
+    def test_build_minute_report_markdown_uses_index_grid_template(self) -> None:
+        prices = [
+            10.0,
+            9.75,
+            9.81,
+            10.06,
+            9.99,
+            10.04,
+            9.78,
+            9.85,
+            10.08,
+            9.96,
+            9.72,
+            9.80,
+            10.02,
+            9.94,
+            9.70,
+            9.79,
+            10.01,
+            9.93,
+            9.74,
+            9.84,
+            10.05,
+            9.97,
+            9.76,
+            9.86,
+        ]
+        dates = pd.date_range(start="2026-04-01 09:30:00", periods=len(prices), freq="1min")
+        frame = pd.DataFrame(
+            {
+                "Open": prices,
+                "High": [price * 1.002 for price in prices],
+                "Low": [price * 0.998 for price in prices],
+                "Close": prices,
+                "Volume": [1000] * len(prices),
+            },
+            index=dates,
+        )
+        frame.index.name = "Date"
+        window, in_sample, validation = split_intraday_in_sample_and_validation(frame, validation_ratio=0.25)
+        in_sample_run = run_index_grid_backtest(
+            data=in_sample,
+            scenario_name="minute_in_sample",
+            symbol="159941.SZ",
+            market="CN",
+            lot_size=100,
+            lot_size_source="unit test",
+            execution_config=build_execution_config("research", commission_bps=0, slippage_bps=0),
+        )
+        validation_run = run_index_grid_backtest(
+            data=validation,
+            scenario_name="minute_validation",
+            symbol="159941.SZ",
+            market="CN",
+            lot_size=100,
+            lot_size_source="unit test",
+            execution_config=build_execution_config("research", commission_bps=0, slippage_bps=0),
+        )
+
+        workflow_result = {
+            "workflow_type": "minute",
+            "interval": "1m",
+            "strategy_kind": "minute_index_grid_retrace",
+            "optimization": {
+                "decline_window": window,
+                "results": pd.DataFrame([in_sample_run["summary"]]),
+                "best_run": in_sample_run,
+            },
+            "validation": {"run": validation_run},
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            report_path = build_minute_report_markdown(workflow_result, report_dir=Path(temp_dir))
+            content = report_path.read_text(encoding="utf-8")
+
+        self.assertTrue(report_path.name.endswith("_1m_index_grid_report.md"))
+        self.assertIn("## 第一层：先看结论", content)
+        self.assertIn("## 第二层：展开细节", content)
+        self.assertIn("相对买入持有", content)
 
     def test_split_intraday_in_sample_and_validation(self) -> None:
         dates = pd.date_range(start="2026-04-01 09:30:00", periods=40, freq="15min")

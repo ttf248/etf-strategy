@@ -1762,3 +1762,45 @@
 ### 验证
 
 - 已执行 `py -3.13 -m unittest tests.test_grid_strategy`
+
+## 指数 ETF 回落反弹网格策略第二阶段
+
+### 状态
+
+已完成，报告模板、README、专题文档和 VS Code 入口已同步并通过仓库级验证。
+
+### 修改方案
+
+围绕 `minute_index_grid_retrace` 补一条完整的“用户可读”链路：正式报告模板、专题说明文档、README 命令入口、文档导航和 VS Code 一键启动配置保持一致。
+
+### 修改内容
+
+- `etf_strategy/reporting.py`
+  - 为 `minute_index_grid_retrace` 增加专用分钟报告模板
+  - 图表散点支持 `base_buy / retrace_buy / retrace_sell`
+  - 报告名称、策略显示名和交易表仓位类型同步支持新策略
+- `README.md`
+  - 首页增加新策略研究主线
+  - 新增三只指数 ETF 的批量 `1m` 命令
+  - 新增 `backtest` 示例和 `--strategy` 说明
+- `doc/index_grid_research.md`
+  - 新增专题文档，说明固定参数、触发语义、输出路径和推荐命令
+- `doc/index.md`
+  - 文档导航增加新专题
+  - 当前工作流增加 `index_grid_etfs` 的 `1m` 说明
+- `doc/development_guide.md`
+  - 维护者入口增加新策略模块和一键运行入口说明
+- `.vscode/launch.json`
+  - 第一条一键入口改成三只指数 ETF 的 `1m` 批量报告
+- `tests/test_repo_contracts.py`
+  - 同步新的文档文件和 VS Code 启动项名称
+
+### 设计取舍
+
+- 新策略报告单独使用 `_1m_index_grid_report.md` 命名，避免和旧 `grid_report.md` 混淆。
+- 首页不直接放新的正式报告链接，因为仓库当前没有跟踪这三只 ETF 的正式 `1m` 样本；改为放专题文档和命令入口，避免出现指向不存在文件的链接。
+- VS Code 仍只保留 2 条一键入口，一条给新的指数 ETF 研究，一条保留 `1810.HK` 多策略对照，避免启动项继续膨胀。
+
+### 验证
+
+- 已执行 `py -3.13 -m unittest tests.test_grid_strategy tests.test_repo_contracts tests.test_yahoo_data`

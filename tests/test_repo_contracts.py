@@ -26,6 +26,7 @@ class RepoContractTests(unittest.TestCase):
             REPO_ROOT / "doc" / "glossary.md",
             REPO_ROOT / "doc" / "grid_parameter_search.md",
             REPO_ROOT / "doc" / "minute_grid_research.md",
+            REPO_ROOT / "doc" / "index_grid_research.md",
             REPO_ROOT / "doc" / "xiaomi_strategy_research.md",
             REPO_ROOT / "doc" / "development_guide.md",
         ]
@@ -55,7 +56,7 @@ class RepoContractTests(unittest.TestCase):
         configurations = launch_payload.get("configurations", [])
         self.assertEqual(len(configurations), 2)
         config_names = {config["name"] for config in configurations}
-        self.assertEqual(config_names, {"一键生成恒科批量分钟报告", "一键生成1810分钟多策略报告"})
+        self.assertEqual(config_names, {"一键生成指数ETF 1分钟报告", "一键生成1810分钟多策略报告"})
         for config in configurations:
             self.assertEqual(config["type"], "debugpy")
             self.assertEqual(config["program"], "${workspaceFolder}/main.py")
