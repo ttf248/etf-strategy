@@ -104,7 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
     optimize_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
     optimize_parser.add_argument("--wf-window-count", type=int, default=DEFAULT_WALK_FORWARD_WINDOW_COUNT, help="样本内稳健性窗口数")
     optimize_parser.add_argument("--wf-min-window-size", type=int, default=DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE, help="单个稳健性窗口最少 K 线数")
-    optimize_parser.add_argument("--jobs", default="1", help="寻参并行线程数；可传整数或 auto")
+    optimize_parser.add_argument("--jobs", default="1", help="寻参并行进程数；可传整数或 auto")
     optimize_parser.add_argument("--cache-dir", default=None, help="候选参数回测缓存目录")
     _add_strategy_arguments(optimize_parser)
     _add_execution_arguments(optimize_parser)
@@ -149,7 +149,7 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
     report_parser.add_argument("--wf-window-count", type=int, default=DEFAULT_WALK_FORWARD_WINDOW_COUNT, help="样本内稳健性窗口数")
     report_parser.add_argument("--wf-min-window-size", type=int, default=DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE, help="单个稳健性窗口最少 K 线数")
-    report_parser.add_argument("--jobs", default="1", help="寻参并行线程数；可传整数或 auto")
+    report_parser.add_argument("--jobs", default="1", help="寻参并行进程数；可传整数或 auto")
     report_parser.add_argument("--cache-dir", default=None, help="候选参数回测缓存目录")
     _add_strategy_arguments(report_parser)
     report_parser.add_argument("--compare-strategies", action="store_true", help="同时输出当前周期下多策略对比报告")
@@ -173,7 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
     run_parser.add_argument("--wf-window-count", type=int, default=DEFAULT_WALK_FORWARD_WINDOW_COUNT, help="样本内稳健性窗口数")
     run_parser.add_argument("--wf-min-window-size", type=int, default=DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE, help="单个稳健性窗口最少 K 线数")
-    run_parser.add_argument("--jobs", default="1", help="寻参并行线程数；可传整数或 auto")
+    run_parser.add_argument("--jobs", default="1", help="寻参并行进程数；可传整数或 auto")
     run_parser.add_argument("--cache-dir", default=None, help="候选参数回测缓存目录")
     _add_strategy_arguments(run_parser)
     run_parser.add_argument("--compare-strategies", action="store_true", help="同时输出当前周期下多策略对比报告")
@@ -193,7 +193,7 @@ def build_parser() -> argparse.ArgumentParser:
     batch_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
     batch_parser.add_argument("--wf-window-count", type=int, default=DEFAULT_WALK_FORWARD_WINDOW_COUNT, help="样本内稳健性窗口数")
     batch_parser.add_argument("--wf-min-window-size", type=int, default=DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE, help="单个稳健性窗口最少 K 线数")
-    batch_parser.add_argument("--jobs", default="1", help="单标的寻参并行线程数；可传整数或 auto")
+    batch_parser.add_argument("--jobs", default="1", help="单标的寻参并行进程数；可传整数或 auto")
     batch_parser.add_argument("--cache-dir", default=None, help="候选参数回测缓存目录")
     _add_strategy_arguments(batch_parser)
     batch_parser.add_argument("--compare-strategies", action="store_true", help="批量为每个标的生成当前周期的多策略对比报告")
@@ -267,7 +267,7 @@ def _build_execution_from_args(args: argparse.Namespace):
 
 
 def _resolve_jobs(value: str | int) -> int:
-    """解析并行线程数。"""
+    """解析单标的寻参的并行进程数。"""
     if isinstance(value, int):
         return max(1, value)
     if value == "auto":

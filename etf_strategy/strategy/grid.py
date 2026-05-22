@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import pickle
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, replace
 from pathlib import Path
 
@@ -41,6 +41,7 @@ from etf_strategy.strategy.sampling import (
 
 TOTAL_CAPITAL = 200000.0
 INITIAL_CASH_RATIO = 0.5
+_GRID_OPTIMIZATION_CONTEXT: dict[str, object] | None = None
 
 class FixedUnitGridStrategy(Strategy):
     """纯现金网格策略。
@@ -635,6 +636,73 @@ def _save_cached_candidate(cache_path: Path | None, run_result: dict[str, object
         pickle.dump(run_result, handle)
 
 
+def _set_grid_optimization_context(context: dict[str, object] | None) -> None:
+    """为串行和多进程寻参统一准备只读上下文。"""
+    global _GRID_OPTIMIZATION_CONTEXT
+    _GRID_OPTIMIZATION_CONTEXT = context
+
+
+def _run_grid_candidate_task(spec: tuple[float, int, float]) -> dict[str, object]:
+    """执行单个网格参数候选。
+
+    这里保持模块级函数，避免 Windows 多进程因为闭包函数不可 pickle 而无法启动。
+    """
+    context = _GRID_OPTIMIZATION_CONTEXT
+    if context is None:
+        raise RuntimeError("网格寻参上下文尚未初始化。")
+
+    spacing, grid_count, take_profit = spec
+    cache_payload = {
+        "data": context["data_fingerprint"],
+        "scenario": context["scenario_name"],
+        "symbol": context["symbol"],
+        "market": context["market"],
+        "lot_size": context["lot_size"],
+        "spacing": spacing,
+        "grid_count": grid_count,
+        "take_profit": take_profit,
+        "execution": asdict(context["execution"]),
+        "wf_window_count": context["wf_window_count"],
+        "wf_min_window_size": context["wf_min_window_size"],
+    }
+    cache_path = _candidate_cache_path(context["cache_dir"], cache_payload)
+    cached = _load_cached_candidate(cache_path)
+    if cached is not None:
+        return cached
+
+    run_result = run_grid_backtest(
+        data=context["data"],
+        scenario_name=str(context["scenario_name"]),
+        grid_spacing_pct=spacing,
+        grid_count=grid_count,
+        take_profit_pct=take_profit,
+        symbol=str(context["symbol"]),
+        market=str(context["market"]),
+        lot_size=int(context["lot_size"]),
+        lot_size_source=str(context["lot_size_source"]),
+        execution_config=context["execution"],
+    )
+    walk_forward_runs = [
+        run_grid_backtest(
+            data=window,
+            scenario_name=f"{context['scenario_name']}_wf_{index + 1}",
+            grid_spacing_pct=spacing,
+            grid_count=grid_count,
+            take_profit_pct=take_profit,
+            symbol=str(context["symbol"]),
+            market=str(context["market"]),
+            lot_size=int(context["lot_size"]),
+            lot_size_source=str(context["lot_size_source"]),
+            execution_config=context["execution"],
+        )
+        for index, window in enumerate(context["walk_forward_windows"])
+    ]
+    robust_summary = summarize_walk_forward_runs(walk_forward_runs)
+    run_result["summary"].update(robust_summary)
+    _save_cached_candidate(cache_path, run_result)
+    return run_result
+
+
 def run_grid_backtest(
     data: pd.DataFrame,
     scenario_name: str,
@@ -889,6 +957,7 @@ def optimize_grid_parameters(
 
     当前项目故意保留穷举，优先保证结果可重复和可解释；
     但最终选参不再只看单个样本窗口里的最高分，而是叠加多窗口稳健性筛选。
+    `jobs>1` 时会切到多进程执行单个参数候选，优先提升 CPU 密集型回测阶段的吞吐。
     """
     execution = execution_config or build_execution_config("research")
     walk_forward_windows = build_walk_forward_windows(
@@ -904,64 +973,34 @@ def optimize_grid_parameters(
     ]
     effective_jobs = max(1, int(jobs))
     data_fingerprint = _data_fingerprint(data)
-
-    def run_candidate(spec: tuple[float, int, float]) -> dict[str, object]:
-        spacing, grid_count, take_profit = spec
-        cache_payload = {
-            "data": data_fingerprint,
-            "scenario": scenario_name,
-            "symbol": symbol,
-            "market": market,
-            "lot_size": lot_size,
-            "spacing": spacing,
-            "grid_count": grid_count,
-            "take_profit": take_profit,
-            "execution": asdict(execution),
-            "wf_window_count": wf_window_count,
-            "wf_min_window_size": wf_min_window_size,
-        }
-        cache_path = _candidate_cache_path(cache_dir, cache_payload)
-        cached = _load_cached_candidate(cache_path)
-        if cached is not None:
-            return cached
-
-        run_result = run_grid_backtest(
-            data=data,
-            scenario_name=scenario_name,
-            grid_spacing_pct=spacing,
-            grid_count=grid_count,
-            take_profit_pct=take_profit,
-            symbol=symbol,
-            market=market,
-            lot_size=lot_size,
-            lot_size_source=lot_size_source,
-            execution_config=execution,
-        )
-        walk_forward_runs = [
-            run_grid_backtest(
-                data=window,
-                scenario_name=f"{scenario_name}_wf_{index + 1}",
-                grid_spacing_pct=spacing,
-                grid_count=grid_count,
-                take_profit_pct=take_profit,
-                symbol=symbol,
-                market=market,
-                lot_size=lot_size,
-                lot_size_source=lot_size_source,
-                execution_config=execution,
-            )
-            for index, window in enumerate(walk_forward_windows)
-        ]
-        robust_summary = summarize_walk_forward_runs(walk_forward_runs)
-        run_result["summary"].update(robust_summary)
-        _save_cached_candidate(cache_path, run_result)
-        return run_result
+    context = {
+        "data": data,
+        "walk_forward_windows": walk_forward_windows,
+        "scenario_name": scenario_name,
+        "symbol": symbol,
+        "market": market,
+        "lot_size": lot_size,
+        "lot_size_source": lot_size_source,
+        "execution": execution,
+        "wf_window_count": wf_window_count,
+        "wf_min_window_size": wf_min_window_size,
+        "cache_dir": cache_dir,
+        "data_fingerprint": data_fingerprint,
+    }
 
     if effective_jobs == 1 or len(candidate_specs) <= 1:
-        candidate_runs = [run_candidate(spec) for spec in candidate_specs]
+        _set_grid_optimization_context(context)
+        try:
+            candidate_runs = [_run_grid_candidate_task(spec) for spec in candidate_specs]
+        finally:
+            _set_grid_optimization_context(None)
     else:
-        with ThreadPoolExecutor(max_workers=effective_jobs) as executor:
-            candidate_runs = list(executor.map(run_candidate, candidate_specs))
+        with ProcessPoolExecutor(
+            max_workers=effective_jobs,
+            initializer=_set_grid_optimization_context,
+            initargs=(context,),
+        ) as executor:
+            candidate_runs = list(executor.map(_run_grid_candidate_task, candidate_specs))
 
     rows: list[dict[str, object]] = []
     run_records: dict[tuple[float, int, float], dict[str, object]] = {}

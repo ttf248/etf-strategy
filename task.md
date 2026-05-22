@@ -1619,3 +1619,64 @@
 - `py -3.13 -m unittest tests.test_grid_strategy tests.test_repo_contracts tests.test_yahoo_data`
 - `py -3.13 -m compileall etf_strategy tests`
 - `git diff --check`
+
+## 港股通沪 Yahoo 代码归一化修复
+
+### 状态
+
+进行中，已定位问题并完成代码修复，待重新批量验证。
+
+### 修改方案
+
+把上交所快照里的 5 位证券代码继续保留为正式快照字段，但生成 Yahoo 下载代码时改成“去掉额外前导 0 后至少保留 4 位”的港股代码格式，避免把 `09988.HK` 这类无效代码传给 Yahoo。
+
+### 修改内容
+
+- `etf_strategy/data/southbound.py`
+  - `normalize_southbound_symbol()` 改为输出 Yahoo 可识别的 4 位港股代码
+  - 保留快照里的 `SecurityCode=00001/02800/09988` 等 5 位字段，不改仓库快照口径
+- `tests/test_yahoo_data.py`
+  - 补充 `00001 -> 0001.HK`、`02800 -> 2800.HK`、`00005 -> 0005.HK` 断言
+- `tests/test_grid_strategy.py`
+  - 批量标的池测试改为使用修复后的 `0001.HK`
+
+### 设计取舍
+
+- 快照字段继续保留上交所原始 5 位代码，便于和官方名单逐行对照。
+- 只有对外下载符号做 Yahoo 兼容转换，避免为了适配下载链路而污染原始参考数据。
+
+### 验证
+
+- 待重新执行 `southbound_shanghai_all` 的日线 / 15 分钟批量命令确认。
+
+## 寻参并发改造为多进程
+
+### 状态
+
+进行中，已完成核心代码改造，待验证后提交并继续批量回测。
+
+### 修改方案
+
+把网格和反转两套参数搜索从线程池改成进程池，保留现有 `--jobs` 入口，但语义收敛为“单标的寻参并行进程数”，优先提升 CPU 密集型回测吞吐。
+
+### 修改内容
+
+- `etf_strategy/strategy/grid.py`
+  - 新增模块级候选任务函数和上下文初始化函数
+  - `optimize_grid_parameters()` 在 `jobs > 1` 时改用 `ProcessPoolExecutor`
+- `etf_strategy/strategy/rebound.py`
+  - 同步改成模块级任务函数 + `ProcessPoolExecutor`
+- `etf_strategy/cli.py`
+  - `--jobs` 帮助文案改成“并行进程数”
+- `README.md`
+  - 同步 `--jobs` 参数说明
+
+### 设计取舍
+
+- Windows 下进程池要求任务函数可 pickle，所以不能继续用 `optimize_*` 里的闭包 `run_candidate()`，需要改成模块级函数。
+- 这一轮只改“单标的内部寻参并发”，不同时引入“多标的并发”，避免两层并发把 CPU、内存和 Yahoo 下载都打满。
+- 共享上下文改成初始化后只读复用，避免每个参数候选重复拼装大对象。
+
+### 验证
+
+- 待执行单元测试、编译检查和 `jobs=2` 的真实寻参 smoke test。

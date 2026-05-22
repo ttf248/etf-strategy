@@ -42,7 +42,20 @@ def normalize_southbound_security_code(code: str) -> str:
 
 
 def normalize_southbound_symbol(code: str) -> str:
-    return f"{normalize_southbound_security_code(code)}.HK"
+    """把上交所 5 位快照代码转换成 Yahoo 可识别的港股代码。
+
+    上交所快照会把港股代码统一补齐成 5 位，例如：
+    - `00001` 表示 `0001.HK`
+    - `02800` 表示 `2800.HK`
+    - `09988` 表示 `9988.HK`
+
+    Yahoo 侧使用的是“去掉额外前导 0 后，至少保留 4 位”的写法，
+    所以这里不能直接把 5 位快照代码拼成 `.HK`。
+    """
+    normalized = normalize_southbound_security_code(code)
+    significant_code = normalized.lstrip("0") or "0"
+    yahoo_code = significant_code.zfill(4) if len(significant_code) <= 4 else significant_code
+    return f"{yahoo_code}.HK"
 
 
 def fetch_southbound_shanghai_eligible_rows(timeout: int = 20) -> list[dict[str, str]]:

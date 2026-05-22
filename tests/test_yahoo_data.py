@@ -140,7 +140,8 @@ class YahooDataTests(unittest.TestCase):
         self.assertEqual(rows[0]["SecurityCode"], "00001")
         self.assertEqual(rows[0]["AbbrCn"], "长和")
         self.assertEqual(rows[1]["SecurityType"], "ETF")
-        self.assertEqual(normalize_southbound_symbol(rows[1]["SecurityCode"]), "02800.HK")
+        self.assertEqual(normalize_southbound_symbol(rows[0]["SecurityCode"]), "0001.HK")
+        self.assertEqual(normalize_southbound_symbol(rows[1]["SecurityCode"]), "2800.HK")
 
     @patch("etf_strategy.data.southbound.requests.get")
     def test_refresh_and_load_southbound_shanghai_snapshot(self, mock_get: Mock) -> None:
@@ -160,6 +161,7 @@ class YahooDataTests(unittest.TestCase):
         self.assertEqual(rows[0]["SecurityCode"], "00005")
         self.assertEqual(rows[0]["AbbrCn"], "汇丰控股")
         self.assertEqual(build_southbound_source_label(rows[0]["UpdateDate"]), "上交所港股通沪名单，数据截至 2026-05-21")
+        self.assertEqual(normalize_southbound_symbol(rows[0]["SecurityCode"]), "0005.HK")
 
 
 if __name__ == "__main__":

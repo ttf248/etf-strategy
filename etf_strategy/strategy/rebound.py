@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import pickle
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict
 from itertools import product
 from pathlib import Path
@@ -33,6 +33,7 @@ from etf_strategy.strategy.sampling import build_walk_forward_windows, format_ti
 
 
 TOTAL_CAPITAL = 200000.0
+_REBOUND_OPTIMIZATION_CONTEXT: dict[str, object] | None = None
 
 
 def _compute_rsi(close: pd.Series, window: int) -> pd.Series:
@@ -140,6 +141,67 @@ def _save_cached_candidate(cache_path: Path | None, run_result: dict[str, object
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     with cache_path.open("wb") as handle:
         pickle.dump(run_result, handle)
+
+
+def _set_rebound_optimization_context(context: dict[str, object] | None) -> None:
+    """为串行和多进程反转寻参统一准备只读上下文。"""
+    global _REBOUND_OPTIMIZATION_CONTEXT
+    _REBOUND_OPTIMIZATION_CONTEXT = context
+
+
+def _run_rebound_candidate_task(params: dict[str, object]) -> dict[str, object]:
+    """执行单个反转参数候选。
+
+    保持模块级函数，避免 Windows 多进程模式下闭包任务不可 pickle。
+    """
+    context = _REBOUND_OPTIMIZATION_CONTEXT
+    if context is None:
+        raise RuntimeError("反转寻参上下文尚未初始化。")
+
+    cache_payload = {
+        "data": context["data_fingerprint"],
+        "scenario": context["scenario_name"],
+        "strategy_kind": context["strategy_kind"],
+        "symbol": context["symbol"],
+        "market": context["market"],
+        "lot_size": context["lot_size"],
+        "params": params,
+        "execution": asdict(context["execution"]),
+        "wf_window_count": context["wf_window_count"],
+        "wf_min_window_size": context["wf_min_window_size"],
+    }
+    cache_path = _candidate_cache_path(context["cache_dir"], cache_payload)
+    cached = _load_cached_candidate(cache_path)
+    if cached is not None:
+        return cached
+    run_result = run_rebound_backtest(
+        data=context["data"],
+        scenario_name=str(context["scenario_name"]),
+        strategy_kind=str(context["strategy_kind"]),
+        symbol=str(context["symbol"]),
+        market=str(context["market"]),
+        lot_size=int(context["lot_size"]),
+        lot_size_source=str(context["lot_size_source"]),
+        params=params,
+        execution_config=context["execution"],
+    )
+    walk_forward_runs = [
+        run_rebound_backtest(
+            data=window,
+            scenario_name=f"{context['scenario_name']}_wf_{index + 1}",
+            strategy_kind=str(context["strategy_kind"]),
+            symbol=str(context["symbol"]),
+            market=str(context["market"]),
+            lot_size=int(context["lot_size"]),
+            lot_size_source=str(context["lot_size_source"]),
+            params=params,
+            execution_config=context["execution"],
+        )
+        for index, window in enumerate(context["walk_forward_windows"])
+    ]
+    run_result["summary"].update(summarize_walk_forward_runs(walk_forward_runs))
+    _save_cached_candidate(cache_path, run_result)
+    return run_result
 
 
 def _prepare_daily_features(data: pd.DataFrame, params: dict[str, object]) -> pd.DataFrame:
@@ -577,7 +639,10 @@ def optimize_rebound_parameters(
     jobs: int = DEFAULT_JOBS,
     cache_dir: str | Path | None = None,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
-    """穷举反转类策略参数。"""
+    """穷举反转类策略参数。
+
+    `jobs>1` 时会切到多进程并发单个参数候选，避免线程模式在 CPU 密集型回测上受限。
+    """
     execution = execution_config or build_execution_config("research")
     walk_forward_windows = build_walk_forward_windows(
         data,
@@ -588,58 +653,35 @@ def optimize_rebound_parameters(
     candidate_params = [dict(zip(keys, values)) for values in product(*(parameter_space[key] for key in keys))]
     data_fingerprint = _data_fingerprint(data)
     effective_jobs = max(1, int(jobs))
-
-    def run_candidate(params: dict[str, object]) -> dict[str, object]:
-        cache_payload = {
-            "data": data_fingerprint,
-            "scenario": scenario_name,
-            "strategy_kind": strategy_kind,
-            "symbol": symbol,
-            "market": market,
-            "lot_size": lot_size,
-            "params": params,
-            "execution": asdict(execution),
-            "wf_window_count": wf_window_count,
-            "wf_min_window_size": wf_min_window_size,
-        }
-        cache_path = _candidate_cache_path(cache_dir, cache_payload)
-        cached = _load_cached_candidate(cache_path)
-        if cached is not None:
-            return cached
-        run_result = run_rebound_backtest(
-            data=data,
-            scenario_name=scenario_name,
-            strategy_kind=strategy_kind,
-            symbol=symbol,
-            market=market,
-            lot_size=lot_size,
-            lot_size_source=lot_size_source,
-            params=params,
-            execution_config=execution,
-        )
-        walk_forward_runs = [
-            run_rebound_backtest(
-                data=window,
-                scenario_name=f"{scenario_name}_wf_{index + 1}",
-                strategy_kind=strategy_kind,
-                symbol=symbol,
-                market=market,
-                lot_size=lot_size,
-                lot_size_source=lot_size_source,
-                params=params,
-                execution_config=execution,
-            )
-            for index, window in enumerate(walk_forward_windows)
-        ]
-        run_result["summary"].update(summarize_walk_forward_runs(walk_forward_runs))
-        _save_cached_candidate(cache_path, run_result)
-        return run_result
+    context = {
+        "data": data,
+        "walk_forward_windows": walk_forward_windows,
+        "scenario_name": scenario_name,
+        "strategy_kind": strategy_kind,
+        "symbol": symbol,
+        "market": market,
+        "lot_size": lot_size,
+        "lot_size_source": lot_size_source,
+        "execution": execution,
+        "wf_window_count": wf_window_count,
+        "wf_min_window_size": wf_min_window_size,
+        "cache_dir": cache_dir,
+        "data_fingerprint": data_fingerprint,
+    }
 
     if effective_jobs == 1 or len(candidate_params) <= 1:
-        candidate_runs = [run_candidate(params) for params in candidate_params]
+        _set_rebound_optimization_context(context)
+        try:
+            candidate_runs = [_run_rebound_candidate_task(params) for params in candidate_params]
+        finally:
+            _set_rebound_optimization_context(None)
     else:
-        with ThreadPoolExecutor(max_workers=effective_jobs) as executor:
-            candidate_runs = list(executor.map(run_candidate, candidate_params))
+        with ProcessPoolExecutor(
+            max_workers=effective_jobs,
+            initializer=_set_rebound_optimization_context,
+            initargs=(context,),
+        ) as executor:
+            candidate_runs = list(executor.map(_run_rebound_candidate_task, candidate_params))
 
     rows: list[dict[str, object]] = []
     run_records: dict[str, dict[str, object]] = {}

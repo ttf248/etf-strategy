@@ -549,10 +549,10 @@ class GridStrategyTests(unittest.TestCase):
                 patch(
                     "etf_strategy.cli._resolve_batch_symbols",
                     return_value=(
-                        ["00001.HK"],
+                        ["0001.HK"],
                         {
-                            "00001.HK": SymbolSpec(
-                                "00001.HK",
+                            "0001.HK": SymbolSpec(
+                                "0001.HK",
                                 "长和",
                                 "港股通沪股票",
                                 "上交所港股通沪名单，数据截至 2026-05-21",
