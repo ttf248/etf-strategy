@@ -167,6 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.getenv("ETF_STRATEGY_PROXY"),
         help="访问 Yahoo 必须配置的代理地址，例如 http://127.0.0.1:7897",
     )
+    run_parser.add_argument("--local-only", action="store_true", help="不联网下载，直接使用本地已有 K 线 CSV")
     run_parser.add_argument("--output-dir", default=None, help="完整工作流输出目录")
     run_parser.add_argument("--report-dir", default=None, help="图表与 Markdown 报告输出目录")
     run_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
@@ -186,6 +187,7 @@ def build_parser() -> argparse.ArgumentParser:
     batch_parser.add_argument("--interval", default=DEFAULT_MINUTE_INTERVAL, help="K 线周期，例如 1d、15m")
     batch_parser.add_argument("--period", default=DEFAULT_MINUTE_PERIOD, help="分钟 K 线下载窗口，例如 60d")
     batch_parser.add_argument("--download", action="store_true", help="批量运行前先下载并合并行情")
+    batch_parser.add_argument("--local-only", action="store_true", help="不联网下载，直接使用本地已有 K 线 CSV")
     batch_parser.add_argument("--proxy", default=os.getenv("ETF_STRATEGY_PROXY"), help="访问 Yahoo 必须配置的代理地址")
     batch_parser.add_argument("--output-dir", default="outputs/batch", help="批量中间结果与汇总输出目录")
     batch_parser.add_argument("--report-dir", default=str(DEFAULT_BATCH_REPORT_DIR), help="批量报告输出目录")
@@ -277,6 +279,12 @@ def _resolve_jobs(value: str | int) -> int:
     if parsed <= 0:
         raise ValueError("--jobs 必须是正整数或 auto。")
     return parsed
+
+
+def _validate_local_only_conflict(args: argparse.Namespace, command_name: str) -> None:
+    """阻止“本地模式”和“联网下载”被同时启用。"""
+    if getattr(args, "local_only", False) and getattr(args, "download", False):
+        raise ValueError(f"{command_name} 的 --local-only 不能和 --download 同时使用。")
 
 
 def _default_compare_strategy_kinds(interval: str) -> list[StrategyKind]:
@@ -667,17 +675,23 @@ def handle_run(args: argparse.Namespace) -> int:
         report_dir,
     )
     execution_config = _build_execution_from_args(args)
-    logger.info("[1/3] 开始下载并合并最新行情")
-    bars = download_price_bars(
-        symbol=args.symbol,
-        interval=args.interval,
-        start_date=args.start if args.interval == "1d" else None,
-        end_date=args.end if args.interval == "1d" else None,
-        period=args.period if intraday_mode else None,
-        proxy=args.proxy,
-    )
-    merged_data_path = save_price_bars(bars, data_path, interval=args.interval, merge_with_existing=True)
-    logger.info("[1/3] 下载与落盘完成: data_path={}", merged_data_path)
+    if args.local_only:
+        if not data_path.exists():
+            raise FileNotFoundError(f"本地模式缺少行情文件，请先准备本地 CSV: {data_path}")
+        merged_data_path = data_path
+        logger.info("[1/3] 本地模式已开启，跳过联网下载: data_path={}", merged_data_path)
+    else:
+        logger.info("[1/3] 开始下载并合并最新行情")
+        bars = download_price_bars(
+            symbol=args.symbol,
+            interval=args.interval,
+            start_date=args.start if args.interval == "1d" else None,
+            end_date=args.end if args.interval == "1d" else None,
+            period=args.period if intraday_mode else None,
+            proxy=args.proxy,
+        )
+        merged_data_path = save_price_bars(bars, data_path, interval=args.interval, merge_with_existing=True)
+        logger.info("[1/3] 下载与落盘完成: data_path={}", merged_data_path)
 
     # `run` 总是先把最新下载结果和本地样本合并落盘，再交给统一工作流和报告层复用。
     logger.info("[2/3] 开始执行完整回测工作流")
@@ -856,6 +870,7 @@ def _write_failed_batch_report(
 def handle_batch(args: argparse.Namespace) -> int:
     """批量执行多个标的的完整研究流程。"""
     started_at = perf_counter()
+    _validate_local_only_conflict(args, "batch")
     symbols, specs_by_symbol = _resolve_batch_symbols(args)
 
     intraday_mode = is_intraday_interval(args.interval)
@@ -888,6 +903,8 @@ def handle_batch(args: argparse.Namespace) -> int:
                 )
                 save_price_bars(bars, data_path, interval=args.interval, merge_with_existing=True)
                 download_completed = True
+            elif args.local_only:
+                logger.info("[batch] 本地模式已开启，跳过联网下载: symbol={} data_path={}", symbol, data_path)
             if not data_path.exists():
                 raise FileNotFoundError(f"行情文件不存在，请先下载或传 --download: {data_path}")
 

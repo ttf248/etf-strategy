@@ -73,6 +73,9 @@
 
 ```powershell
 py -3.13 main.py run --period 60d --proxy http://127.0.0.1:7897
+
+# 如果本地分钟线 CSV 已准备好，也可以跳过联网下载：
+py -3.13 main.py run --local-only
 ```
 
 这个命令在进入回测前，会先把本次下载结果和本地 `data/processed/1810_hk_15m.csv` 合并。
@@ -87,6 +90,9 @@ py -3.13 main.py report --data data/processed/1810_hk_15m.csv --interval 15m
 
 ```powershell
 py -3.13 main.py batch --symbol-set hstech_plus_513050 --download --proxy http://127.0.0.1:7897 --jobs auto --cache-dir outputs/cache
+
+# 本地已有 CSV 时可显式切到离线批量模式：
+py -3.13 main.py batch --symbol-set hstech_plus_513050 --local-only --cache-dir outputs/cache
 ```
 
 ## 分钟线参数怎么测

@@ -91,6 +91,13 @@ class GridStrategyTests(unittest.TestCase):
         self.assertIsNone(args.end)
         self.assertEqual(args.execution_profile, "realistic")
 
+    def test_run_parser_reads_local_only_mode(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(["run", "--symbol", "1810.HK", "--local-only"])
+
+        self.assertTrue(args.local_only)
+
     def test_backtest_parser_reads_cash_grid_policy_arguments(self) -> None:
         parser = build_parser()
 
@@ -286,6 +293,53 @@ class GridStrategyTests(unittest.TestCase):
         execution_config = mock_workflow.call_args.kwargs["execution_config"]
         self.assertEqual(execution_config.profile, "realistic")
 
+    def test_handle_run_local_only_skips_download_and_uses_existing_data(self) -> None:
+        parser = build_parser()
+        workflow_result = {
+            "combined_summary_path": "outputs/combined_summary.csv",
+            "optimization": {
+                "best_run": {
+                    "summary": {
+                        "GridSpacingPct": 7.0,
+                        "GridCount": 5,
+                        "TakeProfitPct": 3.0,
+                    }
+                }
+            },
+            "validation": {
+                "run": {
+                    "summary": {
+                        "ReturnPct": 1.2,
+                        "MaxDrawdownPct": 4.5,
+                        "CostReductionPct": 2.3,
+                    }
+                }
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_path = Path(temp_dir) / "1810_hk_15m.csv"
+            data_path.write_text("Date,Open,High,Low,Close,Volume\n2026-05-20 09:30:00,1,1,1,1,1\n", encoding="utf-8")
+            args = parser.parse_args(["run", "--symbol", "1810.HK", "--interval", "15m", "--local-only"])
+            with (
+                patch("etf_strategy.cli._resolve_download_output_path", return_value=data_path),
+                patch("etf_strategy.cli.download_price_bars") as mock_download,
+                patch("etf_strategy.cli.save_price_bars") as mock_save,
+                patch("etf_strategy.cli.run_minute_full_workflow", return_value=workflow_result) as mock_workflow,
+                patch(
+                    "etf_strategy.cli.build_minute_report_markdown",
+                    return_value="reports/1810_hk/minute/1810_hk_15m_grid_report.md",
+                ),
+                patch("etf_strategy.cli._refresh_unified_report_index", return_value=Path("reports") / "report_index.md"),
+                patch("builtins.print"),
+            ):
+                result = handle_run(args)
+
+        self.assertEqual(result, 0)
+        mock_download.assert_not_called()
+        mock_save.assert_not_called()
+        self.assertEqual(mock_workflow.call_args.kwargs["data_path"], data_path)
+
     def test_batch_parser_reads_symbols_and_parallel_options(self) -> None:
         parser = build_parser()
 
@@ -320,6 +374,13 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(args.interval, "15m")
         self.assertEqual(args.period, "60d")
         self.assertEqual(args.jobs, "8")
+
+    def test_batch_parser_reads_local_only_mode(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(["batch", "--symbol-set", "hstech_plus_513050", "--local-only"])
+
+        self.assertTrue(args.local_only)
 
     def test_batch_parser_reads_southbound_shanghai_symbol_set(self) -> None:
         parser = build_parser()
@@ -690,6 +751,15 @@ class GridStrategyTests(unittest.TestCase):
         mock_download.assert_called_once()
         mock_failed_report.assert_called_once()
         self.assertEqual(result, 1)
+
+    def test_handle_batch_rejects_local_only_with_download(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["batch", "--symbols", "1810.HK", "--interval", "15m", "--download", "--local-only"]
+        )
+
+        with self.assertRaisesRegex(ValueError, "--local-only 不能和 --download 同时使用"):
+            handle_batch(args)
 
     def test_backtest_parser_reads_grid_parameters(self) -> None:
         parser = build_parser()

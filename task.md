@@ -1683,3 +1683,40 @@
 ### 验证
 
 - 待执行单元测试、编译检查和 `jobs=2` 的真实寻参 smoke test。
+
+## 本地 K 线离线回测模式
+
+### 状态
+
+进行中，已完成 CLI 与文档改造，待验证后提交。
+
+### 修改方案
+
+为 `run` 和 `batch` 新增显式的 `--local-only` 模式，跳过 Yahoo 下载，只基于本地已有 K 线 CSV 执行完整回测、报告生成和统一汇总刷新。
+
+### 修改内容
+
+- `etf_strategy/cli.py`
+  - `run` 新增 `--local-only`
+  - `batch` 新增 `--local-only`
+  - `run --local-only` 时跳过 `download_price_bars()` 和 `save_price_bars()`
+  - `batch --local-only` 时逐标的跳过下载，只校验本地 CSV 是否存在
+  - 增加 `--local-only` 与 `--download` 的冲突校验
+- `tests/test_grid_strategy.py`
+  - 补充 `run/batch` 解析本地模式测试
+  - 补充 `run --local-only` 不触发下载测试
+  - 补充 `batch --local-only --download` 冲突测试
+- 文档
+  - 更新 `README.md`
+  - 更新 `doc/minute_grid_research.md`
+  - 更新 `doc/grid_parameter_search.md`
+
+### 设计取舍
+
+- `report`、`optimize`、`backtest` 本来就要求显式传 `--data`，天然是本地 CSV 模式；这轮只补 `run` 和 `batch` 的缺口。
+- `batch` 在不传 `--download` 时原本就会使用本地文件，但缺少显式模式；新增 `--local-only` 主要是为了降低误用和阅读成本。
+- `run` 的本地模式继续复用默认文件命名规则，不额外引入第二套本地路径参数，避免和已有 `report --data` 的职责重叠。
+
+### 验证
+
+- 待执行单元测试、编译检查和本地模式 smoke test。

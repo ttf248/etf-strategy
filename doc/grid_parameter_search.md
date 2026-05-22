@@ -11,6 +11,7 @@
 当前代码口径是：
 
 - 日线 `download` / `run` 在不传 `--start/--end` 时，会先尽量下载 Yahoo 可提供的全历史
+- `run --local-only` 可跳过 Yahoo 下载，直接基于本地已有 CSV 执行完整回测链路
 - 仓库里提交的 `data/processed/1810_hk_daily.csv` 只是某次提交时的正式样本快照
 - 参数筛选不再只看“整段样本内单次最高分”，而是会额外检查多窗口稳健性
 

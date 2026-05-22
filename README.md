@@ -54,6 +54,8 @@
 需要注意：
 
 - `download` 和 `run` 命令现在会优先把新下载的数据和本地 CSV 做合并
+- `run --local-only` 会跳过 Yahoo 下载，直接基于本地已有 CSV 重跑完整回测和报告
+- `batch --local-only` 会跳过批量下载，只基于本地已有 K 线文件批量回测
 - 日线在不传 `--start/--end` 时，会按 Yahoo 可提供的全历史口径下载
 - 仓库里提交的两份 CSV 只是当前示例快照，不代表下载能力上限
 
@@ -109,6 +111,9 @@ py -3.13 main.py batch --symbol-set southbound_shanghai_all --interval 1d --down
 
 ```powershell
 py -3.13 main.py batch --symbol-set southbound_shanghai_all --interval 15m --download --proxy http://127.0.0.1:7897 --jobs auto --cache-dir outputs/cache/southbound_15m
+
+# 如果本地已经准备好对应 CSV，也可以完全离线重跑：
+py -3.13 main.py batch --symbol-set southbound_shanghai_all --interval 15m --local-only --cache-dir outputs/cache/southbound_15m
 ```
 
 补充说明：
@@ -322,6 +327,7 @@ py -3.13 main.py batch --symbol-set hstech_plus_513050 --download --proxy http:/
 - `southbound_shanghai_all`：上交所官方港股通沪全量名单，当前 `633` 只（`602` 股票 + `31` ETF）
 
 如果希望批量运行前先下载并合并行情，加上 `--download`。批量入口仍然只做研究回测，不做实盘下单。
+如果只想基于本地已有 CSV 重跑，不联网下载，使用 `--local-only`。
 
 ## 验证
 
