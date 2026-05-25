@@ -200,16 +200,18 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
             job.status = "running"
             job.progress_pct = 5.0
             job.started_at = datetime.now(UTC)
+            target_job_id = job.id
             session.commit()
         else:
             job = claim_next_queued_job(session)
             if job is None:
                 session.commit()
                 return None
+            target_job_id = job.id
             session.commit()
 
     with open_session() as session:
-        job = get_backtest_job(session, preferred_job_id or int(job.id))
+        job = get_backtest_job(session, target_job_id)
         if job is None:
             return None
         payload = BacktestRequest(**job.request_payload_json)
