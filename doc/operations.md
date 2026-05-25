@@ -1,0 +1,126 @@
+# 运维手册
+
+本文记录平台运行后的常见操作和故障处理。
+
+## 健康检查
+
+API 健康检查：
+
+```powershell
+curl http://127.0.0.1:8000/health
+```
+
+正常返回：
+
+```json
+{"status":"ok"}
+```
+
+前端默认地址：
+
+```text
+http://127.0.0.1:3000
+```
+
+## 行情同步
+
+手动同步单个标的：
+
+```powershell
+py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
+```
+
+同步所有已知标的：
+
+```powershell
+py -3.13 main.py sync-now --interval 15m --period 60d
+```
+
+Scheduler 默认在 Asia/Shanghai 时区运行：
+
+- 18:05 同步 `1d`。
+- 18:15 同步 `15m`，窗口 `60d`。
+- 18:25 同步 `1m`，窗口 `7d`。
+
+## 回测任务
+
+回测由 API 入队，Worker 执行。若任务长期停留在 `queued`：
+
+1. 确认 Worker 进程存在。
+2. 查看日志中是否有数据库或策略异常。
+3. 确认目标标的和周期在 `price_bars` 中有足够数据。
+
+失败任务可以通过前端重试，也可以调用 `POST /api/backtests/{job_id}/retry`。
+
+## 日志
+
+后端日志会输出到终端，并写入：
+
+```text
+log/etf_strategy_YYYY-MM-DD.log
+```
+
+排查顺序：
+
+1. 先看对应进程终端输出。
+2. 再看当天日志文件。
+3. 数据问题再查前端同步记录或 `data_sync_runs`。
+
+## 端口占用
+
+API 默认端口是 `8000`，前端默认端口是 `3000`。
+
+检查端口：
+
+```powershell
+netstat -ano | Select-String '127.0.0.1:8000'
+netstat -ano | Select-String '127.0.0.1:3000'
+```
+
+API 启动项默认带 `--replace-existing`，只会替换命令行可识别为本项目 `main.py api` 的旧进程。其他服务占用 `8000` 时不会被自动结束。
+
+## 数据库维护
+
+初始化：
+
+```powershell
+py -3.13 main.py init-db
+```
+
+导入本地 CSV：
+
+```powershell
+py -3.13 main.py import-csv --source-dir data/processed
+```
+
+如果 CSV 导入失败，优先检查：
+
+- 文件是否是标准化行情格式。
+- 文件名能否推断标的和周期。
+- 数据库连接串是否指向正确实例。
+
+## Yahoo 访问问题
+
+在无法直连 Yahoo 的网络环境中，需要配置代理：
+
+```powershell
+$env:ETF_STRATEGY_PROXY="http://127.0.0.1:7897"
+```
+
+常见失败原因：
+
+- 代理不可用。
+- Yahoo 限流。
+- 分钟线请求窗口超过 Yahoo 免费数据范围。
+- 标的代码不是 Yahoo 可识别格式。
+
+## 运行产物清理
+
+默认不应提交以下目录中的临时产物：
+
+- `outputs/`
+- `reports/platform/`
+- `log/`
+- 前端构建缓存。
+
+正式样例报告位于 `reports/`，是否提交应由维护者按任务目标决定。

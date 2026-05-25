@@ -1,36 +1,62 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ETF Strategy Frontend
 
-## Getting Started
+这是 ETF Strategy 的 Web 控制台，基于 Next.js、React、Ant Design 和 ECharts 构建。
 
-First, run the development server:
+前端只负责交互和展示，不直接访问 PostgreSQL。所有数据都通过 FastAPI 获取。
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## 页面
+
+- `/`：平台概览。
+- `/market-data`：行情统计、覆盖区间、同步记录。
+- `/templates`：策略参数模板管理。
+- `/backtests`：回测任务提交、队列查看和重试。
+- `/reports`：历史报告列表。
+- `/reports/[id]`：报告详情、权益曲线、交易和事件。
+
+## 环境变量
+
+```powershell
+$env:NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:8000"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+如果不设置，前端应按代码中的默认 API 地址访问本地后端。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 开发
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```powershell
+npm install
+npx next dev --hostname 127.0.0.1 --port 3000
+```
 
-## Learn More
+访问：
 
-To learn more about Next.js, take a look at the following resources:
+```text
+http://127.0.0.1:3000
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 构建
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```powershell
+npm run lint
+npm run build
+npm run start
+```
 
-## Deploy on Vercel
+## 与后端协作
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+前端依赖以下 API 分组：
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `/api/market-data/*`
+- `/api/backtests/*`
+- `/api/reports/*`
+- `/api/templates/*`
+
+接口说明见 [API 接口说明](../doc/api.md)。整体架构见 [架构设计](../doc/architecture.md)。
+
+## 开发约定
+
+- 业务页面使用 `src/app/` 路由。
+- 可复用视图组件放在 `src/components/`。
+- API 调用封装在 `src/lib/api.ts`。
+- 策略模板相关前端配置放在 `src/lib/strategy-template-config.ts`。
+- 页面文案保持中文，风格偏内部研究平台，不做营销型落地页。

@@ -2141,3 +2141,57 @@
 - 已执行 `py -3.13 -m unittest tests.test_platform_features tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 已执行 `netstat -ano | Select-String '127.0.0.1:8000'`，确认当前没有 TCP 监听残留
+
+## 重建开源项目文档体系
+
+### 状态
+
+进行中，已按“中文优先的开源研究平台”定位重写长期文档和前端文档，并新增开源配套文件。
+
+### 修改方案
+
+删除旧的策略专题文章体系，不再让 README 同时承担报告索引、教程、专题复盘和维护说明。新的文档按开源项目维护方式分层：
+
+- 首页只保留项目定位、快速开始、常用命令、文档导航和贡献入口
+- `doc/` 负责架构、数据流、部署、运维、开发、API 和策略引擎
+- `frontend/README.md` 负责前端控制台说明
+- `reports/` 保持为自动生成报告和样例输出，不手工改写
+
+### 修改内容
+
+- 重写 `README.md`
+  - 改为平台化项目首页
+  - 保留样例报告入口，但不再把 README 写成报告索引
+- 重建 `doc/`
+  - 新增 `architecture.md`
+  - 新增 `data-flow.md`
+  - 新增 `deployment.md`
+  - 新增 `operations.md`
+  - 新增 `development.md`
+  - 新增 `api.md`
+  - 新增 `strategy-engine.md`
+  - 重写 `index.md`
+  - 删除旧的专题文章文件
+- 重写 `frontend/README.md`
+  - 删除 Next.js 默认模板内容
+  - 改为前端页面、环境变量、开发、构建和后端 API 协作说明
+- 新增开源配套文件
+  - `LICENSE`：MIT
+  - `CONTRIBUTING.md`
+  - `CHANGELOG.md`
+- 更新 `tests/test_repo_contracts.py`
+  - Markdown 链接检查切换到新文档结构
+  - 增加 README 开源入口校验
+  - 增加旧专题文档已移除的契约
+
+### 设计取舍
+
+- 文档按生产部署优先写，但不新增 Docker Compose、systemd 或反向代理配置文件，避免文档承诺超过当前仓库实现。
+- 保留 CLI 研究入口，但项目主线改为“研究平台”，即 PostgreSQL 主存储、Web 控制台、异步回测和参数模板。
+- 不改 `reports/` 下大量历史回测报告，因为它们是生成产物和样例输出，不适合手工重写。
+
+### 验证
+
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `py -3.13 -m unittest tests.test_platform_features`
+- 已执行 `git diff --check`

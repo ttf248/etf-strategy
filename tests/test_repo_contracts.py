@@ -21,14 +21,17 @@ class RepoContractTests(unittest.TestCase):
     def test_document_links_resolve_to_existing_files(self) -> None:
         markdown_files = [
             REPO_ROOT / "README.md",
+            REPO_ROOT / "CONTRIBUTING.md",
+            REPO_ROOT / "CHANGELOG.md",
+            REPO_ROOT / "frontend" / "README.md",
             REPO_ROOT / "doc" / "index.md",
-            REPO_ROOT / "doc" / "report_reading_guide.md",
-            REPO_ROOT / "doc" / "glossary.md",
-            REPO_ROOT / "doc" / "grid_parameter_search.md",
-            REPO_ROOT / "doc" / "minute_grid_research.md",
-            REPO_ROOT / "doc" / "index_grid_research.md",
-            REPO_ROOT / "doc" / "xiaomi_strategy_research.md",
-            REPO_ROOT / "doc" / "development_guide.md",
+            REPO_ROOT / "doc" / "architecture.md",
+            REPO_ROOT / "doc" / "data-flow.md",
+            REPO_ROOT / "doc" / "deployment.md",
+            REPO_ROOT / "doc" / "operations.md",
+            REPO_ROOT / "doc" / "development.md",
+            REPO_ROOT / "doc" / "api.md",
+            REPO_ROOT / "doc" / "strategy-engine.md",
         ]
 
         for markdown_file in markdown_files:
@@ -43,13 +46,36 @@ class RepoContractTests(unittest.TestCase):
                     msg=f"{markdown_file.relative_to(REPO_ROOT)} -> {target} 不存在",
                 )
 
-    def test_readme_top_has_report_shortcuts(self) -> None:
-        readme_lines = (REPO_ROOT / "README.md").read_text(encoding="utf-8").splitlines()[:45]
-        top_block = "\n".join(readme_lines)
-        self.assertIn("reports/report_index.md", top_block)
-        self.assertIn("reports/1810_hk/daily/1810_hk_daily_strategy_compare_report.md", top_block)
-        self.assertIn("reports/1810_hk/minute/1810_hk_15m_strategy_compare_report.md", top_block)
-        self.assertIn("reports/1810_hk/minute/1810_hk_15m_grid_report.md", top_block)
+    def test_readme_has_open_source_entrypoints(self) -> None:
+        content = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        required_links = [
+            "doc/architecture.md",
+            "doc/data-flow.md",
+            "doc/deployment.md",
+            "doc/operations.md",
+            "doc/development.md",
+            "doc/api.md",
+            "doc/strategy-engine.md",
+            "frontend/README.md",
+            "CONTRIBUTING.md",
+            "LICENSE",
+            "reports/report_index.md",
+        ]
+        for link in required_links:
+            self.assertIn(link, content)
+
+    def test_legacy_topic_documents_are_removed(self) -> None:
+        legacy_docs = [
+            REPO_ROOT / "doc" / "report_reading_guide.md",
+            REPO_ROOT / "doc" / "glossary.md",
+            REPO_ROOT / "doc" / "grid_parameter_search.md",
+            REPO_ROOT / "doc" / "minute_grid_research.md",
+            REPO_ROOT / "doc" / "index_grid_research.md",
+            REPO_ROOT / "doc" / "xiaomi_strategy_research.md",
+            REPO_ROOT / "doc" / "development_guide.md",
+        ]
+        for legacy_doc in legacy_docs:
+            self.assertFalse(legacy_doc.exists(), msg=f"{legacy_doc.relative_to(REPO_ROOT)} 应已被新文档体系替代")
 
     def test_vscode_launch_contains_platform_entries(self) -> None:
         launch_payload = json.loads((REPO_ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))

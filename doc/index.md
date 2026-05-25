@@ -1,139 +1,29 @@
-# 项目导航与阅读顺序
+# 文档导航
 
-这份文档的目标不是解释所有细节，而是帮助你快速判断：
+ETF Strategy 是一个面向 ETF 与股票策略研究的开源平台。当前文档按开源项目维护方式组织，优先解释系统怎么运行、数据怎么流转、模块怎么协作，以及如何部署和开发。
 
-- 这个仓库的各个目录分别负责什么
-- 先看哪些文档最省时间
-- 想看结果、想看方法、想改代码时，各自应该去哪里
+## 推荐阅读顺序
 
-## 如果你是第一次来
+1. [README](../README.md)：项目定位、快速开始和常用入口。
+2. [架构设计](architecture.md)：理解前端、后端、数据库、Worker、Scheduler 和 CLI 的边界。
+3. [数据流转](data-flow.md)：理解 Yahoo 行情、CSV 导入、PostgreSQL、回测任务和报告之间的关系。
+4. [部署指南](deployment.md)：按生产部署思路准备环境和启动服务。
+5. [运维手册](operations.md)：处理同步、任务、日志、端口和常见故障。
+6. [开发指南](development.md)：本地开发、测试、文档同步和提交约定。
 
-建议按这个顺序看：
+## 专题文档
 
-1. [README](../README.md)
-2. [回测报告阅读指南](report_reading_guide.md)
-3. 正式报告：
-   - [统一汇总报告](../reports/report_index.md)
-   - [日线多策略对比报告](../reports/1810_hk/daily/1810_hk_daily_strategy_compare_report.md)
-   - [15 分钟线多策略对比报告](../reports/1810_hk/minute/1810_hk_15m_strategy_compare_report.md)
-   - [15 分钟线网格基线报告](../reports/1810_hk/minute/1810_hk_15m_grid_report.md)
-4. 再按需要看专题文档：
-   - [日线网格参数测试方法](grid_parameter_search.md)
-   - [Yahoo 分钟线支持与 15 分钟回测说明](minute_grid_research.md)
-   - [指数 ETF 1 分钟回落反弹网格说明](index_grid_research.md)
-   - [小米多策略研究说明](xiaomi_strategy_research.md)
+- [API 接口说明](api.md)：FastAPI 路由分组和请求/响应语义。
+- [策略引擎](strategy-engine.md)：策略类型、回测口径、参数模板和报告产物。
 
-## 如果你只关心结果
+## 生成产物
 
-直接看：
+- [统一报告索引](../reports/report_index.md)：批量回测和单标的报告的统一入口。
+- `outputs/`：运行中间结果，默认不纳入版本控制。
+- `reports/platform/`：平台运行时导出的报告目录，默认不纳入版本控制。
 
-- [统一汇总报告](../reports/report_index.md)
-- [日线报告](../reports/1810_hk/daily/1810_hk_grid_report.md)
-- [日线多策略对比报告](../reports/1810_hk/daily/1810_hk_daily_strategy_compare_report.md)
-- [15 分钟线多策略对比报告](../reports/1810_hk/minute/1810_hk_15m_strategy_compare_report.md)
-- [回测报告阅读指南](report_reading_guide.md)
+## 维护规则
 
-统一汇总报告里，样本外净收益率高于 `5%` 的记录会被加粗，适合先从大批量结果里筛高收益候选。
-
-这样做的原因是：报告现在已经按“先看结论、再看细节”的双层结构组织，阅读门槛比直接翻源码低很多。
-
-## 如果你想知道方法怎么来的
-
-建议看：
-
-1. [术语表与口径说明](glossary.md)
-2. [日线网格参数测试方法](grid_parameter_search.md)
-3. [Yahoo 分钟线支持与 15 分钟回测说明](minute_grid_research.md)
-4. [指数 ETF 1 分钟回落反弹网格说明](index_grid_research.md)
-5. [小米多策略研究说明](xiaomi_strategy_research.md)
-
-这三份文档分别解决：
-
-- 名词是什么意思
-- 日线参数是怎么测试出来的
-- 分钟线为什么要单独研究，以及当前怎么切样本
-
-其中 [日线网格参数测试方法](grid_parameter_search.md) 已经补充了“为什么不再只看单窗最高分”以及联网调研后的替代方案说明。
-
-## 如果你要改代码
-
-建议看：
-
-1. [开发与维护说明](development_guide.md)
-2. `main.py`
-3. `etf_strategy/workflow.py`
-4. 你要改动对应的模块
-
-## 仓库结构怎么理解
-
-```text
-etf_strategy/    源码
-data/processed/  默认正式样本输入
-outputs/         工作流中间结果
-reports/         图表与正式报告
-doc/             长期维护文档
-tests/           单元测试
-task.md          AI 任务记录
-```
-
-可以把它理解成 5 层：
-
-1. 输入层：`data/processed/`
-2. 逻辑层：`etf_strategy/`
-3. 中间产物层：`outputs/`
-4. 结果展示层：`reports/`
-5. 文档与协作层：`doc/`、`README.md`、`AGENTS.md`、`task.md`
-
-## 各类文档分别负责什么
-
-- `README.md`
-  - 项目首页和最短上手路径
-- `doc/index.md`
-  - 文档总导航和阅读顺序
-- `doc/report_reading_guide.md`
-  - 报告怎么读、图怎么读、哪些数字容易看错
-- `doc/glossary.md`
-  - 统一术语和口径
-- `doc/grid_parameter_search.md`
-  - 日线专题方法说明
-- `doc/minute_grid_research.md`
-  - 分钟线专题方法说明
-- `doc/index_grid_research.md`
-  - 三只指数 ETF 的 `1m` 回落反弹网格固定参数与命令入口
-- `doc/xiaomi_strategy_research.md`
-  - 小米日线/分钟线多策略研究结论
-- `doc/development_guide.md`
-  - 面向维护者的改动入口和更新约定
-
-## 当前默认工作流
-
-日线主流程：
-
-- 输入：`data/processed/1810_hk_daily.csv`
-- 下载口径：不传 `--start/--end` 时默认按 Yahoo 可提供的全历史下载
-- 样本外起点：`2026-01-01`
-- 样本内窗口：向前回看 `120` 天
-
-分钟线研究流程：
-
-- 输入：`data/processed/1810_hk_15m.csv`
-- 数据范围：Yahoo 最近 `60d`
-- 下载口径：每次先把最近 `60d` 新数据和本地 CSV 做增量合并
-- 切分方式：`75% / 25%`
-
-指数 ETF `1m` 研究流程：
-
-- 标的池：`index_grid_etfs`
-- 策略：`minute_index_grid_retrace`
-- 数据范围：Yahoo 最近 `60d`
-- 下载口径：每次拉最近 `60d` 的 `1m` 数据并和本地 CSV 合并
-- 目标：验证固定参数是否跑赢各自买入持有
-
-## 关于 `task.md`
-
-`task.md` 继续保留，但它的职责是：
-
-- 记录 AI 编码任务
-- 回填每轮修改方案和设计取舍
-
-它不是用户阅读入口，也不替代正式文档。
+- 用户文档只描述当前仓库真实支持的能力，不提前承诺未实现功能。
+- 影响命令、API、数据表、启动入口或报告口径的改动，必须同步更新相关文档。
+- `task.md` 是 AI 协作任务记录，不作为用户阅读入口。
