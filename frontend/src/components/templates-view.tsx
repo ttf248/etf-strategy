@@ -1,0 +1,429 @@
+"use client";
+
+import { Button, Card, Drawer, Form, Input, InputNumber, message, Select, Space, Switch, Table, Tag, Typography } from "antd";
+import { useEffect, useMemo, useState } from "react";
+import { apiFetch, type StrategyTemplate } from "@/lib/api";
+import {
+  buildDefaultParameterSpace,
+  decodeNumericArray,
+  encodeParameterSpace,
+  intervalOptions,
+  parameterFieldSpecsByStrategy,
+  strategyLabel,
+  strategyOptions,
+} from "@/lib/strategy-template-config";
+
+type TemplateFormValues = {
+  template_key?: string;
+  template_name?: string;
+  strategy_kind?: string;
+  interval?: string;
+  execution_profile?: string;
+  validation_start?: string;
+  lookback_days?: number;
+  validation_ratio?: number;
+  jobs?: number;
+  description?: string;
+  is_active?: boolean;
+  is_default?: boolean;
+  commission_bps?: number;
+  slippage_bps?: number;
+  max_position_ratio?: number;
+  stop_loss_pct?: number;
+  cooldown_bars?: number;
+  benchmark?: string;
+  left_side_policy?: string;
+  force_exit_loss_pct?: number;
+  parameter_fields?: Record<string, string>;
+};
+
+const executionProfiles = [
+  { label: "实盘口径", value: "realistic" },
+  { label: "研究口径", value: "research" },
+];
+
+export function TemplatesView() {
+  const [form] = Form.useForm<TemplateFormValues>();
+  const [templates, setTemplates] = useState<StrategyTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<StrategyTemplate | null>(null);
+  const [filters, setFilters] = useState<{ strategy_kind?: string; interval?: string; active?: string }>({});
+  const [messageApi, contextHolder] = message.useMessage();
+  const strategyKind = Form.useWatch("strategy_kind", form) ?? "grid";
+  const parameterSpecs = parameterFieldSpecsByStrategy[strategyKind] ?? [];
+
+  const filteredTemplates = useMemo(() => {
+    return templates.filter((item) => {
+      if (filters.strategy_kind && item.strategy_kind !== filters.strategy_kind) {
+        return false;
+      }
+      if (filters.interval && item.interval !== filters.interval) {
+        return false;
+      }
+      if (filters.active === "active" && !item.is_active) {
+        return false;
+      }
+      if (filters.active === "inactive" && item.is_active) {
+        return false;
+      }
+      return true;
+    });
+  }, [filters, templates]);
+
+  async function loadTemplates(showSpinner: boolean = true) {
+    if (showSpinner) {
+      setLoading(true);
+    }
+    try {
+      const payload = await apiFetch<StrategyTemplate[]>("/api/templates");
+      setTemplates(payload);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiFetch<StrategyTemplate[]>("/api/templates").then((payload) => {
+      if (cancelled) {
+        return;
+      }
+      setTemplates(payload);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function openCreateDrawer() {
+    const initialStrategy = "grid";
+    const initialInterval = "15m";
+    setEditingTemplate(null);
+    form.resetFields();
+    form.setFieldsValue({
+      strategy_kind: initialStrategy,
+      interval: initialInterval,
+      execution_profile: "realistic",
+      validation_ratio: 0.25,
+      jobs: 1,
+      is_active: true,
+      is_default: false,
+      parameter_fields: encodeParameterSpace(buildDefaultParameterSpace(initialStrategy, initialInterval)),
+    });
+    setDrawerOpen(true);
+  }
+
+  function openEditDrawer(template: StrategyTemplate) {
+    setEditingTemplate(template);
+    form.resetFields();
+    form.setFieldsValue({
+      template_key: template.template_key,
+      template_name: template.template_name,
+      strategy_kind: template.strategy_kind,
+      interval: template.interval,
+      execution_profile: template.execution_profile,
+      validation_start: template.validation_start || undefined,
+      lookback_days: template.lookback_days ?? undefined,
+      validation_ratio: template.validation_ratio ?? undefined,
+      jobs: template.jobs,
+      description: template.description,
+      is_active: template.is_active,
+      is_default: template.is_default,
+      commission_bps: Number(template.execution_overrides_json.commission_bps ?? 0),
+      slippage_bps: Number(template.execution_overrides_json.slippage_bps ?? 0),
+      max_position_ratio: Number(template.execution_overrides_json.max_position_ratio ?? 0),
+      stop_loss_pct: Number(template.execution_overrides_json.stop_loss_pct ?? 0),
+      cooldown_bars: Number(template.execution_overrides_json.cooldown_bars ?? 0),
+      benchmark: String(template.execution_overrides_json.benchmark ?? "buy_hold"),
+      left_side_policy: String(template.execution_overrides_json.left_side_policy ?? "both"),
+      force_exit_loss_pct: Number(template.execution_overrides_json.force_exit_loss_pct ?? 0),
+      parameter_fields: encodeParameterSpace(template.parameter_space_json),
+    });
+    setDrawerOpen(true);
+  }
+
+  function buildPayload(values: TemplateFormValues) {
+    const parameterSpace = Object.fromEntries(
+      parameterSpecs.map((item) => [item.key, decodeNumericArray(values.parameter_fields?.[item.key] ?? "", item.kind)]),
+    );
+    return {
+      template_key: values.template_key,
+      template_name: values.template_name,
+      strategy_kind: values.strategy_kind,
+      interval: values.interval,
+      execution_profile: values.execution_profile,
+      validation_start: values.validation_start,
+      lookback_days: values.lookback_days,
+      validation_ratio: values.validation_ratio,
+      jobs: values.jobs,
+      execution_overrides_json: {
+        commission_bps: values.commission_bps,
+        slippage_bps: values.slippage_bps,
+        max_position_ratio: values.max_position_ratio,
+        stop_loss_pct: values.stop_loss_pct,
+        cooldown_bars: values.cooldown_bars,
+        benchmark: values.benchmark,
+        left_side_policy: values.left_side_policy,
+        force_exit_loss_pct: values.force_exit_loss_pct,
+      },
+      parameter_space_json: parameterSpace,
+      description: values.description ?? "",
+      is_active: values.is_active ?? true,
+      is_default: values.is_default ?? false,
+    };
+  }
+
+  async function onFinish(values: TemplateFormValues) {
+    setSaving(true);
+    try {
+      const payload = buildPayload(values);
+      if (editingTemplate) {
+        await apiFetch(`/api/templates/${editingTemplate.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        messageApi.success("模板已更新");
+      } else {
+        await apiFetch("/api/templates", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        messageApi.success("模板已创建");
+      }
+      setDrawerOpen(false);
+      await loadTemplates();
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleTemplate(template: StrategyTemplate, isActive: boolean) {
+    try {
+      await apiFetch(`/api/templates/${template.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: isActive }),
+      });
+      await loadTemplates();
+      messageApi.success(isActive ? "模板已启用" : "模板已停用");
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "更新状态失败");
+    }
+  }
+
+  return (
+    <div className="page-stack">
+      {contextHolder}
+      <Typography.Title level={3} className="section-title">
+        参数模板
+      </Typography.Title>
+
+      <Card
+        size="small"
+        title="模板中心"
+        extra={
+          <Space>
+            <Button onClick={() => void loadTemplates()}>刷新</Button>
+            <Button type="primary" onClick={openCreateDrawer}>
+              新建模板
+            </Button>
+          </Space>
+        }
+      >
+        <div className="table-toolbar">
+          <Space wrap>
+            <Select
+              allowClear
+              placeholder="策略"
+              style={{ width: 220 }}
+              options={strategyOptions}
+              onChange={(value) => setFilters((current) => ({ ...current, strategy_kind: value }))}
+            />
+            <Select
+              allowClear
+              placeholder="周期"
+              style={{ width: 120 }}
+              options={intervalOptions}
+              onChange={(value) => setFilters((current) => ({ ...current, interval: value }))}
+            />
+            <Select
+              allowClear
+              placeholder="状态"
+              style={{ width: 120 }}
+              options={[
+                { label: "启用", value: "active" },
+                { label: "停用", value: "inactive" },
+              ]}
+              onChange={(value) => setFilters((current) => ({ ...current, active: value }))}
+            />
+          </Space>
+        </div>
+        <Table
+          rowKey="id"
+          size="small"
+          loading={loading}
+          dataSource={filteredTemplates}
+          pagination={{ pageSize: 12 }}
+          columns={[
+            { title: "名称", dataIndex: "template_name", width: 240 },
+            { title: "模板键", dataIndex: "template_key", width: 220 },
+            { title: "策略", dataIndex: "strategy_kind", render: (value: string) => strategyLabel(value), width: 220 },
+            { title: "周期", dataIndex: "interval", width: 90 },
+            { title: "口径", dataIndex: "execution_profile", width: 100 },
+            { title: "并行数", dataIndex: "jobs", width: 90 },
+            {
+              title: "默认",
+              dataIndex: "is_default",
+              width: 90,
+              render: (value: boolean) => <Tag color={value ? "gold" : "default"}>{value ? "默认" : "-"}</Tag>,
+            },
+            {
+              title: "状态",
+              dataIndex: "is_active",
+              width: 90,
+              render: (value: boolean) => <Tag color={value ? "green" : "default"}>{value ? "启用" : "停用"}</Tag>,
+            },
+            { title: "更新时间", dataIndex: "updated_at", width: 180 },
+            {
+              title: "操作",
+              width: 180,
+              render: (_, row) => (
+                <Space size="small">
+                  <Button size="small" onClick={() => openEditDrawer(row)}>
+                    编辑
+                  </Button>
+                  <Button size="small" onClick={() => void toggleTemplate(row, !row.is_active)}>
+                    {row.is_active ? "停用" : "启用"}
+                  </Button>
+                </Space>
+              ),
+            },
+          ]}
+        />
+      </Card>
+
+      <Drawer
+        title={editingTemplate ? `编辑模板 #${editingTemplate.id}` : "新建模板"}
+        width={820}
+        open={drawerOpen}
+        destroyOnClose
+        onClose={() => setDrawerOpen(false)}
+      >
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={onFinish}
+          onValuesChange={(changedValues) => {
+            if ("strategy_kind" in changedValues || "interval" in changedValues) {
+              const nextStrategy = form.getFieldValue("strategy_kind") ?? "grid";
+              const nextInterval = form.getFieldValue("interval") ?? "15m";
+              form.setFieldValue("parameter_fields", encodeParameterSpace(buildDefaultParameterSpace(nextStrategy, nextInterval)));
+            }
+          }}
+        >
+          <div className="template-form-grid">
+            <Form.Item name="template_name" label="模板名称" rules={[{ required: true }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item name="template_key" label="模板键" rules={[{ required: true }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item name="strategy_kind" label="策略" rules={[{ required: true }]}>
+              <Select options={strategyOptions} />
+            </Form.Item>
+            <Form.Item name="interval" label="周期" rules={[{ required: true }]}>
+              <Select options={intervalOptions} />
+            </Form.Item>
+            <Form.Item name="execution_profile" label="执行口径">
+              <Select options={executionProfiles} />
+            </Form.Item>
+            <Form.Item name="jobs" label="并行数">
+              <InputNumber min={1} max={32} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item name="validation_start" label="样本外起点">
+              <Input placeholder="日线模板使用" />
+            </Form.Item>
+            <Form.Item name="lookback_days" label="样本内天数">
+              <InputNumber min={1} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item name="validation_ratio" label="样本外比例">
+              <InputNumber min={0.05} max={0.95} step={0.05} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item name="description" label="说明">
+              <Input />
+            </Form.Item>
+            <Form.Item name="is_active" label="启用" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+            <Form.Item name="is_default" label="默认模板" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+          </div>
+
+          <Typography.Title level={5}>执行口径</Typography.Title>
+          <div className="template-form-grid">
+            <Form.Item name="commission_bps" label="手续费 bps">
+              <InputNumber min={0} step={0.5} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item name="slippage_bps" label="滑点 bps">
+              <InputNumber min={0} step={0.5} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item name="max_position_ratio" label="最大仓位">
+              <InputNumber min={0} max={1} step={0.05} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item name="stop_loss_pct" label="停手跌幅">
+              <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item name="cooldown_bars" label="冷却 Bar">
+              <InputNumber min={0} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item name="benchmark" label="基准">
+              <Select options={[{ label: "买入持有", value: "buy_hold" }, { label: "现金空仓", value: "cash_idle" }]} />
+            </Form.Item>
+            <Form.Item name="left_side_policy" label="左侧处理">
+              <Select
+                options={[
+                  { label: "持有", value: "hold" },
+                  { label: "强平", value: "force_exit" },
+                  { label: "双口径", value: "both" },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name="force_exit_loss_pct" label="强平阈值">
+              <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
+            </Form.Item>
+          </div>
+
+          <Typography.Title level={5}>参数空间</Typography.Title>
+          <div className="template-form-grid">
+            {parameterSpecs.length === 0 ? (
+              <Card size="small">当前策略不需要自定义寻参空间。</Card>
+            ) : (
+              parameterSpecs.map((field) => (
+                <Form.Item
+                  key={field.key}
+                  name={["parameter_fields", field.key]}
+                  label={field.label}
+                  rules={[{ required: true }]}
+                >
+                  <Input placeholder="逗号分隔，例如 0.01,0.02,0.03" />
+                </Form.Item>
+              ))
+            )}
+          </div>
+
+          <Space style={{ marginTop: 16 }}>
+            <Button onClick={() => setDrawerOpen(false)}>取消</Button>
+            <Button type="primary" htmlType="submit" loading={saving}>
+              保存
+            </Button>
+          </Space>
+        </Form>
+      </Drawer>
+    </div>
+  );
+}

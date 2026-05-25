@@ -98,6 +98,12 @@ a {
   margin-bottom: 8px;
 }
 
+.template-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
 @media (max-width: 960px) {
   .platform-content {
     padding: 16px;

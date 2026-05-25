@@ -97,6 +97,7 @@
 
 - 行情、同步任务、回测任务、报告的数据库读写
 - PostgreSQL upsert、统计查询和任务状态流转
+- 策略参数模板的列表、查询、默认模板切换和落库更新
 
 ### `etf_strategy/services/`
 
@@ -106,6 +107,7 @@
 - 行情统计与数据库查询
 - Yahoo 同步任务
 - 异步回测任务提交与结果落库
+- 模板种子初始化、模板 CRUD 和模板到回测请求的合并
 
 ### `etf_strategy/web/`
 
@@ -113,7 +115,7 @@
 
 - FastAPI 应用
 - Web API 路由
-- 前端消费的 JSON 契约
+- 前端消费的 JSON 契约，包括模板中心接口
 
 ### `etf_strategy/runtime/`
 
@@ -188,26 +190,30 @@
 
 ### 修改默认调试入口
 
-当前仓库保留更直接的 Python `launch.json` 样式，VS Code 配置收敛为两部分：
+当前仓库保留更直接的 `launch.json` 样式，VS Code 配置收敛为两部分：
 
 - `.vscode/launch.json`：负责一键启动
 - `.vscode/settings.json`：负责终端 profile
 
-其中 `launch.json` 当前只保留两条平台调试配置：
+其中 `launch.json` 当前提供四条单进程调试配置和两条组合启动：
 
+- 启动前端 Dev Server
 - 启动 API 服务
 - 启动回测 Worker
+- 启动行情 Scheduler
+- 启动平台后端全套
+- 启动平台前后端全套
 
 使用这些配置的前提是 VS Code 已安装 Microsoft 的 Python / Python Debugger 扩展，否则 `debugpy` 调试类型不会被注册。
 
-这两条配置当前统一采用下面这组字段：
+Python 调试配置统一采用下面这组字段：
 
 - `type=debugpy`
 - `request=launch`
 - `program=${workspaceFolder}/main.py`
 - `cwd=${workspaceFolder}`
 - `console=integratedTerminal`
-- `args` 中显式传入 `api` 或 `worker`
+- `args` 中显式传入 `api`、`worker` 或 `scheduler`
 - 运行时直接看 VS Code 集成终端里的 `INFO` 级别提示
 - 更详细的定位日志仍写入 `log/etf_strategy_YYYY-MM-DD.log`
 - `main.py` 会主动尝试把 Windows 控制台切到 UTF-8，`.vscode/launch.json` 也会显式传入 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`
@@ -216,6 +222,18 @@
 - 内置标的池除了 `hstech_plus_513050`，还支持 `southbound_shanghai_all` 和 `index_grid_etfs`
 - `index_grid_etfs` 当前固定为 `159941.SZ`、`159605.SZ`、`159866.SZ`，默认策略是 `minute_index_grid_retrace`
 - `reports/report_index.md` 会把样本外净收益率高于 `5%` 的记录加粗，便于在大批量回测后快速定位高收益候选
+
+前端调试入口使用 `node-terminal`，在 `frontend/` 目录下直接执行：
+
+- `npm run dev -- --hostname 127.0.0.1 --port 3000`
+
+并显式传入：
+
+- `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000`
+
+Windows 环境如果想直接拉起四个窗口，使用：
+
+- `scripts/start_platform_windows.bat`
 
 这里没有继续使用参考示例里的 `type=python`，因为微软当前 Python 调试文档已经把 `debugpy` 作为 Python Debugger 扩展的调试类型；旧写法在部分 VS Code 环境里会导致无法启动调试。
 

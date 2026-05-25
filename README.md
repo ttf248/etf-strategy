@@ -41,8 +41,22 @@
 - 前端：`Next.js + Ant Design`
 - 回测执行：数据库任务表 + 独立 `worker`
 - 行情主存储：PostgreSQL，CSV 只保留导入和调试用途
+- 参数模板：PostgreSQL 模板中心，支持前端 CRUD 和回测任务引用
 
 ### 平台模式最短启动顺序
+
+0. Windows 环境可直接使用一键启动脚本
+
+```powershell
+scripts\start_platform_windows.bat
+```
+
+该脚本会拉起：
+
+- 前端 Dev Server
+- API 服务
+- 回测 Worker
+- 行情 Scheduler
 
 1. 初始化数据库并执行迁移
 
@@ -81,6 +95,14 @@ npm run dev
 - 后端 API：`http://127.0.0.1:8000`
 - 前端控制台：`http://127.0.0.1:3000`
 
+默认控制台页面：
+
+- 平台概览：`/`
+- 行情数据：`/market-data`
+- 参数模板：`/templates`
+- 回测任务：`/backtests`
+- 历史报告：`/reports`
+
 ### 平台模式新增命令
 
 - `init-db`：创建 `etf_strategy` 数据库并执行 Alembic 迁移
@@ -89,6 +111,18 @@ npm run dev
 - `worker`：启动回测任务执行器
 - `scheduler`：启动 Yahoo 定时同步调度器
 - `sync-now`：手动触发一次行情同步
+
+### 平台模式调试与启动入口
+
+- VS Code 调试入口：
+  - `启动前端 Dev Server`
+  - `启动 API 服务`
+  - `启动回测 Worker`
+  - `启动行情 Scheduler`
+  - `启动平台后端全套`
+  - `启动平台前后端全套`
+- Windows 一键脚本：
+  - `scripts/start_platform_windows.bat`
 
 ## 你先从哪里开始
 

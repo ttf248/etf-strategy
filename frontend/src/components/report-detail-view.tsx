@@ -21,6 +21,7 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
   }
 
   const validation = report.summary_metrics.validation ?? {};
+  const templateSnapshot = report.artifacts.template_snapshot as Record<string, unknown> | undefined;
 
   return (
     <div className="page-stack">
@@ -57,6 +58,19 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
             ))}
         </Descriptions>
       </Card>
+
+      {templateSnapshot ? (
+        <Card size="small" title="模板快照">
+          <Descriptions size="small" column={3}>
+            <Descriptions.Item label="模板">{String(templateSnapshot.template_name ?? "-")}</Descriptions.Item>
+            <Descriptions.Item label="模板键">{String(templateSnapshot.template_key ?? "-")}</Descriptions.Item>
+            <Descriptions.Item label="模板ID">{String(templateSnapshot.id ?? "-")}</Descriptions.Item>
+            <Descriptions.Item label="策略">{String(templateSnapshot.strategy_kind ?? "-")}</Descriptions.Item>
+            <Descriptions.Item label="周期">{String(templateSnapshot.interval ?? "-")}</Descriptions.Item>
+            <Descriptions.Item label="默认模板">{Boolean(templateSnapshot.is_default) ? "是" : "否"}</Descriptions.Item>
+          </Descriptions>
+        </Card>
+      ) : null}
 
       <Card size="small" title="交易记录">
         <Table

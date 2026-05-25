@@ -52,6 +52,26 @@ export type ReportDetail = ReportSummary & {
   events: Array<Record<string, unknown>>;
 };
 
+export type StrategyTemplate = {
+  id: number;
+  template_key: string;
+  template_name: string;
+  strategy_kind: string;
+  interval: string;
+  execution_profile: string;
+  validation_start: string;
+  lookback_days: number | null;
+  validation_ratio: number | null;
+  jobs: number;
+  execution_overrides_json: Record<string, unknown>;
+  parameter_space_json: Record<string, unknown>;
+  description: string;
+  is_active: boolean;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {

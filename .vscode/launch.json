@@ -36,6 +36,50 @@
                 "--poll-interval",
                 "5"
             ]
+        },
+        {
+            "name": "启动行情 Scheduler",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONUTF8": "1",
+                "PYTHONIOENCODING": "utf-8"
+            },
+            "args": [
+                "scheduler"
+            ]
+        },
+        {
+            "name": "启动前端 Dev Server",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "npm run dev -- --hostname 127.0.0.1 --port 3000",
+            "cwd": "${workspaceFolder}/frontend",
+            "env": {
+                "NEXT_PUBLIC_API_BASE_URL": "http://127.0.0.1:8000"
+            }
+        }
+    ],
+    "compounds": [
+        {
+            "name": "启动平台后端全套",
+            "configurations": [
+                "启动 API 服务",
+                "启动回测 Worker",
+                "启动行情 Scheduler"
+            ]
+        },
+        {
+            "name": "启动平台前后端全套",
+            "configurations": [
+                "启动前端 Dev Server",
+                "启动 API 服务",
+                "启动回测 Worker",
+                "启动行情 Scheduler"
+            ]
         }
     ]
 }

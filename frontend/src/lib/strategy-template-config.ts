@@ -1,0 +1,119 @@
+export const intervalOptions = ["1d", "15m", "1m"].map((item) => ({ label: item, value: item }));
+
+export const strategyOptions = [
+  { label: "网格", value: "grid" },
+  { label: "日线超跌反弹", value: "daily_rebound" },
+  { label: "分钟急跌反抽", value: "minute_rebound" },
+  { label: "分钟反抽+冲高回落过滤", value: "minute_rebound_with_fade_filter" },
+  { label: "指数回落反弹网格", value: "minute_index_grid_retrace" },
+];
+
+export type ParameterFieldSpec = {
+  key: string;
+  label: string;
+  kind: "int" | "float";
+};
+
+const gridDefaults = {
+  "1d": {
+    spacings: [0.03, 0.04, 0.05, 0.06, 0.07],
+    grid_counts: [4, 5, 6, 7],
+    take_profits: [0.03, 0.05, 0.07],
+  },
+  intraday: {
+    spacings: [0.01, 0.015, 0.02, 0.03, 0.04],
+    grid_counts: [4, 5, 6, 7],
+    take_profits: [0.01, 0.015, 0.02, 0.03],
+  },
+};
+
+const strategyDefaults: Record<string, Record<string, number[]>> = {
+  daily_rebound: {
+    rsi_window: [6, 8, 10, 14],
+    rsi_entry: [20, 25, 30, 35],
+    ma_window: [10, 20],
+    deviation_entry_pct: [-8, -6, -4],
+    take_profit_pct: [3, 5, 8],
+    stop_loss_atr: [1.5, 2, 2.5],
+    max_hold_bars: [5, 8, 10],
+  },
+  minute_rebound: {
+    lookback_bars: [8, 12],
+    drop_entry_pct: [-2, -1.5],
+    rsi_entry: [20, 25],
+    take_profit_pct: [0.6, 0.8, 1],
+    stop_loss_pct: [0.8, 1],
+    max_hold_bars: [4, 8],
+  },
+  minute_rebound_with_fade_filter: {
+    lookback_bars: [8, 12],
+    drop_entry_pct: [-2, -1.5],
+    rsi_entry: [20, 25],
+    take_profit_pct: [0.6, 0.8, 1],
+    stop_loss_pct: [0.8, 1],
+    max_hold_bars: [4, 8],
+    fade_filter_upper_shadow_pct: [1, 1.5],
+    fade_filter_block_bars: [2],
+  },
+  minute_index_grid_retrace: {},
+};
+
+export const parameterFieldSpecsByStrategy: Record<string, ParameterFieldSpec[]> = {
+  grid: [
+    { key: "spacings", label: "网格间距", kind: "float" },
+    { key: "grid_counts", label: "网格层数", kind: "int" },
+    { key: "take_profits", label: "止盈比例", kind: "float" },
+  ],
+  daily_rebound: [
+    { key: "rsi_window", label: "RSI 窗口", kind: "int" },
+    { key: "rsi_entry", label: "RSI 入场", kind: "float" },
+    { key: "ma_window", label: "均线窗口", kind: "int" },
+    { key: "deviation_entry_pct", label: "偏离入场", kind: "float" },
+    { key: "take_profit_pct", label: "止盈比例", kind: "float" },
+    { key: "stop_loss_atr", label: "ATR 止损", kind: "float" },
+    { key: "max_hold_bars", label: "最大持仓 Bar", kind: "int" },
+  ],
+  minute_rebound: [
+    { key: "lookback_bars", label: "回看 Bar", kind: "int" },
+    { key: "drop_entry_pct", label: "跌幅入场", kind: "float" },
+    { key: "rsi_entry", label: "RSI 入场", kind: "float" },
+    { key: "take_profit_pct", label: "止盈比例", kind: "float" },
+    { key: "stop_loss_pct", label: "止损比例", kind: "float" },
+    { key: "max_hold_bars", label: "最大持仓 Bar", kind: "int" },
+  ],
+  minute_rebound_with_fade_filter: [
+    { key: "lookback_bars", label: "回看 Bar", kind: "int" },
+    { key: "drop_entry_pct", label: "跌幅入场", kind: "float" },
+    { key: "rsi_entry", label: "RSI 入场", kind: "float" },
+    { key: "take_profit_pct", label: "止盈比例", kind: "float" },
+    { key: "stop_loss_pct", label: "止损比例", kind: "float" },
+    { key: "max_hold_bars", label: "最大持仓 Bar", kind: "int" },
+    { key: "fade_filter_upper_shadow_pct", label: "上影线过滤", kind: "float" },
+    { key: "fade_filter_block_bars", label: "过滤屏蔽 Bar", kind: "int" },
+  ],
+  minute_index_grid_retrace: [],
+};
+
+export function buildDefaultParameterSpace(strategyKind: string, interval: string): Record<string, number[]> {
+  if (strategyKind === "grid") {
+    return interval === "1d" ? gridDefaults["1d"] : gridDefaults.intraday;
+  }
+  return strategyDefaults[strategyKind] ?? {};
+}
+
+export function encodeParameterSpace(parameterSpace: Record<string, unknown>): Record<string, string> {
+  return Object.fromEntries(Object.entries(parameterSpace).map(([key, value]) => [key, Array.isArray(value) ? value.join(",") : ""]));
+}
+
+export function decodeNumericArray(raw: string, kind: "int" | "float"): number[] {
+  return raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => (kind === "int" ? parseInt(item, 10) : parseFloat(item)))
+    .filter((item) => Number.isFinite(item));
+}
+
+export function strategyLabel(strategyKind: string): string {
+  return strategyOptions.find((item) => item.value === strategyKind)?.label ?? strategyKind;
+}

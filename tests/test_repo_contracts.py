@@ -51,20 +51,28 @@ class RepoContractTests(unittest.TestCase):
         self.assertIn("reports/1810_hk/minute/1810_hk_15m_strategy_compare_report.md", top_block)
         self.assertIn("reports/1810_hk/minute/1810_hk_15m_grid_report.md", top_block)
 
-    def test_vscode_launch_only_keeps_one_click_report_configs(self) -> None:
+    def test_vscode_launch_contains_platform_entries(self) -> None:
         launch_payload = json.loads((REPO_ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))
         configurations = launch_payload.get("configurations", [])
-        self.assertEqual(len(configurations), 2)
+        self.assertEqual(len(configurations), 4)
         config_names = {config["name"] for config in configurations}
-        self.assertEqual(config_names, {"启动 API 服务", "启动回测 Worker"})
-        for config in configurations:
-            self.assertEqual(config["type"], "debugpy")
+        self.assertEqual(config_names, {"启动 API 服务", "启动回测 Worker", "启动行情 Scheduler", "启动前端 Dev Server"})
+        python_configs = [config for config in configurations if config["type"] == "debugpy"]
+        self.assertEqual(len(python_configs), 3)
+        for config in python_configs:
             self.assertEqual(config["program"], "${workspaceFolder}/main.py")
             self.assertEqual(config["cwd"], "${workspaceFolder}")
-            self.assertIn(config["args"][0], {"api", "worker"})
+            self.assertIn(config["args"][0], {"api", "worker", "scheduler"})
             self.assertEqual(config["console"], "integratedTerminal")
             self.assertEqual(config["env"]["PYTHONUTF8"], "1")
             self.assertEqual(config["env"]["PYTHONIOENCODING"], "utf-8")
+        frontend_config = next(config for config in configurations if config["name"] == "启动前端 Dev Server")
+        self.assertEqual(frontend_config["type"], "node-terminal")
+        self.assertEqual(frontend_config["cwd"], "${workspaceFolder}/frontend")
+        self.assertIn("npm run dev", frontend_config["command"])
+        self.assertEqual(frontend_config["env"]["NEXT_PUBLIC_API_BASE_URL"], "http://127.0.0.1:8000")
+        compound_names = {item["name"] for item in launch_payload.get("compounds", [])}
+        self.assertEqual(compound_names, {"启动平台后端全套", "启动平台前后端全套"})
 
     def test_vscode_settings_keep_no_profile_terminal(self) -> None:
         settings_payload = json.loads((REPO_ROOT / ".vscode" / "settings.json").read_text(encoding="utf-8"))

@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChartOutlined, DatabaseOutlined, FileSearchOutlined, FundOutlined } from "@ant-design/icons";
+import { BarChartOutlined, DatabaseOutlined, FileSearchOutlined, FundOutlined, SettingOutlined } from "@ant-design/icons";
 import { Layout, Menu, Typography } from "antd";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -15,6 +15,7 @@ type ConsoleShellProps = {
 const items = [
   { key: "/", icon: <FundOutlined />, label: <Link href="/">概览</Link> },
   { key: "/market-data", icon: <DatabaseOutlined />, label: <Link href="/market-data">行情数据</Link> },
+  { key: "/templates", icon: <SettingOutlined />, label: <Link href="/templates">参数模板</Link> },
   { key: "/backtests", icon: <BarChartOutlined />, label: <Link href="/backtests">回测任务</Link> },
   { key: "/reports", icon: <FileSearchOutlined />, label: <Link href="/reports">历史报告</Link> },
 ];
