@@ -84,6 +84,41 @@ def _rebound_parameter_space(strategy_kind: StrategyKind) -> dict[str, list[obje
     return parameter_space
 
 
+def _resolve_grid_parameter_space(
+    interval: str,
+    spacings: list[float] | None = None,
+    grid_counts: list[int] | None = None,
+    take_profits: list[float] | None = None,
+    parameter_space: dict[str, object] | None = None,
+) -> tuple[list[float], list[int], list[float]]:
+    if parameter_space:
+        return (
+            [float(item) for item in parameter_space.get("spacings", [])],
+            [int(item) for item in parameter_space.get("grid_counts", [])],
+            [float(item) for item in parameter_space.get("take_profits", [])],
+        )
+    if interval == "1d":
+        return (
+            spacings or list(DAILY_SPACINGS),
+            grid_counts or list(DAILY_GRID_COUNTS),
+            take_profits or list(DAILY_TAKE_PROFITS),
+        )
+    return (
+        spacings or list(INTRADAY_SPACINGS),
+        grid_counts or list(INTRADAY_GRID_COUNTS),
+        take_profits or list(INTRADAY_TAKE_PROFITS),
+    )
+
+
+def _resolve_rebound_parameter_space(
+    strategy_kind: StrategyKind,
+    parameter_space: dict[str, object] | None = None,
+) -> dict[str, list[object]]:
+    if not parameter_space:
+        return _rebound_parameter_space(strategy_kind)
+    return {key: list(value) for key, value in parameter_space.items()}
+
+
 def _count_parameter_space_candidates(parameter_space: dict[str, list[object]]) -> int:
     total = 1
     for values in parameter_space.values():
@@ -131,6 +166,7 @@ def run_optimization_workflow(
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     jobs: int = DEFAULT_JOBS,
     cache_dir: str | Path | None = None,
+    parameter_space: dict[str, object] | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
 ) -> dict[str, object]:
@@ -148,9 +184,13 @@ def run_optimization_workflow(
         lookback_days=lookback_days,
     )
     if strategy_kind == "grid":
-        spacings = spacings or list(DAILY_SPACINGS)
-        grid_counts = grid_counts or list(DAILY_GRID_COUNTS)
-        take_profits = take_profits or list(DAILY_TAKE_PROFITS)
+        spacings, grid_counts, take_profits = _resolve_grid_parameter_space(
+            interval="1d",
+            spacings=spacings,
+            grid_counts=grid_counts,
+            take_profits=take_profits,
+            parameter_space=parameter_space,
+        )
         logger.info(
             "[1/2] 开始执行日线样本内寻参: strategy={} symbol={} data={} rows={} combinations={}",
             strategy_kind,
@@ -176,7 +216,7 @@ def run_optimization_workflow(
             cache_dir=cache_dir,
         )
     else:
-        parameter_space = _rebound_parameter_space(strategy_kind)
+        parameter_space = _resolve_rebound_parameter_space(strategy_kind, parameter_space=parameter_space)
         logger.info(
             "[1/2] 开始执行日线样本内寻参: strategy={} symbol={} data={} rows={} combinations={}",
             strategy_kind,
@@ -318,6 +358,7 @@ def run_full_workflow(
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     jobs: int = DEFAULT_JOBS,
     cache_dir: str | Path | None = None,
+    parameter_space: dict[str, object] | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
 ) -> dict[str, object]:
@@ -346,6 +387,7 @@ def run_full_workflow(
         wf_min_window_size=wf_min_window_size,
         jobs=jobs,
         cache_dir=cache_dir,
+        parameter_space=parameter_space,
         data=price_frame,
         lot_rule=effective_lot_rule,
     )
@@ -399,6 +441,7 @@ def run_minute_optimization_workflow(
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     jobs: int = DEFAULT_JOBS,
     cache_dir: str | Path | None = None,
+    parameter_space: dict[str, object] | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
 ) -> dict[str, object]:
@@ -432,9 +475,13 @@ def run_minute_optimization_workflow(
         )
         results = pd.DataFrame([best_run["summary"]])
     elif strategy_kind == "grid":
-        spacings = spacings or list(INTRADAY_SPACINGS)
-        grid_counts = grid_counts or list(INTRADAY_GRID_COUNTS)
-        take_profits = take_profits or list(INTRADAY_TAKE_PROFITS)
+        spacings, grid_counts, take_profits = _resolve_grid_parameter_space(
+            interval="15m",
+            spacings=spacings,
+            grid_counts=grid_counts,
+            take_profits=take_profits,
+            parameter_space=parameter_space,
+        )
         logger.info(
             "[1/2] 开始执行分钟线样本内寻参: strategy={} symbol={} data={} rows={} combinations={}",
             strategy_kind,
@@ -460,7 +507,7 @@ def run_minute_optimization_workflow(
             cache_dir=cache_dir,
         )
     else:
-        parameter_space = _rebound_parameter_space(strategy_kind)
+        parameter_space = _resolve_rebound_parameter_space(strategy_kind, parameter_space=parameter_space)
         logger.info(
             "[1/2] 开始执行分钟线样本内寻参: strategy={} symbol={} data={} rows={} combinations={}",
             strategy_kind,
@@ -615,6 +662,7 @@ def run_minute_full_workflow(
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     jobs: int = DEFAULT_JOBS,
     cache_dir: str | Path | None = None,
+    parameter_space: dict[str, object] | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
 ) -> dict[str, object]:
@@ -638,6 +686,7 @@ def run_minute_full_workflow(
         wf_min_window_size=wf_min_window_size,
         jobs=jobs,
         cache_dir=cache_dir,
+        parameter_space=parameter_space,
         data=price_frame,
         lot_rule=effective_lot_rule,
     )

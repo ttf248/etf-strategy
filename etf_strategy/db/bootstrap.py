@@ -10,6 +10,7 @@ from psycopg import connect, sql
 from sqlalchemy.engine import make_url
 
 from etf_strategy.db.settings import load_platform_settings
+from etf_strategy.services.templates import seed_strategy_templates
 
 
 def create_database_if_missing() -> str:
@@ -40,4 +41,5 @@ def initialize_database() -> str:
     """创建数据库并执行迁移。"""
     database_name = create_database_if_missing()
     run_migrations()
+    seed_strategy_templates()
     return database_name

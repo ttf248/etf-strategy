@@ -22,7 +22,18 @@ from etf_strategy.services.market_data import (
     fetch_sync_runs,
 )
 from etf_strategy.services.sync import sync_market_data
-from etf_strategy.web.schemas import BacktestRequestModel, SyncRequestModel
+from etf_strategy.services.templates import (
+    create_strategy_template_entry,
+    get_strategy_template_detail,
+    list_strategy_templates,
+    update_strategy_template_entry,
+)
+from etf_strategy.web.schemas import (
+    BacktestRequestModel,
+    StrategyTemplateCreateModel,
+    StrategyTemplateUpdateModel,
+    SyncRequestModel,
+)
 
 
 def create_app() -> FastAPI:
@@ -70,7 +81,10 @@ def create_app() -> FastAPI:
 
     @app.post("/api/backtests")
     def post_backtest(request: BacktestRequestModel) -> dict[str, object]:
-        return submit_backtest(BacktestRequest(**request.model_dump()))
+        try:
+            return submit_backtest(BacktestRequest(**request.model_dump()))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/backtests")
     def get_backtests(limit: int = 100) -> list[dict[str, object]]:
@@ -97,5 +111,35 @@ def create_app() -> FastAPI:
         if payload is None:
             raise HTTPException(status_code=404, detail="报告不存在。")
         return payload
+
+    @app.get("/api/templates")
+    def get_templates(
+        strategy_kind: str | None = None,
+        interval: str | None = None,
+        active_only: bool = False,
+    ) -> list[dict[str, object]]:
+        return list_strategy_templates(strategy_kind=strategy_kind, interval=interval, active_only=active_only)
+
+    @app.get("/api/templates/{template_id}")
+    def get_template(template_id: int) -> dict[str, object]:
+        payload = get_strategy_template_detail(template_id)
+        if payload is None:
+            raise HTTPException(status_code=404, detail="模板不存在。")
+        return payload
+
+    @app.post("/api/templates")
+    def post_template(request: StrategyTemplateCreateModel) -> dict[str, object]:
+        try:
+            return create_strategy_template_entry(request.model_dump())
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.patch("/api/templates/{template_id}")
+    def patch_template(template_id: int, request: StrategyTemplateUpdateModel) -> dict[str, object]:
+        try:
+            return update_strategy_template_entry(template_id, request.model_dump(exclude_unset=True))
+        except ValueError as exc:
+            status = 404 if str(exc) == "模板不存在。" else 400
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
 
     return app

@@ -26,18 +26,19 @@ from etf_strategy.repositories.backtests import (
 )
 from etf_strategy.repositories.market_data import get_instrument_by_symbol, load_price_frame_from_database
 from etf_strategy.settings import build_execution_config
+from etf_strategy.services.templates import resolve_backtest_request_payload
 from etf_strategy.workflow import run_full_workflow, run_minute_full_workflow
 
 
 @dataclass(frozen=True)
 class BacktestRequest:
     symbol: str
-    interval: str
-    strategy_kind: str = "grid"
-    validation_start: str = "2026-01-01"
-    lookback_days: int = 120
-    validation_ratio: float = 0.25
-    execution_profile: str = "realistic"
+    interval: str | None = None
+    strategy_kind: str | None = None
+    validation_start: str | None = None
+    lookback_days: int | None = None
+    validation_ratio: float | None = None
+    execution_profile: str | None = None
     commission_bps: float | None = None
     slippage_bps: float | None = None
     max_position_ratio: float | None = None
@@ -46,7 +47,10 @@ class BacktestRequest:
     benchmark: str | None = None
     left_side_policy: str | None = None
     force_exit_loss_pct: float | None = None
-    jobs: int = 1
+    jobs: int | None = None
+    template_id: int | None = None
+    template_snapshot: dict[str, object] | None = None
+    parameter_space: dict[str, object] | None = None
 
 
 def _is_intraday(interval: str) -> bool:
@@ -54,7 +58,8 @@ def _is_intraday(interval: str) -> bool:
 
 
 def _job_payload(request: BacktestRequest) -> dict[str, object]:
-    return asdict(request)
+    with open_session() as session:
+        return resolve_backtest_request_payload(request, session=session)
 
 
 def submit_backtest(request: BacktestRequest) -> dict[str, object]:
@@ -68,7 +73,11 @@ def _pseudo_data_path(symbol: str, interval: str) -> Path:
     return Path("db") / f"{symbol.lower().replace('.', '_')}_{interval}.csv"
 
 
-def _normalize_artifacts(workflow_result: dict[str, object], report_path: Path) -> dict[str, object]:
+def _normalize_artifacts(
+    workflow_result: dict[str, object],
+    report_path: Path,
+    template_snapshot: dict[str, object] | None = None,
+) -> dict[str, object]:
     def _stringify(value: object) -> object:
         if isinstance(value, Path):
             return str(value)
@@ -89,6 +98,7 @@ def _normalize_artifacts(workflow_result: dict[str, object], report_path: Path) 
         "optimization_paths": workflow_result["optimization"].get("best_paths", {}),
         "validation_paths": workflow_result["validation"].get("paths", {}),
         "report_path": report_path,
+        "template_snapshot": template_snapshot,
     }
     return _stringify(payload)
 
@@ -250,6 +260,7 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                     strategy_kind=payload.strategy_kind,
                     execution_config=execution_config,
                     jobs=payload.jobs,
+                    parameter_space=payload.parameter_space,
                     data=price_frame,
                 )
                 if _is_intraday(payload.interval)
@@ -262,6 +273,7 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                     strategy_kind=payload.strategy_kind,
                     execution_config=execution_config,
                     jobs=payload.jobs,
+                    parameter_space=payload.parameter_space,
                     data=price_frame,
                 )
             )
@@ -290,7 +302,11 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                     "validation": _to_jsonable(validation_summary),
                 },
                 parameters={key: _to_jsonable(value) for key, value in best_summary.items() if isinstance(key, str)},
-                artifacts=_normalize_artifacts(workflow_result, report_path=report_path),
+                artifacts=_normalize_artifacts(
+                    workflow_result,
+                    report_path=report_path,
+                    template_snapshot=payload.template_snapshot,
+                ),
             )
             replace_report_details(
                 session,

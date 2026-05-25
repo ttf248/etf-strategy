@@ -100,6 +100,28 @@ class BacktestJob(Base):
     reports: Mapped[list["BacktestReport"]] = relationship(back_populates="job")
 
 
+class StrategyParameterTemplate(Base):
+    __tablename__ = "strategy_parameter_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    template_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    template_name: Mapped[str] = mapped_column(String(128))
+    strategy_kind: Mapped[str] = mapped_column(String(64), index=True)
+    interval: Mapped[str] = mapped_column(String(16), index=True)
+    execution_profile: Mapped[str] = mapped_column(String(32), default="realistic")
+    validation_start: Mapped[str] = mapped_column(String(32), default="")
+    lookback_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    validation_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    jobs: Mapped[int] = mapped_column(Integer, default=1)
+    execution_overrides_json: Mapped[dict[str, object]] = mapped_column(JSONB)
+    parameter_space_json: Mapped[dict[str, object]] = mapped_column(JSONB)
+    description: Mapped[str] = mapped_column(Text, default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
 class BacktestReport(Base):
     __tablename__ = "backtest_reports"
 
