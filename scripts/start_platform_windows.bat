@@ -19,6 +19,13 @@ echo 正在启动平台前后端进程...
 echo API: %API_BASE_URL%
 echo Frontend: http://%FRONTEND_HOST%:%FRONTEND_PORT%
 
+py -3.13 -c "import uvicorn, fastapi, sqlalchemy, psycopg" >nul 2>nul
+if errorlevel 1 (
+    echo 后端 Python 依赖未安装完成。
+    echo 请先执行: py -3.13 -m pip install -r requirements.txt
+    exit /b 1
+)
+
 start "ETF Strategy API" cmd /k "cd /d ""%ROOT_DIR%"" && py -3.13 main.py api --host %API_HOST% --port %API_PORT%"
 start "ETF Strategy Worker" cmd /k "cd /d ""%ROOT_DIR%"" && py -3.13 main.py worker --poll-interval 5"
 start "ETF Strategy Scheduler" cmd /k "cd /d ""%ROOT_DIR%"" && py -3.13 main.py scheduler %SCHEDULER_ARGS%"

@@ -206,6 +206,12 @@
 
 使用这些配置的前提是 VS Code 已安装 Microsoft 的 Python / Python Debugger 扩展，否则 `debugpy` 调试类型不会被注册。
 
+另外，VS Code 一键启动使用的是当前工作区选中的 Python 解释器。第一次启动平台前，先执行 `Python: Select Interpreter`，并确认该解释器已经安装：
+
+- `py -3.13 -m pip install -r requirements.txt`
+
+如果 `启动 API 服务` 报 `No module named 'uvicorn'`，通常就是解释器切错了，或者切换后还没有在该环境里安装依赖。
+
 Python 调试配置统一采用下面这组字段：
 
 - `type=debugpy`
@@ -234,6 +240,8 @@ Python 调试配置统一采用下面这组字段：
 Windows 环境如果想直接拉起四个窗口，使用：
 
 - `scripts/start_platform_windows.bat`
+
+该脚本会先检查 `uvicorn / fastapi / sqlalchemy / psycopg` 是否已安装；缺失时直接提示先安装 `requirements.txt`，不再继续拉起后端窗口。
 
 这里没有继续使用参考示例里的 `type=python`，因为微软当前 Python 调试文档已经把 `debugpy` 作为 Python Debugger 扩展的调试类型；旧写法在部分 VS Code 环境里会导致无法启动调试。
 

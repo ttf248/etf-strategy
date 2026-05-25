@@ -7,6 +7,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from etf_strategy.cli import build_parser
+from etf_strategy.platform_cli import handle_api
 from etf_strategy.services.market_data import infer_interval_from_data_path
 from etf_strategy.services.templates import build_seed_templates, normalize_parameter_space, resolve_backtest_request_payload
 from etf_strategy.web.app import create_app
@@ -98,6 +99,22 @@ class PlatformFeatureTests(unittest.TestCase):
         mock_list.assert_called_once()
         mock_create.assert_called_once()
         mock_update.assert_called_once()
+
+    def test_handle_api_reports_missing_uvicorn_with_actionable_message(self) -> None:
+        args = SimpleNamespace(host="127.0.0.1", port=8000)
+
+        def fake_import(module_name: str):
+            if module_name == "uvicorn":
+                raise ModuleNotFoundError("No module named 'uvicorn'", name="uvicorn")
+            if module_name == "etf_strategy.db.settings":
+                return SimpleNamespace(load_platform_settings=lambda: SimpleNamespace(api_host="127.0.0.1", api_port=8000))
+            if module_name == "etf_strategy.web.app":
+                return SimpleNamespace(create_app=lambda: object())
+            raise AssertionError(f"unexpected import: {module_name}")
+
+        with patch("etf_strategy.platform_cli.importlib.import_module", side_effect=fake_import):
+            with self.assertRaisesRegex(RuntimeError, "python -m pip install -r requirements.txt"):
+                handle_api(args)
 
 
 class StrategyTemplateServiceTests(unittest.TestCase):

@@ -45,6 +45,12 @@
 
 ### 平台模式最短启动顺序
 
+先决条件：
+
+- 后端依赖已安装：`py -3.13 -m pip install -r requirements.txt`
+- 前端依赖已安装：在 `frontend/` 下执行 `npm install`
+- 如果使用 VS Code 一键启动，先执行 `Python: Select Interpreter`，确认当前工作区选中的解释器就是已安装上述依赖的那个环境
+
 0. Windows 环境可直接使用一键启动脚本
 
 ```powershell
@@ -123,6 +129,12 @@ npx next dev --hostname 127.0.0.1 --port 3000
   - `启动平台前后端全套`
 - Windows 一键脚本：
   - `scripts/start_platform_windows.bat`
+
+如果 VS Code 启动 `启动 API 服务` 时提示 `No module named 'uvicorn'`，说明不是 `requirements.txt` 漏了，而是当前 VS Code 选中的 Python 解释器没有安装后端依赖。先切换解释器，再在该解释器终端执行：
+
+```powershell
+python -m pip install -r requirements.txt
+```
 
 ## 你先从哪里开始
 

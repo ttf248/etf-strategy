@@ -2009,3 +2009,48 @@
 - 已执行 `cd frontend && npx next dev --hostname 127.0.0.1 --port 3001`
   - 能正常启动 Next.js Dev Server
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+
+## 修复 VS Code 启动 API 时缺少 uvicorn 的提示与预检查
+
+### 状态
+
+已完成，已把“缺少平台依赖”的报错从 Python 原始异常改为可执行的中文提示，并补上 Windows 启动脚本预检查。
+
+### 修改方案
+
+这次不改 `requirements.txt`，因为仓库里已经维护了 `uvicorn==0.34.2`。实际问题是 VS Code 当前选中的解释器没有安装依赖，或者 Windows 启动脚本使用的 `py -3.13` 环境未安装依赖。
+
+因此改两层：
+
+- 平台命令按需导入依赖，缺模块时返回明确安装指引
+- Windows 一键启动脚本先检查关键后端依赖，失败时直接退出并提示安装命令
+
+### 修改内容
+
+- `etf_strategy/platform_cli.py`
+  - 去掉顶层 `uvicorn` 和其他平台模块导入
+  - 改为在 `api / worker / scheduler / init-db / import-csv / sync-now` 执行时按需导入
+  - 缺少依赖时统一提示：
+    - 在当前 VS Code 解释器执行 `python -m pip install -r requirements.txt`
+    - 或按仓库默认命令执行 `py -3.13 -m pip install -r requirements.txt`
+- `scripts/start_platform_windows.bat`
+  - 启动前新增 `uvicorn / fastapi / sqlalchemy / psycopg` 预检查
+  - 检查失败时不再继续拉起 4 个窗口
+- `README.md`
+  - 平台模式启动前补充解释器与依赖前置条件
+  - 明确说明 `No module named 'uvicorn'` 的根因是 VS Code 解释器未装依赖
+- `doc/development_guide.md`
+  - 补充 `Python: Select Interpreter` 要求
+  - 补充 Windows 脚本的后端依赖预检查说明
+- `tests/test_platform_features.py`
+  - 新增 `handle_api()` 在缺少 `uvicorn` 时返回安装指引的测试
+
+### 设计取舍
+
+- 没有把 VS Code 启动前自动安装依赖写进 `launch.json`，因为调试入口应该稳定复用当前解释器，而不是每次启动都隐式改环境。
+- 平台依赖改为按需导入后，即使平台环境不完整，非平台命令也不会在 CLI 初始化阶段被连带阻塞。
+
+### 验证
+
+- 已执行 `py -3.13 -m unittest tests.test_platform_features tests.test_repo_contracts`
+- 已执行 `git diff --check`
