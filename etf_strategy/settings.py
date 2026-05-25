@@ -26,6 +26,7 @@ GridMode = Literal["cash"]
 LeftSidePolicy = Literal["hold", "force_exit", "both"]
 StrategyKind = Literal[
     "grid",
+    "dca",
     "daily_rebound",
     "minute_rebound",
     "minute_rebound_with_fade_filter",
@@ -63,6 +64,11 @@ MINUTE_REBOUND_STOP_LOSSES = (0.8, 1.0)
 MINUTE_REBOUND_MAX_HOLD_BARS = (4, 8)
 MINUTE_REBOUND_FADE_UPPER_SHADOWS = (1.0, 1.5)
 MINUTE_REBOUND_FADE_BLOCK_BARS = (2,)
+
+DCA_INVESTMENT_AMOUNTS = (5000.0, 10000.0)
+DCA_FREQUENCIES = ("weekly", "monthly")
+DCA_DAY_RULES = ("first_trading_day",)
+DCA_MAX_POSITION_RATIOS = (0.95,)
 
 
 @dataclass(frozen=True)

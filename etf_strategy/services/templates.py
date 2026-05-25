@@ -19,6 +19,12 @@ from etf_strategy.repositories.templates import (
     list_strategy_templates as list_strategy_templates_repo,
     update_strategy_template,
 )
+from etf_strategy.strategy.registry import (
+    default_parameter_space_for_strategy,
+    get_strategy_spec,
+    normalize_parameter_space_for_strategy,
+    validate_strategy_interval,
+)
 from etf_strategy.settings import (
     DAILY_GRID_COUNTS,
     DAILY_REBOUND_DEVIATIONS,
@@ -101,10 +107,7 @@ class TemplateSeed:
 
 
 def _validate_strategy_interval(strategy_kind: str, interval: str) -> None:
-    if strategy_kind == "daily_rebound" and interval != "1d":
-        raise ValueError("daily_rebound 模板只能绑定 1d 周期。")
-    if strategy_kind in {"minute_rebound", "minute_rebound_with_fade_filter", "minute_index_grid_retrace"} and interval == "1d":
-        raise ValueError(f"{strategy_kind} 模板不能绑定 1d 周期。")
+    validate_strategy_interval(strategy_kind, interval)
 
 
 def _normalize_string(value: object, field_name: str) -> str:
@@ -143,75 +146,11 @@ def _default_execution_overrides(profile: str) -> dict[str, object]:
 
 
 def default_parameter_space_for_template(strategy_kind: str, interval: str) -> dict[str, object]:
-    if strategy_kind == "grid":
-        if interval == "1d":
-            return {
-                "spacings": [float(item) for item in DAILY_SPACINGS],
-                "grid_counts": [int(item) for item in DAILY_GRID_COUNTS],
-                "take_profits": [float(item) for item in DAILY_TAKE_PROFITS],
-            }
-        return {
-            "spacings": [float(item) for item in INTRADAY_SPACINGS],
-            "grid_counts": [int(item) for item in INTRADAY_GRID_COUNTS],
-            "take_profits": [float(item) for item in INTRADAY_TAKE_PROFITS],
-        }
-    if strategy_kind == "daily_rebound":
-        return {
-            "rsi_window": [int(item) for item in DAILY_REBOUND_RSI_WINDOWS],
-            "rsi_entry": [float(item) for item in DAILY_REBOUND_RSI_ENTRIES],
-            "ma_window": [int(item) for item in DAILY_REBOUND_MA_WINDOWS],
-            "deviation_entry_pct": [float(item) for item in DAILY_REBOUND_DEVIATIONS],
-            "take_profit_pct": [float(item) for item in DAILY_REBOUND_TAKE_PROFITS],
-            "stop_loss_atr": [float(item) for item in DAILY_REBOUND_STOP_LOSS_ATRS],
-            "max_hold_bars": [int(item) for item in DAILY_REBOUND_MAX_HOLD_BARS],
-        }
-    if strategy_kind == "minute_index_grid_retrace":
-        return {}
-    parameter_space = {
-        "lookback_bars": [int(item) for item in MINUTE_REBOUND_LOOKBACK_BARS],
-        "drop_entry_pct": [float(item) for item in MINUTE_REBOUND_DROP_ENTRIES],
-        "rsi_entry": [float(item) for item in MINUTE_REBOUND_RSI_ENTRIES],
-        "take_profit_pct": [float(item) for item in MINUTE_REBOUND_TAKE_PROFITS],
-        "stop_loss_pct": [float(item) for item in MINUTE_REBOUND_STOP_LOSSES],
-        "max_hold_bars": [int(item) for item in MINUTE_REBOUND_MAX_HOLD_BARS],
-    }
-    if strategy_kind == "minute_rebound_with_fade_filter":
-        parameter_space["fade_filter_upper_shadow_pct"] = [float(item) for item in MINUTE_REBOUND_FADE_UPPER_SHADOWS]
-        parameter_space["fade_filter_block_bars"] = [int(item) for item in MINUTE_REBOUND_FADE_BLOCK_BARS]
-    return parameter_space
+    return default_parameter_space_for_strategy(strategy_kind, interval)
 
 
 def normalize_parameter_space(strategy_kind: str, parameter_space: dict[str, object] | None, interval: str) -> dict[str, object] | None:
-    if parameter_space is None:
-        return None
-    if not isinstance(parameter_space, dict):
-        raise ValueError("parameter_space 必须是对象。")
-    if strategy_kind == "minute_index_grid_retrace":
-        return {}
-    if strategy_kind == "grid":
-        return {
-            "spacings": _normalize_numeric_list(parameter_space.get("spacings"), "spacings", float),
-            "grid_counts": _normalize_numeric_list(parameter_space.get("grid_counts"), "grid_counts", int),
-            "take_profits": _normalize_numeric_list(parameter_space.get("take_profits"), "take_profits", float),
-        }
-    keys = DAILY_REBOUND_PARAMETER_KEYS if strategy_kind == "daily_rebound" else MINUTE_REBOUND_PARAMETER_KEYS
-    normalized: dict[str, object] = {}
-    for key in keys:
-        item_type = int if "window" in key or "bars" in key else float
-        normalized[key] = _normalize_numeric_list(parameter_space.get(key), key, item_type)
-    if strategy_kind == "minute_rebound_with_fade_filter":
-        normalized["fade_filter_upper_shadow_pct"] = _normalize_numeric_list(
-            parameter_space.get("fade_filter_upper_shadow_pct"),
-            "fade_filter_upper_shadow_pct",
-            float,
-        )
-        normalized["fade_filter_block_bars"] = _normalize_numeric_list(
-            parameter_space.get("fade_filter_block_bars"),
-            "fade_filter_block_bars",
-            int,
-        )
-    _validate_strategy_interval(strategy_kind, interval)
-    return normalized
+    return normalize_parameter_space_for_strategy(strategy_kind, parameter_space, interval)
 
 
 def normalize_execution_overrides(value: dict[str, object] | None, profile: str) -> dict[str, object]:
@@ -364,6 +303,20 @@ def build_seed_templates() -> list[TemplateSeed]:
             execution_overrides_json=base_execution,
             parameter_space_json=default_parameter_space_for_template("grid", "1m"),
             description="1 分钟网格的默认平台模板。",
+        ),
+        TemplateSeed(
+            template_key="dca_daily_realistic_default",
+            template_name="定投-日线实盘口径默认模板",
+            strategy_kind="dca",
+            interval="1d",
+            execution_profile="realistic",
+            validation_start=DEFAULT_VALIDATION_START,
+            lookback_days=DEFAULT_LOOKBACK_DAYS,
+            validation_ratio=None,
+            jobs=1,
+            execution_overrides_json=base_execution,
+            parameter_space_json=default_parameter_space_for_template("dca", "1d"),
+            description="按交易周期固定金额买入的日线定投默认模板。",
         ),
         TemplateSeed(
             template_key="daily_rebound_1d_realistic_default",

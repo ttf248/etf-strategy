@@ -9,6 +9,7 @@ ETF Strategy 是一个中文优先的开源策略研究平台，用于从 Yahoo 
 - 行情数据：Yahoo 下载、本地 CSV 导入、PostgreSQL 长期存储。
 - 回测执行：API 入队，Worker 异步执行，报告结构化落库。
 - 参数模板：在数据库中管理策略、周期、执行口径和寻参空间。
+- 多策略研究：网格、定投、日线反弹、分钟反抽和指数回落网格共用同一套工作流。
 - Web 控制台：行情统计、同步记录、回测任务、模板中心、历史报告。
 - CLI 研究：保留下载、寻参、验证、报告和批量研究入口。
 - 报告样例：[统一报告索引](reports/report_index.md)、[日线多策略报告](reports/1810_hk/daily/1810_hk_daily_strategy_compare_report.md)、[15 分钟多策略报告](reports/1810_hk/minute/1810_hk_15m_strategy_compare_report.md)、[15 分钟网格基线报告](reports/1810_hk/minute/1810_hk_15m_grid_report.md)。
@@ -107,6 +108,12 @@ py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
 
 ```powershell
 py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK --interval 15m --compare-strategies --jobs auto --cache-dir outputs/cache/minute_compare
+```
+
+运行日线定投回测：
+
+```powershell
+py -3.13 main.py report --data data/processed/1810_hk_daily.csv --symbol 1810.HK --interval 1d --strategy dca --jobs auto --cache-dir outputs/cache/dca
 ```
 
 批量研究：

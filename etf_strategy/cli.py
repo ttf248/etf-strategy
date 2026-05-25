@@ -65,6 +65,7 @@ from etf_strategy.settings import (
     build_execution_config,
 )
 from etf_strategy.symbols import SYMBOL_SETS, SymbolSpec
+from etf_strategy.strategy.registry import compare_strategy_kinds, strategy_choices, strategy_display_name
 from etf_strategy.workflow import (
     run_full_workflow,
     run_minute_full_workflow,
@@ -257,9 +258,9 @@ def _add_execution_arguments(parser: argparse.ArgumentParser) -> None:
 def _add_strategy_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--strategy",
-        choices=["grid", "daily_rebound", "minute_rebound", "minute_rebound_with_fade_filter", "minute_index_grid_retrace"],
+        choices=strategy_choices(),
         default="grid",
-        help="策略类型：grid 为现有网格；其余为反转类策略",
+        help="策略类型，例如 grid、dca、daily_rebound、minute_rebound",
     )
 
 
@@ -298,21 +299,13 @@ def _validate_local_only_conflict(args: argparse.Namespace, command_name: str) -
 
 
 def _default_compare_strategy_kinds(interval: str) -> list[StrategyKind]:
-    if is_intraday_interval(interval):
-        return ["grid", "minute_rebound", "minute_rebound_with_fade_filter"]
-    return ["grid", "daily_rebound"]
+    return compare_strategy_kinds(interval)
 
 
 def _strategy_display_name(strategy_kind: str) -> str:
-    labels = {
-        "grid": "网格",
-        "daily_rebound": "日线超跌反弹",
-        "minute_rebound": "分钟急跌反抽",
-        "minute_rebound_with_fade_filter": "分钟反抽+冲高回落过滤",
-        "minute_index_grid_retrace": "指数回落反弹网格",
-        "compare": "多策略对比",
-    }
-    return labels.get(strategy_kind, strategy_kind)
+    if strategy_kind == "compare":
+        return "多策略对比"
+    return strategy_display_name(strategy_kind)
 
 
 def _single_report_index_entry(
@@ -458,6 +451,14 @@ def _format_best_parameter_summary(summary: dict[str, object]) -> str:
             f"take_profit={float(summary['TakeProfitPct']):.2f}% "
             f"score={score:.2f}"
         )
+    if strategy_kind == "dca":
+        return (
+            f"investment_amount={float(summary.get('investment_amount', 0.0)):.2f} "
+            f"frequency={summary.get('frequency', '')} "
+            f"day_rule={summary.get('day_rule', '')} "
+            f"max_position_ratio={float(summary.get('max_position_ratio', 0.0)):.2f} "
+            f"score={score:.2f}"
+        )
     parameter_fields = [
         key
         for key in [
@@ -596,6 +597,7 @@ def handle_optimize(args: argparse.Namespace) -> int:
             data_path=args.data,
             symbol=args.symbol,
             output_dir=output_dir,
+            interval=args.interval,
             validation_ratio=args.validation_ratio,
             strategy_kind=args.strategy,
             execution_config=execution_config,
@@ -647,6 +649,7 @@ def handle_backtest(args: argparse.Namespace) -> int:
             take_profit_pct=0.0,
             symbol=args.symbol,
             output_dir=output_dir,
+            interval=args.interval,
             validation_ratio=args.validation_ratio,
             strategy_kind=args.strategy,
             execution_config=execution_config,
@@ -672,6 +675,7 @@ def handle_backtest(args: argparse.Namespace) -> int:
                 take_profit_pct=args.take_profit,
                 symbol=args.symbol,
                 output_dir=output_dir,
+                interval=args.interval,
                 validation_ratio=args.validation_ratio,
                 execution_config=execution_config,
             )

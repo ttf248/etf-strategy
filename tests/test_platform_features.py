@@ -175,6 +175,28 @@ class StrategyTemplateServiceTests(unittest.TestCase):
 
         self.assertEqual(payload, {"spacings": [0.01, 0.02], "grid_counts": [4, 5], "take_profits": [0.01, 0.03]})
 
+    def test_normalize_parameter_space_for_dca_keeps_string_fields(self) -> None:
+        payload = normalize_parameter_space(
+            "dca",
+            {
+                "investment_amount": [5000, "10000"],
+                "frequency": ["weekly", "monthly"],
+                "day_rule": ["first_trading_day"],
+                "max_position_ratio": [0.95],
+            },
+            "1d",
+        )
+
+        self.assertEqual(
+            payload,
+            {
+                "investment_amount": [5000.0, 10000.0],
+                "frequency": ["weekly", "monthly"],
+                "day_rule": ["first_trading_day"],
+                "max_position_ratio": [0.95],
+            },
+        )
+
     def test_resolve_backtest_request_payload_merges_template_defaults(self) -> None:
         template = SimpleNamespace(
             id=7,

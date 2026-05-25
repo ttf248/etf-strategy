@@ -2238,3 +2238,48 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts tests.test_platform_features`
 - 已执行 `git diff --check`
 - 已检查本地前端首页 `http://127.0.0.1:3000` 响应 200
+
+## 多策略注册表与定投回测接入
+
+### 状态
+
+已完成代码实现和本地验证。
+
+### 修改方案
+
+按“先抽统一扩展点，再加入定投策略”的方式改造：
+
+- 新增策略注册表，集中声明策略代码、中文名、支持周期、参数字段、默认参数空间、寻参入口和验证入口。
+- 将日线和分钟线工作流改为通过注册表分发策略，保留原有函数签名兼容 CLI、平台任务和测试。
+- 新增 `dca` 日线定投策略，支持固定周期第一个交易日定投、最小交易单位、手续费、滑点、仓位上限和买入持有对照。
+- 平台模板、前端模板配置、CLI 策略选择和报告生成同步接入 `dca`。
+
+### 修改内容
+
+- 新增：
+  - `etf_strategy/strategy/registry.py`
+  - `etf_strategy/strategy/dca.py`
+- 调整：
+  - `etf_strategy/workflow.py` 通过策略注册表执行寻参和验证。
+  - `etf_strategy/services/templates.py` 复用注册表做周期校验、默认参数空间和参数归一化。
+  - `etf_strategy/cli.py` 从注册表读取策略选择和显示名称。
+  - `etf_strategy/reporting.py` 增加定投专用报告模板。
+  - `frontend/src/lib/strategy-template-config.ts` 增加定投模板字段和字符串参数支持。
+  - README、`doc/strategy-engine.md`、`doc/api.md`、`doc/development.md` 同步说明定投和注册表扩展方式。
+  - 测试覆盖定投回测、定投模板参数归一化和既有平台契约。
+
+### 设计取舍
+
+- 定投第一阶段只支持日线，因为分钟线定投缺少实际业务意义，也会和短线策略的信号口径混在一起。
+- 定投采用每个周期第一个实际交易日触发，而不是自然日固定日期，避免节假日和停牌导致计划日无行情。
+- 参数空间支持字符串字段，但数据库仍沿用现有 JSON 结构，不新增策略专属表字段，保持历史任务兼容。
+- 旧的工作流函数签名暂不大改，避免一次改造同时冲击 CLI、API、worker 和测试；真正的分发逻辑已经收敛到注册表。
+
+### 验证
+
+- 已执行 `py -3.13 -m compileall etf_strategy`
+- 已执行 `py -3.13 -m unittest tests.test_grid_strategy tests.test_platform_features tests.test_repo_contracts`
+- 已执行临时目录定投 `run_full_workflow(strategy_kind="dca") + build_report_markdown()` 冒烟测试
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `cd frontend && npm run build`
+- 已执行 `git diff --check`

@@ -2,6 +2,7 @@ export const intervalOptions = ["1d", "15m", "1m"].map((item) => ({ label: item,
 
 export const strategyOptions = [
   { label: "网格", value: "grid" },
+  { label: "定投", value: "dca" },
   { label: "日线超跌反弹", value: "daily_rebound" },
   { label: "分钟急跌反抽", value: "minute_rebound" },
   { label: "分钟反抽+冲高回落过滤", value: "minute_rebound_with_fade_filter" },
@@ -11,7 +12,7 @@ export const strategyOptions = [
 export type ParameterFieldSpec = {
   key: string;
   label: string;
-  kind: "int" | "float";
+  kind: "int" | "float" | "string";
 };
 
 const gridDefaults = {
@@ -28,6 +29,10 @@ const gridDefaults = {
 };
 
 const strategyDefaults: Record<string, Record<string, number[]>> = {
+  dca: {
+    investment_amount: [5000, 10000],
+    max_position_ratio: [0.95],
+  },
   daily_rebound: {
     rsi_window: [6, 8, 10, 14],
     rsi_entry: [20, 25, 30, 35],
@@ -58,11 +63,24 @@ const strategyDefaults: Record<string, Record<string, number[]>> = {
   minute_index_grid_retrace: {},
 };
 
+const stringStrategyDefaults: Record<string, Record<string, string[]>> = {
+  dca: {
+    frequency: ["weekly", "monthly"],
+    day_rule: ["first_trading_day"],
+  },
+};
+
 export const parameterFieldSpecsByStrategy: Record<string, ParameterFieldSpec[]> = {
   grid: [
     { key: "spacings", label: "网格间距", kind: "float" },
     { key: "grid_counts", label: "网格层数", kind: "int" },
     { key: "take_profits", label: "止盈比例", kind: "float" },
+  ],
+  dca: [
+    { key: "investment_amount", label: "每期金额", kind: "float" },
+    { key: "frequency", label: "定投频率", kind: "string" },
+    { key: "day_rule", label: "触发日规则", kind: "string" },
+    { key: "max_position_ratio", label: "最大仓位", kind: "float" },
   ],
   daily_rebound: [
     { key: "rsi_window", label: "RSI 窗口", kind: "int" },
@@ -94,24 +112,24 @@ export const parameterFieldSpecsByStrategy: Record<string, ParameterFieldSpec[]>
   minute_index_grid_retrace: [],
 };
 
-export function buildDefaultParameterSpace(strategyKind: string, interval: string): Record<string, number[]> {
+export function buildDefaultParameterSpace(strategyKind: string, interval: string): Record<string, Array<number | string>> {
   if (strategyKind === "grid") {
     return interval === "1d" ? gridDefaults["1d"] : gridDefaults.intraday;
   }
-  return strategyDefaults[strategyKind] ?? {};
+  return { ...(strategyDefaults[strategyKind] ?? {}), ...(stringStrategyDefaults[strategyKind] ?? {}) };
 }
 
 export function encodeParameterSpace(parameterSpace: Record<string, unknown>): Record<string, string> {
   return Object.fromEntries(Object.entries(parameterSpace).map(([key, value]) => [key, Array.isArray(value) ? value.join(",") : ""]));
 }
 
-export function decodeNumericArray(raw: string, kind: "int" | "float"): number[] {
+export function decodeNumericArray(raw: string, kind: "int" | "float" | "string"): Array<number | string> {
   return raw
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean)
-    .map((item) => (kind === "int" ? parseInt(item, 10) : parseFloat(item)))
-    .filter((item) => Number.isFinite(item));
+    .map((item) => (kind === "string" ? item : kind === "int" ? parseInt(item, 10) : parseFloat(item)))
+    .filter((item) => (typeof item === "string" ? item.length > 0 : Number.isFinite(item)));
 }
 
 export function strategyLabel(strategyKind: string): string {

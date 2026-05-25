@@ -368,6 +368,7 @@ def plot_run_result(run_result: dict[str, object], output_path: str | Path, titl
             "base_buy": ("^", "#1f78b4", "底仓买入"),
             "retrace_buy": ("v", "#33a02c", "反弹买入"),
             "retrace_sell": ("o", "#ff7f00", "回落卖出"),
+            "dca_buy": ("^", "#2ca25f", "定投买入"),
         }
         for event_type, (marker, color, label) in marker_map.items():
             subset = events[events["EventType"] == event_type]
@@ -1050,6 +1051,7 @@ def _strategy_display_name(summary: dict[str, object], fallback: str | None = No
     strategy_kind = str(summary.get("StrategyKind", fallback or "grid"))
     mapping = {
         "grid": "网格",
+        "dca": "定投",
         "daily_rebound": "日线超跌反弹",
         "minute_rebound": "分钟急跌反抽",
         "minute_rebound_with_fade_filter": "分钟反抽+冲高回落过滤",
@@ -1093,6 +1095,125 @@ def _build_policy_comparison_table(in_sample_run: dict[str, object], validation_
     )
 
 
+def _build_dca_report_markdown(workflow_result: dict[str, object], report_dir: str | Path) -> Path:
+    """生成定投策略报告。
+
+    定投没有网格层数和热力图含义，因此使用独立模板，重点解释投入节奏、
+    累计投入、平均成本以及相对一次性买入持有的差额。
+    """
+    started_at = perf_counter()
+    workflow_type = workflow_result.get("workflow_type", "daily")
+    interval = workflow_result.get("interval", "1d")
+    optimization = workflow_result["optimization"]
+    validation = workflow_result["validation"]
+    decline_window = optimization["decline_window"]
+    best_summary = optimization["best_run"]["summary"]
+    validation_summary = validation["run"]["summary"]
+    symbol = str(best_summary["Symbol"])
+    target_dir = Path(report_dir)
+    figure_dir = target_dir / "figures"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    slug = _symbol_to_slug(symbol)
+    suffix = f"{interval}_dca" if workflow_type == "minute" else "dca"
+    report_path = target_dir / f"{slug}_{suffix}_report.md"
+    in_sample_chart = plot_run_result(
+        optimization["best_run"],
+        figure_dir / f"{slug}_{suffix}_in_sample.png",
+        f"{symbol} 样本内定投回测",
+    )
+    validation_chart = plot_run_result(
+        validation["run"],
+        figure_dir / f"{slug}_{suffix}_validation.png",
+        f"{symbol} 样本外定投回测",
+    )
+    in_sample_words = _describe_run_in_plain_words(optimization["best_run"])
+    validation_words = _describe_run_in_plain_words(validation["run"])
+    quick_table = _build_simple_markdown_table(
+        ["问题", "样本内", "样本外"],
+        [
+            ["净收益率", f"{float(best_summary['NetReturnPct']):.2f}%", f"{float(validation_summary['NetReturnPct']):.2f}%"],
+            ["最大回撤", f"{float(best_summary['MaxDrawdownPct']):.2f}%", f"{float(validation_summary['MaxDrawdownPct']):.2f}%"],
+            ["定投次数", f"{int(best_summary.get('DcaBuyCount', 0))}", f"{int(validation_summary.get('DcaBuyCount', 0))}"],
+            ["累计投入", f"{float(best_summary.get('DcaInvestedCash', 0.0)):.2f}", f"{float(validation_summary.get('DcaInvestedCash', 0.0)):.2f}"],
+            ["期末平均成本", f"{float(best_summary.get('DcaAverageCost', 0.0)):.2f}", f"{float(validation_summary.get('DcaAverageCost', 0.0)):.2f}"],
+            ["相对一次性买入", f"{float(best_summary.get('GridVsBuyHold', 0.0)):.2f}", f"{float(validation_summary.get('GridVsBuyHold', 0.0)):.2f}"],
+        ],
+    )
+    params_table = _build_simple_markdown_table(
+        ["参数", "取值"],
+        [
+            ["每期投入金额", f"{float(best_summary.get('investment_amount', 0.0)):.2f}"],
+            ["定投频率", str(best_summary.get("frequency", ""))],
+            ["触发日规则", str(best_summary.get("day_rule", ""))],
+            ["最大仓位", f"{float(best_summary.get('max_position_ratio', 0.0)) * 100:.2f}%"],
+            ["最小交易单位", f"{int(best_summary['LotSize'])} 股"],
+            ["执行口径", str(best_summary.get("ExecutionProfile", "research"))],
+        ],
+    )
+    in_sample_chart_summary = _build_run_chart_summary(optimization["best_run"], in_sample_words)
+    validation_chart_summary = _build_run_chart_summary(validation["run"], validation_words)
+    report_content = f"""# {symbol} 定投回测报告
+
+## 摘要
+
+- 标的：`{symbol}`
+- 样本内窗口：{decline_window.sample_start} 至 {decline_window.sample_end}
+- 样本外窗口：{decline_window.validation_start} 至 {validation_summary['EndDate']}
+- 策略：按固定周期第一个交易日投入固定金额，买入数量按最小交易单位向下取整
+- 费用口径：`{best_summary.get('ExecutionProfile', 'research')}`，手续费 `{float(best_summary.get('CommissionBps', 0.0)):.2f}` bps，滑点 `{float(best_summary.get('SlippageBps', 0.0)):.2f}` bps
+
+## 第一层：先看结论
+
+{quick_table}
+
+- 定投的核心问题不是单次买卖是否抓到底，而是资金投入节奏是否降低了择时风险。
+- 如果相对一次性买入为正，说明分批投入在当前样本里比首日满仓更合适；反之则说明上涨行情里现金拖累更明显。
+
+## 第二层：展开细节
+
+### 最优定投参数
+
+{params_table}
+
+### 样本内回测图
+
+{in_sample_chart_summary}
+
+![样本内回测图](figures/{in_sample_chart.name})
+
+### 样本外回测图
+
+{validation_chart_summary}
+
+![样本外回测图](figures/{validation_chart.name})
+
+### 样本内事件流水
+
+{_build_event_table(optimization["best_run"])}
+
+### 样本内成交记录
+
+{_build_trade_table(optimization["best_run"])}
+
+### 样本外事件流水
+
+{_build_event_table(validation["run"])}
+
+### 样本外成交记录
+
+{_build_trade_table(validation["run"])}
+
+## 最终结论
+
+- 样本外账户最终从 `200000` 走到 `{validation_words["final_equity"]:.2f}`，总盈亏 `{validation_words["total_pnl"]:.2f}`。
+- 样本外累计投入 `{float(validation_summary.get('DcaInvestedCash', 0.0)):.2f}`，剩余现金和持仓市值共同决定最终权益。
+- 这份报告只说明当前历史样本下定投节奏的结果，不构成实盘建议；后续可继续扩展为跨标的、跨起点的定投稳健性检验。
+"""
+    report_path.write_text(report_content, encoding="utf-8")
+    logger.info("定投正式报告生成完成: report={} elapsed={:.2f}s", report_path, perf_counter() - started_at)
+    return report_path
+
+
 def build_report_markdown(
     workflow_result: dict[str, object],
     report_dir: str | Path = DEFAULT_REPORT_DIR,
@@ -1110,6 +1231,9 @@ def build_report_markdown(
     decline_window = optimization["decline_window"]
     best_summary = optimization["best_run"]["summary"]
     validation_summary = validation["run"]["summary"]
+    strategy_kind = str(best_summary.get("StrategyKind", "grid"))
+    if strategy_kind == "dca":
+        return _build_dca_report_markdown(workflow_result, report_dir=report_dir)
     symbol = str(best_summary["Symbol"])
     logger.info("[2/2] 开始生成正式报告: symbol={} workflow_type={} report_dir={}", symbol, workflow_type, report_dir)
     in_sample_words = _describe_run_in_plain_words(optimization["best_run"])
@@ -1610,6 +1734,10 @@ def build_strategy_comparison_report(
             "max_hold_bars",
             "fade_filter_upper_shadow_pct",
             "fade_filter_block_bars",
+            "investment_amount",
+            "frequency",
+            "day_rule",
+            "max_position_ratio",
         ]:
             if key in best_summary:
                 parameter_bits.append(f"{key}={best_summary[key]}")

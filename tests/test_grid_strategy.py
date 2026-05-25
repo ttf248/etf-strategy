@@ -26,6 +26,7 @@ from etf_strategy.strategy.grid import (
     split_intraday_in_sample_and_validation,
     split_in_sample_and_validation,
 )
+from etf_strategy.strategy.dca import run_dca_backtest
 from etf_strategy.strategy.index_grid import resolve_index_grid_spec, run_index_grid_backtest
 from etf_strategy.strategy.rebound import run_rebound_backtest
 
@@ -1229,6 +1230,44 @@ class GridStrategyTests(unittest.TestCase):
         self.assertGreaterEqual(summary["ClosedTrades"], 1)
         self.assertIn("rebound_buy", set(events["EventType"]))
         self.assertTrue({"take_profit_sell", "max_hold_sell", "stop_loss_sell"}.intersection(set(events["EventType"])))
+
+    def test_run_dca_backtest_buys_on_period_first_trading_day(self) -> None:
+        prices = [10.0 + index * 0.1 for index in range(30)]
+        frame = build_test_frame(prices, start="2026-01-01")
+
+        result = run_dca_backtest(
+            data=frame,
+            scenario_name="dca_unit_test",
+            symbol="1810.HK",
+            market="HK",
+            lot_size=200,
+            lot_size_source="unit test",
+            params={
+                "investment_amount": 10000.0,
+                "frequency": "weekly",
+                "day_rule": "first_trading_day",
+                "max_position_ratio": 0.95,
+            },
+            execution_config=build_execution_config(
+                "research",
+                commission_bps=0,
+                slippage_bps=0,
+                max_position_ratio=0.95,
+            ),
+        )
+
+        summary = result["summary"]
+        events = result["events"]
+        trades = result["trades"]
+
+        self.assertEqual(summary["StrategyKind"], "dca")
+        self.assertEqual(summary["StrategyName"], "定投")
+        self.assertGreaterEqual(summary["DcaBuyCount"], 1)
+        self.assertGreater(summary["DcaInvestedCash"], 0)
+        self.assertIn("dca_buy", set(events["EventType"]))
+        self.assertFalse(trades.empty)
+        self.assertTrue((trades["Size"] < 0).all())
+        self.assertTrue((events[events["EventType"] == "dca_buy"]["Units"] % 200 == 0).all())
 
     def test_run_minute_rebound_fade_filter_blocks_entry(self) -> None:
         dates = pd.date_range(start="2026-04-01 09:30:00", periods=8, freq="15min")

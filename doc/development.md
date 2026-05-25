@@ -65,8 +65,9 @@ npx next dev --hostname 127.0.0.1 --port 3000
 新增策略：
 
 - 在 `etf_strategy/strategy/` 中实现策略逻辑。
-- 接入 `workflow.py` 和必要的 CLI 参数。
-- 如需平台提交，更新模板服务和前端模板配置。
+- 在 `etf_strategy/strategy/registry.py` 注册策略代码、中文名、支持周期、参数字段、寻参入口和验证入口。
+- 如需平台提交，确认模板服务和前端模板配置能读取或同步该参数空间。
+- 如需专用报告，更新 `reporting.py`；否则复用通用报告结构。
 - 更新 [策略引擎](strategy-engine.md)。
 
 修改数据表：
