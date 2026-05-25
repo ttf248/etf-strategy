@@ -20,6 +20,7 @@
 
 - 解析命令行参数
 - 选择日线或分钟线工作流
+- 转发平台模式相关命令
 - 输出适合终端阅读的中文结果
 
 不负责：
@@ -81,6 +82,54 @@
 - 日线全历史默认下载口径
 - 分钟线本地样本增量合并
 
+### `etf_strategy/db/`
+
+负责：
+
+- PostgreSQL 连接配置
+- SQLAlchemy 模型
+- Alembic 迁移
+- 数据库初始化
+
+### `etf_strategy/repositories/`
+
+负责：
+
+- 行情、同步任务、回测任务、报告的数据库读写
+- PostgreSQL upsert、统计查询和任务状态流转
+
+### `etf_strategy/services/`
+
+负责：
+
+- CSV 导入
+- 行情统计与数据库查询
+- Yahoo 同步任务
+- 异步回测任务提交与结果落库
+
+### `etf_strategy/web/`
+
+负责：
+
+- FastAPI 应用
+- Web API 路由
+- 前端消费的 JSON 契约
+
+### `etf_strategy/runtime/`
+
+负责：
+
+- 常驻 worker 轮询执行回测任务
+- APScheduler 定时同步 Yahoo 行情
+
+### `frontend/`
+
+负责：
+
+- Next.js 前端控制台
+- 行情统计、回测任务、历史报告页面
+- 调用 FastAPI 接口并展示结构化报告
+
 ## 常见改动应该改哪里
 
 ### 新增命令或调整 CLI 参数
@@ -88,6 +137,7 @@
 至少同步更新：
 
 - `etf_strategy/cli.py`
+- `etf_strategy/platform_cli.py`
 - `etf_strategy/data/yahoo.py`
 - `README.md`
 - `.vscode/launch.json`
@@ -128,6 +178,8 @@
 至少同步更新：
 
 - `etf_strategy/data/yahoo.py`
+- `etf_strategy/services/sync.py`
+- `etf_strategy/repositories/market_data.py`
 - `etf_strategy/cli.py`
 - `doc/glossary.md`
 - `doc/minute_grid_research.md`
@@ -141,10 +193,10 @@
 - `.vscode/launch.json`：负责一键启动
 - `.vscode/settings.json`：负责终端 profile
 
-其中 `launch.json` 当前只保留两条一键调试配置：
+其中 `launch.json` 当前只保留两条平台调试配置：
 
-- 基于 `index_grid_etfs` 标的池的一键 `1m` 指数 ETF 报告
-- 基于 `data/processed/1810_hk_15m.csv` 的 15 分钟多策略报告重算
+- 启动 API 服务
+- 启动回测 Worker
 
 使用这些配置的前提是 VS Code 已安装 Microsoft 的 Python / Python Debugger 扩展，否则 `debugpy` 调试类型不会被注册。
 
@@ -155,7 +207,7 @@
 - `program=${workspaceFolder}/main.py`
 - `cwd=${workspaceFolder}`
 - `console=integratedTerminal`
-- `args` 中显式传入 `--execution-profile realistic`，确保 VS Code 一键报告使用接近实盘的默认口径
+- `args` 中显式传入 `api` 或 `worker`
 - 运行时直接看 VS Code 集成终端里的 `INFO` 级别提示
 - 更详细的定位日志仍写入 `log/etf_strategy_YYYY-MM-DD.log`
 - `main.py` 会主动尝试把 Windows 控制台切到 UTF-8，`.vscode/launch.json` 也会显式传入 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`

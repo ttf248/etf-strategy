@@ -44,6 +44,7 @@
 - [x] 抽取更多仓库通用规则
 - [x] 默认分钟线批量研究与 Yahoo 下载强制代理
 - [x] 重建恒科批量报告索引并提交报告产物
+- [x] 平台化改造（PostgreSQL + FastAPI + Next.js）
 
 ## 项目规划整理
 
@@ -118,6 +119,54 @@
   - 初始建仓 `50%`
   - 网格资金 `50%`
 - 参数搜索维度：
+
+## 平台化改造（PostgreSQL + FastAPI + Next.js）
+
+### 状态
+
+已完成首版可运行实现，并完成一次本地 CSV 到 PostgreSQL 的导入。
+
+### 修改方案
+
+把仓库从“离线研究脚本工程”扩展为“研究引擎 + 常驻后端服务 + Web 前端控制台”的双模式结构：
+
+- 保留现有 CLI 与回测核心
+- 新增 PostgreSQL 主存储
+- 新增 FastAPI 接口层
+- 新增 worker / scheduler 常驻运行入口
+- 新增 Next.js 前端，用于查看行情统计、提交回测任务、查看历史报告
+
+### 修改内容
+
+- 新增数据库层：
+  - `etf_strategy/db/`
+  - `alembic/`
+  - `alembic.ini`
+- 新增仓储与服务层：
+  - `etf_strategy/repositories/`
+  - `etf_strategy/services/`
+  - `etf_strategy/runtime/`
+  - `etf_strategy/web/`
+- 新增平台命令：
+  - `init-db`
+  - `import-csv`
+  - `api`
+  - `worker`
+  - `scheduler`
+  - `sync-now`
+- 新增前端工程：
+  - `frontend/`
+- 调整 `workflow.py`，支持直接复用数据库读取出来的 DataFrame，不再强依赖 CSV 文件输入
+- 已执行：
+  - 本地 PostgreSQL 初始化与 Alembic 迁移
+  - `data/processed/` 历史行情导入 PostgreSQL
+
+### 设计取舍
+
+- 行情长期主存储改为 PostgreSQL，CSV 只保留导入和调试用途；原因是前端查询、历史报告和异步任务都需要结构化存储。
+- 保留现有回测核心与 Markdown 报告生成，避免为了服务化重写策略逻辑。
+- 回测执行采用“API 提交任务 + 独立 worker 轮询”模式，而不是请求内同步执行；原因是寻参和报告生成耗时较长。
+- 前端采用 Next.js + Ant Design，优先交付内部工具所需的表格、筛选、任务和详情页，而不是做展示型页面。
   - 网格间距 `grid_spacing`
   - 网格层数 `grid_count`
   - 单层止盈比例 `take_profit`

@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "一键生成指数ETF 1分钟报告",
+            "name": "启动 API 服务",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
@@ -13,32 +13,15 @@
                 "PYTHONIOENCODING": "utf-8"
             },
             "args": [
-                "batch",
-                "--symbol-set",
-                "index_grid_etfs",
-                "--strategy",
-                "minute_index_grid_retrace",
-                "--download",
-                "--interval",
-                "1m",
-                "--period",
-                "60d",
-                "--proxy",
-                "http://127.0.0.1:7897",
-                "--jobs",
-                "auto",
-                "--cache-dir",
-                "outputs/cache/index_grid_1m",
-                "--output-dir",
-                "outputs/index_grid",
-                "--report-dir",
-                "reports",
-                "--execution-profile",
-                "realistic"
+                "api",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8000"
             ]
         },
         {
-            "name": "一键生成1810分钟多策略报告",
+            "name": "启动回测 Worker",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
@@ -49,26 +32,9 @@
                 "PYTHONIOENCODING": "utf-8"
             },
             "args": [
-                "report",
-                "--data",
-                "data/processed/1810_hk_15m.csv",
-                "--symbol",
-                "1810.HK",
-                "--interval",
-                "15m",
-                "--compare-strategies",
-                "--jobs",
-                "auto",
-                "--cache-dir",
-                "outputs/cache/minute_compare",
-                "--output-dir",
-                "outputs/compare/minute",
-                "--report-dir",
-                "reports/1810_hk/minute",
-                "--execution-profile",
-                "realistic",
-                "--strategy",
-                "grid"
+                "worker",
+                "--poll-interval",
+                "5"
             ]
         }
     ]

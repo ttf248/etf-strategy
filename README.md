@@ -31,6 +31,65 @@
 - 仓库也内置三只指数 ETF 的 `1m` 固定参数研究标的池 `index_grid_etfs`
 - 仓库也内置上交所官方港股通沪名单快照，可直接批量研究当前 `633` 只合资格港股与 ETF
 
+## Web 平台模式
+
+仓库现在同时支持“研究 CLI”和“前后端分离的平台模式”。
+
+平台模式的默认技术边界：
+
+- 后端：`FastAPI + PostgreSQL + APScheduler`
+- 前端：`Next.js + Ant Design`
+- 回测执行：数据库任务表 + 独立 `worker`
+- 行情主存储：PostgreSQL，CSV 只保留导入和调试用途
+
+### 平台模式最短启动顺序
+
+1. 初始化数据库并执行迁移
+
+```powershell
+py -3.13 main.py init-db
+```
+
+2. 导入本地 CSV 行情
+
+```powershell
+py -3.13 main.py import-csv --source-dir data/processed
+```
+
+3. 启动 API 服务
+
+```powershell
+py -3.13 main.py api --host 127.0.0.1 --port 8000
+```
+
+4. 启动回测 Worker
+
+```powershell
+py -3.13 main.py worker --poll-interval 5
+```
+
+5. 启动前端
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+默认访问地址：
+
+- 后端 API：`http://127.0.0.1:8000`
+- 前端控制台：`http://127.0.0.1:3000`
+
+### 平台模式新增命令
+
+- `init-db`：创建 `etf_strategy` 数据库并执行 Alembic 迁移
+- `import-csv`：导入历史 CSV 行情到 PostgreSQL
+- `api`：启动 FastAPI 服务
+- `worker`：启动回测任务执行器
+- `scheduler`：启动 Yahoo 定时同步调度器
+- `sync-now`：手动触发一次行情同步
+
 ## 你先从哪里开始
 
 如果你第一次进入这个仓库，建议按下面顺序看：
@@ -254,6 +313,7 @@ $env:ETF_STRATEGY_PROXY="http://127.0.0.1:7897"
 
 ```text
 etf_strategy/    源码
+frontend/        Next.js 前端控制台
 data/processed/  默认正式样本输入
 outputs/         运行中间结果
 reports/         正式图表与中文报告
@@ -280,16 +340,12 @@ task.md          AI 任务记录
 
 使用这些启动项前，需要 VS Code 已安装 Microsoft 的 Python / Python Debugger 扩展；否则 `debugpy` 调试类型不会被识别。
 
-`launch.json` 当前只保留 2 个一键入口：
+`launch.json` 当前只保留 2 个平台入口：
 
-- 一键生成恒科批量分钟报告
-- 一键生成 1810 分钟多策略报告
+- 启动 API 服务
+- 启动回测 Worker
 
-其中 1810 单标的入口直接基于仓库内置正式样本重算多策略报告；恒科批量入口会先下载 Yahoo 分钟线，因此必须配置代理。
-
-- 单标的报告入口不依赖 Yahoo 网络连接
-- 批量下载入口必须确保本机 `http://127.0.0.1:7897` 代理可用，或按需修改 `launch.json` 中的 `--proxy`
-- Yahoo 下载失败时，批量流程会直接停止并输出错误
+前端通过 `frontend/` 下的 `npm run dev` 启动；当前没有在 `.vscode/launch.json` 里额外维护 Node 调试入口。
 
 这两条配置保留你给的集成终端启动风格，但调试器类型使用微软当前 Python 调试文档推荐的 `debugpy`：
 
@@ -323,7 +379,7 @@ task.md          AI 任务记录
 - 开始执行样本内寻参、样本外验证、正式报告生成
 - 每个大步骤完成后的输出路径和耗时
 
-其中 `run` 命令会明确按 3 个顶层阶段打印：
+其中旧的 `run` 命令会明确按 3 个顶层阶段打印：
 
 - `[1/3]` 下载并合并最新行情
 - `[2/3]` 执行完整回测工作流

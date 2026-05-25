@@ -56,12 +56,12 @@ class RepoContractTests(unittest.TestCase):
         configurations = launch_payload.get("configurations", [])
         self.assertEqual(len(configurations), 2)
         config_names = {config["name"] for config in configurations}
-        self.assertEqual(config_names, {"一键生成指数ETF 1分钟报告", "一键生成1810分钟多策略报告"})
+        self.assertEqual(config_names, {"启动 API 服务", "启动回测 Worker"})
         for config in configurations:
             self.assertEqual(config["type"], "debugpy")
             self.assertEqual(config["program"], "${workspaceFolder}/main.py")
             self.assertEqual(config["cwd"], "${workspaceFolder}")
-            self.assertIn(config["args"][0], {"batch", "report"})
+            self.assertIn(config["args"][0], {"api", "worker"})
             self.assertEqual(config["console"], "integratedTerminal")
             self.assertEqual(config["env"]["PYTHONUTF8"], "1")
             self.assertEqual(config["env"]["PYTHONIOENCODING"], "utf-8")
