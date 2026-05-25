@@ -1982,3 +1982,30 @@
 - 模板仍然是“全局共享模板”，不引入用户权限和版本回滚，先把平台闭环做稳。
 - 回测任务入队时写入最终展开后的请求快照，避免模板后改导致历史任务不可复现。
 - Windows 一键启动脚本默认假设本机已具备 `py -3.13`、`npm` 和依赖环境，不在脚本内做安装与守护逻辑。
+
+## 修复 VS Code 一键启动前端报错
+
+### 状态
+
+已完成，已修复前端启动命令参数在本机环境下被错误转发的问题。
+
+### 修改方案
+
+原先 VS Code 和 Windows 脚本都使用 `npm run dev -- --hostname ... --port ...`。在当前 Node/npm 环境下，这种写法会把参数错误传给 `next dev`，导致 `127.0.0.1` 被当成项目目录。改为直接调用 `npx next dev`，避免脚本层二次转发。
+
+### 修改内容
+
+- `.vscode/launch.json`
+  - 前端启动项命令改为 `npx next dev --hostname 127.0.0.1 --port 3000`
+- `scripts/start_platform_windows.bat`
+  - 前端启动命令同步改为 `npx next dev`
+- `README.md`
+  - 平台前端启动示例命令同步更新
+- `doc/development_guide.md`
+  - 调试入口说明同步更新
+
+### 验证
+
+- 已执行 `cd frontend && npx next dev --hostname 127.0.0.1 --port 3001`
+  - 能正常启动 Next.js Dev Server
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`

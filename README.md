@@ -87,7 +87,7 @@ py -3.13 main.py worker --poll-interval 5
 ```powershell
 cd frontend
 npm install
-npm run dev
+npx next dev --hostname 127.0.0.1 --port 3000
 ```
 
 默认访问地址：

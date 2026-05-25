@@ -225,7 +225,7 @@ Python 调试配置统一采用下面这组字段：
 
 前端调试入口使用 `node-terminal`，在 `frontend/` 目录下直接执行：
 
-- `npm run dev -- --hostname 127.0.0.1 --port 3000`
+- `npx next dev --hostname 127.0.0.1 --port 3000`
 
 并显式传入：
 
