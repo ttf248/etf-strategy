@@ -35,6 +35,15 @@ from etf_strategy.data.yahoo import (
     save_price_bars,
 )
 from etf_strategy.logging_utils import configure_logging
+from etf_strategy.platform_cli import (
+    add_platform_subcommands,
+    handle_api,
+    handle_import_csv,
+    handle_init_db,
+    handle_scheduler,
+    handle_sync_now,
+    handle_worker,
+)
 from etf_strategy.reporting import (
     build_minute_report_markdown,
     build_report_index_entry,
@@ -201,6 +210,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_strategy_arguments(batch_parser)
     batch_parser.add_argument("--compare-strategies", action="store_true", help="批量为每个标的生成当前周期的多策略对比报告")
     _add_execution_arguments(batch_parser)
+    add_platform_subcommands(subparsers)
 
     return parser
 
@@ -1085,6 +1095,12 @@ def main(argv: list[str] | None = None) -> int:
         "report": handle_report,
         "run": handle_run,
         "batch": handle_batch,
+        "init-db": handle_init_db,
+        "import-csv": handle_import_csv,
+        "sync-now": handle_sync_now,
+        "api": handle_api,
+        "worker": handle_worker,
+        "scheduler": handle_scheduler,
     }
     try:
         return handlers[args.command](args)

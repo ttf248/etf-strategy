@@ -318,6 +318,8 @@ def run_full_workflow(
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     jobs: int = DEFAULT_JOBS,
     cache_dir: str | Path | None = None,
+    data: pd.DataFrame | None = None,
+    lot_rule: LotSizeRule | None = None,
 ) -> dict[str, object]:
     """串联样本内寻参和样本外验证。
 
@@ -327,8 +329,8 @@ def run_full_workflow(
     started_at = perf_counter()
     logger.info("开始执行日线完整工作流: data={} output_dir={}", data_path, output_dir)
     resolved_symbol = _resolve_symbol(symbol, data_path)
-    lot_rule = resolve_lot_size_rule(resolved_symbol)
-    data = load_price_frame(data_path)
+    effective_lot_rule = lot_rule or resolve_lot_size_rule(resolved_symbol)
+    price_frame = data if data is not None else load_price_frame(data_path)
     optimization = run_optimization_workflow(
         data_path=data_path,
         symbol=resolved_symbol,
@@ -344,8 +346,8 @@ def run_full_workflow(
         wf_min_window_size=wf_min_window_size,
         jobs=jobs,
         cache_dir=cache_dir,
-        data=data,
-        lot_rule=lot_rule,
+        data=price_frame,
+        lot_rule=effective_lot_rule,
     )
     best_summary = optimization["best_run"]["summary"]
     validation = run_validation_workflow(
@@ -360,8 +362,8 @@ def run_full_workflow(
         strategy_kind=strategy_kind,
         strategy_params=None if strategy_kind == "grid" else _extract_rebound_params(best_summary, strategy_kind),
         execution_config=execution_config,
-        data=data,
-        lot_rule=lot_rule,
+        data=price_frame,
+        lot_rule=effective_lot_rule,
     )
 
     combined_summary = pd.DataFrame(
@@ -613,13 +615,15 @@ def run_minute_full_workflow(
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     jobs: int = DEFAULT_JOBS,
     cache_dir: str | Path | None = None,
+    data: pd.DataFrame | None = None,
+    lot_rule: LotSizeRule | None = None,
 ) -> dict[str, object]:
     """串联分钟线样本内寻参和样本外验证。"""
     started_at = perf_counter()
     logger.info("开始执行分钟线完整工作流: data={} output_dir={}", data_path, output_dir)
     resolved_symbol = _resolve_symbol(symbol, data_path)
-    lot_rule = resolve_lot_size_rule(resolved_symbol)
-    data = load_price_frame(data_path)
+    effective_lot_rule = lot_rule or resolve_lot_size_rule(resolved_symbol)
+    price_frame = data if data is not None else load_price_frame(data_path)
     optimization = run_minute_optimization_workflow(
         data_path=data_path,
         symbol=resolved_symbol,
@@ -634,8 +638,8 @@ def run_minute_full_workflow(
         wf_min_window_size=wf_min_window_size,
         jobs=jobs,
         cache_dir=cache_dir,
-        data=data,
-        lot_rule=lot_rule,
+        data=price_frame,
+        lot_rule=effective_lot_rule,
     )
     best_summary = optimization["best_run"]["summary"]
     validation = run_minute_validation_workflow(
@@ -649,8 +653,8 @@ def run_minute_full_workflow(
         strategy_kind=strategy_kind,
         strategy_params=None if strategy_kind == "grid" else _extract_rebound_params(best_summary, strategy_kind),
         execution_config=execution_config,
-        data=data,
-        lot_rule=lot_rule,
+        data=price_frame,
+        lot_rule=effective_lot_rule,
     )
 
     combined_summary = pd.DataFrame(
