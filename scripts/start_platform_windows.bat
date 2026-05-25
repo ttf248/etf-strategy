@@ -26,6 +26,18 @@ if errorlevel 1 (
     exit /b 1
 )
 
+netstat -ano | findstr /R /C:":%API_PORT% .*LISTENING" >nul
+if not errorlevel 1 (
+    echo API 端口 %API_PORT% 已被占用，请先关闭已有 API 进程后再执行本脚本。
+    exit /b 1
+)
+
+netstat -ano | findstr /R /C:":%FRONTEND_PORT% .*LISTENING" >nul
+if not errorlevel 1 (
+    echo 前端端口 %FRONTEND_PORT% 已被占用，请先关闭已有前端进程后再执行本脚本。
+    exit /b 1
+)
+
 start "ETF Strategy API" cmd /k "cd /d ""%ROOT_DIR%"" && py -3.13 main.py api --host %API_HOST% --port %API_PORT%"
 start "ETF Strategy Worker" cmd /k "cd /d ""%ROOT_DIR%"" && py -3.13 main.py worker --poll-interval 5"
 start "ETF Strategy Scheduler" cmd /k "cd /d ""%ROOT_DIR%"" && py -3.13 main.py scheduler %SCHEDULER_ARGS%"

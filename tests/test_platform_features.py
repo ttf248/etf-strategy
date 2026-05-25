@@ -116,6 +116,27 @@ class PlatformFeatureTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "python -m pip install -r requirements.txt"):
                 handle_api(args)
 
+    def test_handle_api_reports_existing_api_port_conflict_cleanly(self) -> None:
+        args = SimpleNamespace(host="127.0.0.1", port=8000)
+
+        def fake_import(module_name: str, command_name: str):
+            if module_name == "uvicorn":
+                return SimpleNamespace(run=lambda *args, **kwargs: self.fail("端口已占用时不应继续启动 uvicorn"))
+            if module_name == "etf_strategy.db.settings":
+                return SimpleNamespace(load_platform_settings=lambda: SimpleNamespace(api_host="127.0.0.1", api_port=8000))
+            if module_name == "etf_strategy.web.app":
+                return SimpleNamespace(create_app=lambda: object())
+            raise AssertionError(f"unexpected import: {module_name} ({command_name})")
+
+        with (
+            patch("etf_strategy.platform_cli._import_platform_module", side_effect=fake_import),
+            patch("etf_strategy.platform_cli._is_tcp_port_in_use", return_value=True),
+            patch("etf_strategy.platform_cli._probe_existing_platform_api", return_value=True),
+            patch("etf_strategy.platform_cli._describe_windows_listener", return_value="PID=29876 进程名=python.exe"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "已经有本项目 API 在运行"):
+                handle_api(args)
+
 
 class StrategyTemplateServiceTests(unittest.TestCase):
     def test_normalize_parameter_space_for_grid(self) -> None:

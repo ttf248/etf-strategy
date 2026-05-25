@@ -2054,3 +2054,45 @@
 
 - 已执行 `py -3.13 -m unittest tests.test_platform_features tests.test_repo_contracts`
 - 已执行 `git diff --check`
+
+## 修复 API 端口占用时的启动报错
+
+### 状态
+
+已完成，已把 `WinError 10048` 从 `uvicorn` 原始堆栈改为可直接处理的中文提示，并给 Windows 一键脚本补上端口预检查。
+
+### 修改方案
+
+当前 VS Code 一键启动失败不是代码逻辑错误，而是 `127.0.0.1:8000` 已经有一个旧的 API 进程在监听。最常见场景是上次启动后没关，再次点击 `启动 API 服务` 或 `启动平台前后端全套`。
+
+因此这次不自动杀进程，而是：
+
+- 启动前先探测端口是否已被占用
+- 如果占用的是本项目 API，就明确提示“已经在运行，不要重复启动”
+- 如果占用的是其他进程，就提示先释放端口或改端口
+
+### 修改内容
+
+- `etf_strategy/platform_cli.py`
+  - 新增本地 TCP 端口探测
+  - 新增 `/health` 探针，用于判断占用端口的是否为本项目 API
+  - Windows 下额外补充监听 PID 和进程名
+  - `handle_api()` 在调用 `uvicorn.run()` 前先做端口占用检查
+- `scripts/start_platform_windows.bat`
+  - 启动前新增 `8000 / 3000` 端口占用检查
+- `README.md`
+  - 补充 `WinError 10048` 的根因与处理方式
+- `doc/development_guide.md`
+  - 补充 VS Code 重复启动导致端口冲突的说明
+- `tests/test_platform_features.py`
+  - 新增“API 已在运行时，返回明确中文提示且不再继续启动 uvicorn”的测试
+
+### 设计取舍
+
+- 没有自动结束占用端口的进程，因为 8000 端口也可能被用户自己手工启动的服务占用，仓库侧不应擅自杀进程。
+- 对“已经是本项目 API 在运行”的情况，也没有强行复用调试会话，而是直接给出清晰提示；这样行为最可预测。
+
+### 验证
+
+- 已执行 `py -3.13 -m unittest tests.test_platform_features tests.test_repo_contracts`
+- 已执行 `git diff --check`

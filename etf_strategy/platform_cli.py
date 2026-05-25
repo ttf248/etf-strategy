@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import json
+import os
+import socket
+import subprocess
+from urllib import error, request
 
 
 def _build_missing_dependency_error(command_name: str, exc: ModuleNotFoundError) -> RuntimeError:
@@ -22,6 +27,99 @@ def _import_platform_module(module_name: str, command_name: str):
         return importlib.import_module(module_name)
     except ModuleNotFoundError as exc:
         raise _build_missing_dependency_error(command_name, exc) from exc
+
+
+def _normalize_probe_host(host: str) -> str:
+    """把监听地址转换成适合本地探测的目标地址。"""
+    if host in {"0.0.0.0", "::", ""}:
+        return "127.0.0.1"
+    if host == "localhost":
+        return "127.0.0.1"
+    return host
+
+
+def _is_tcp_port_in_use(host: str, port: int) -> bool:
+    """检查本地端口是否已经有监听进程。"""
+    probe_host = _normalize_probe_host(host)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.5)
+        return sock.connect_ex((probe_host, port)) == 0
+
+
+def _probe_existing_platform_api(host: str, port: int) -> bool:
+    """判断被占用端口上是否已经是本项目 API。"""
+    probe_host = _normalize_probe_host(host)
+    health_url = f"http://{probe_host}:{port}/health"
+    try:
+        with request.urlopen(health_url, timeout=1.0) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, error.URLError, error.HTTPError, json.JSONDecodeError):
+        return False
+    return payload.get("status") == "ok"
+
+
+def _describe_windows_listener(port: int) -> str | None:
+    """尽量补充 Windows 下占用端口的 PID 和进程名。"""
+    if os.name != "nt":
+        return None
+    try:
+        netstat_result = subprocess.run(
+            ["netstat", "-ano"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            check=True,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None
+
+    target_suffix = f":{port}"
+    listener_pid: str | None = None
+    for raw_line in netstat_result.stdout.splitlines():
+        line = raw_line.strip()
+        if "LISTENING" not in line:
+            continue
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        local_address = parts[1]
+        pid = parts[-1]
+        if local_address.endswith(target_suffix):
+            listener_pid = pid
+            break
+    if not listener_pid:
+        return None
+
+    process_name = "未知进程"
+    try:
+        tasklist_result = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {listener_pid}", "/FO", "CSV", "/NH"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            check=True,
+        )
+        first_line = tasklist_result.stdout.strip().splitlines()[0]
+        if first_line and not first_line.startswith("INFO:"):
+            process_name = next((item.strip('"') for item in first_line.split(",") if item), process_name)
+    except (IndexError, FileNotFoundError, subprocess.SubprocessError):
+        pass
+    return f"PID={listener_pid} 进程名={process_name}"
+
+
+def _build_port_in_use_error(host: str, port: int) -> RuntimeError:
+    """构造端口占用时的中文提示。"""
+    listener_hint = _describe_windows_listener(port)
+    base_message = f"API 监听地址 {host}:{port} 已被占用。"
+    if _probe_existing_platform_api(host, port):
+        detail = "检测到当前端口上已经有本项目 API 在运行，请不要重复启动；需要重启时先停止现有 API 进程。"
+    else:
+        detail = "请先停止占用该端口的进程，或者改用其他端口重新启动。"
+    if listener_hint:
+        detail = f"{detail} 当前监听者：{listener_hint}。"
+    return RuntimeError(f"{base_message}{detail}")
 
 
 def add_platform_subcommands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -86,10 +184,14 @@ def handle_api(args: argparse.Namespace) -> int:
     create_app = _import_platform_module("etf_strategy.web.app", "api").create_app
     uvicorn = _import_platform_module("uvicorn", "api")
     settings = load_platform_settings()
+    host = args.host or settings.api_host
+    port = args.port or settings.api_port
+    if _is_tcp_port_in_use(host, port):
+        raise _build_port_in_use_error(host, port)
     uvicorn.run(
         create_app(),
-        host=args.host or settings.api_host,
-        port=args.port or settings.api_port,
+        host=host,
+        port=port,
         log_level="info",
     )
     return 0
