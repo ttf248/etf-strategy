@@ -7,5 +7,6 @@ frontend/.next
 frontend/node_modules
 frontend/.vercel
 frontend/out
+reports/platform
 data/processed/*_test.csv
 *.pyc

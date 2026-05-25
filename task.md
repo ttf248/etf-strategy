@@ -1920,3 +1920,28 @@
   - `py -3.13 main.py download --symbol 159866.SZ --interval 1m --period 8d --proxy http://127.0.0.1:7897`
 - 已执行实际批量回测：
   - `py -3.13 main.py batch --symbol-set index_grid_etfs --strategy minute_index_grid_retrace --interval 1m --local-only --jobs auto --cache-dir outputs/cache/index_grid_1m --output-dir outputs/index_grid --report-dir reports --execution-profile realistic`
+
+## 平台化改造收尾清理
+
+### 状态
+
+已完成，已补充平台运行产物忽略规则，并清理本轮联调生成的临时平台报告目录。
+
+### 修改方案
+
+平台联调会在 `reports/platform/` 下生成一次性 Markdown 和图片报告。该目录属于运行时产物，不应进入版本控制，因此补充忽略规则，并在交付前删除当前工作区中的临时目录。
+
+### 修改内容
+
+- `.gitignore`
+  - 新增 `reports/platform` 忽略规则
+- 工作区清理
+  - 删除本轮联调生成的 `reports/platform/1810_hk/15m/` 临时报告目录
+
+### 设计取舍
+
+- 平台报告正文和图表的正式可追溯版本已经入库并可在网页端查看，因此文件系统下的 `reports/platform/` 仅保留为运行时导出通道，不作为仓库正式产物管理。
+
+### 验证
+
+- 已执行 `git status --short`，确认清理后工作区无额外未跟踪运行产物
