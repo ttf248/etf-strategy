@@ -8,6 +8,7 @@ import json
 import os
 import socket
 import subprocess
+import time
 from urllib import error, request
 
 
@@ -60,6 +61,15 @@ def _probe_existing_platform_api(host: str, port: int) -> bool:
 
 def _describe_windows_listener(port: int) -> str | None:
     """尽量补充 Windows 下占用端口的 PID 和进程名。"""
+    listener_pid = _get_windows_listener_pid(port)
+    if not listener_pid:
+        return None
+    process_name = _get_windows_process_name(listener_pid) or "未知进程"
+    return f"PID={listener_pid} 进程名={process_name}"
+
+
+def _get_windows_listener_pid(port: int) -> str | None:
+    """从 netstat 输出里解析指定端口的监听进程 PID。"""
     if os.name != "nt":
         return None
     try:
@@ -75,7 +85,6 @@ def _describe_windows_listener(port: int) -> str | None:
         return None
 
     target_suffix = f":{port}"
-    listener_pid: str | None = None
     for raw_line in netstat_result.stdout.splitlines():
         line = raw_line.strip()
         if "LISTENING" not in line:
@@ -86,15 +95,16 @@ def _describe_windows_listener(port: int) -> str | None:
         local_address = parts[1]
         pid = parts[-1]
         if local_address.endswith(target_suffix):
-            listener_pid = pid
-            break
-    if not listener_pid:
-        return None
+            return pid
+    return None
 
+
+def _get_windows_process_name(pid: str) -> str | None:
+    """查询 Windows 进程名，失败时返回 None。"""
     process_name = "未知进程"
     try:
         tasklist_result = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {listener_pid}", "/FO", "CSV", "/NH"],
+            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -105,8 +115,66 @@ def _describe_windows_listener(port: int) -> str | None:
         if first_line and not first_line.startswith("INFO:"):
             process_name = next((item.strip('"') for item in first_line.split(",") if item), process_name)
     except (IndexError, FileNotFoundError, subprocess.SubprocessError):
-        pass
-    return f"PID={listener_pid} 进程名={process_name}"
+        return None
+    return process_name
+
+
+def _get_windows_process_command_line(pid: str) -> str | None:
+    """查询 Windows 进程命令行，用于判断端口占用者是否为本项目 API。"""
+    if os.name != "nt":
+        return None
+    try:
+        result = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                f"(Get-CimInstance Win32_Process -Filter 'ProcessId = {pid}').CommandLine",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            check=True,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None
+    command_line = result.stdout.strip()
+    return command_line or None
+
+
+def _is_project_api_command(command_line: str | None) -> bool:
+    """只允许自动替换本仓库自己的 API 进程。"""
+    if not command_line:
+        return False
+    normalized = command_line.lower().replace('"', " ").replace("'", " ")
+    return "main.py" in normalized and " api " in f" {normalized} "
+
+
+def _terminate_windows_process_tree(pid: str) -> bool:
+    """结束指定 Windows 进程树，供替换旧 API 进程使用。"""
+    if os.name != "nt":
+        return False
+    try:
+        subprocess.run(["taskkill", "/PID", pid, "/F", "/T"], capture_output=True, text=True, check=True)
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return False
+    return True
+
+
+def _replace_existing_platform_api(host: str, port: int) -> bool:
+    """如果端口占用者确认是本项目旧 API，则终止它并等待端口释放。"""
+    listener_pid = _get_windows_listener_pid(port)
+    command_line = _get_windows_process_command_line(listener_pid) if listener_pid else None
+    if not listener_pid or not _is_project_api_command(command_line):
+        return False
+    if not _terminate_windows_process_tree(listener_pid):
+        return False
+    for _ in range(20):
+        if not _is_tcp_port_in_use(host, port):
+            return True
+        time.sleep(0.2)
+    return False
 
 
 def _build_port_in_use_error(host: str, port: int) -> RuntimeError:
@@ -138,6 +206,7 @@ def add_platform_subcommands(subparsers: argparse._SubParsersAction[argparse.Arg
     api_parser = subparsers.add_parser("api", help="启动 FastAPI 服务")
     api_parser.add_argument("--host", default=None, help="监听地址")
     api_parser.add_argument("--port", type=int, default=None, help="监听端口")
+    api_parser.add_argument("--replace-existing", action="store_true", help="如果旧 API 进程占用端口，则先结束旧进程再启动")
 
     worker_parser = subparsers.add_parser("worker", help="启动回测任务 worker")
     worker_parser.add_argument("--poll-interval", type=int, default=5, help="任务轮询间隔秒数")
@@ -187,7 +256,10 @@ def handle_api(args: argparse.Namespace) -> int:
     host = args.host or settings.api_host
     port = args.port or settings.api_port
     if _is_tcp_port_in_use(host, port):
-        raise _build_port_in_use_error(host, port)
+        if getattr(args, "replace_existing", False) and _replace_existing_platform_api(host, port):
+            print(f"已停止旧 API 进程，准备重新监听 {host}:{port}")
+        else:
+            raise _build_port_in_use_error(host, port)
     uvicorn.run(
         create_app(),
         host=host,

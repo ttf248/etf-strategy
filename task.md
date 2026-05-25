@@ -2096,3 +2096,48 @@
 
 - 已执行 `py -3.13 -m unittest tests.test_platform_features tests.test_repo_contracts`
 - 已执行 `git diff --check`
+
+## 修复一键启动后旧 API 进程残留
+
+### 状态
+
+已完成，已释放本机残留的旧 API 进程，并把 VS Code / Windows 一键启动改为自动替换本项目自己的旧 API 进程。
+
+### 修改方案
+
+这次现场确认 `127.0.0.1:8000` 的占用者是旧的 `main.py api` 进程，窗口已经关闭但进程仍在后台监听。单纯提示“端口被占用”对一键启动体验不够好，因此新增显式替换能力：
+
+- `api` 命令新增 `--replace-existing`
+- 只有监听端口的进程命令行确认包含本项目 `main.py api` 时，才允许自动结束旧进程
+- VS Code 和 Windows 一键脚本默认传入该参数
+
+### 修改内容
+
+- `etf_strategy/platform_cli.py`
+  - 新增监听端口 PID 查询、进程命令行识别和进程树终止逻辑
+  - `api --replace-existing` 在端口被旧 API 占用时先结束旧进程，再继续启动新 API
+  - 非本项目进程占用端口时仍报错，不自动结束
+- `.vscode/launch.json`
+  - `启动 API 服务` 增加 `--replace-existing`
+- `scripts/start_platform_windows.bat`
+  - API 启动命令增加 `--replace-existing`
+  - 移除 API 端口提前退出逻辑，交给后端命令按“只替换本项目旧 API”的规则处理
+- `README.md`
+  - 补充一键启动自动替换旧 API 的说明
+- `doc/development_guide.md`
+  - 补充 `--replace-existing` 的调试配置语义
+- `tests/test_platform_features.py`
+  - 覆盖 `api --replace-existing` 参数解析和替换后继续启动 `uvicorn`
+- `tests/test_repo_contracts.py`
+  - 约束 VS Code API 启动项必须带 `--replace-existing`
+
+### 设计取舍
+
+- 没有对所有 8000 占用进程直接 `taskkill`，只处理命令行可识别为本项目 API 的进程，避免误杀用户本机其他服务。
+- 没有对前端 `3000` 做同样自动替换，因为 Next dev server 可能由 npm/npx/node 多层进程组成，先保留明确端口提示，避免杀错前端相关进程。
+
+### 验证
+
+- 已执行 `py -3.13 -m unittest tests.test_platform_features tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 已执行 `netstat -ano | Select-String '127.0.0.1:8000'`，确认当前没有 TCP 监听残留

@@ -212,7 +212,7 @@
 
 如果 `启动 API 服务` 报 `No module named 'uvicorn'`，通常就是解释器切错了，或者切换后还没有在该环境里安装依赖。
 
-如果报 `WinError 10048`，说明 `127.0.0.1:8000` 已经被占用。最常见的情况是你上一次启动的 API 还没关掉，又重复点了一次 `启动 API 服务` 或 `启动平台前后端全套`。
+`启动 API 服务` 默认传入 `--replace-existing`。如果 `127.0.0.1:8000` 被旧的本项目 API 进程占用，会自动停止旧进程后重新启动；如果占用者不是本项目 `main.py api`，则仍会报端口占用，避免误杀其他服务。
 
 Python 调试配置统一采用下面这组字段：
 
@@ -222,6 +222,7 @@ Python 调试配置统一采用下面这组字段：
 - `cwd=${workspaceFolder}`
 - `console=integratedTerminal`
 - `args` 中显式传入 `api`、`worker` 或 `scheduler`
+- API 启动参数包含 `--replace-existing`，用于替换窗口已关闭但进程残留的旧 API
 - 运行时直接看 VS Code 集成终端里的 `INFO` 级别提示
 - 更详细的定位日志仍写入 `log/etf_strategy_YYYY-MM-DD.log`
 - `main.py` 会主动尝试把 Windows 控制台切到 UTF-8，`.vscode/launch.json` 也会显式传入 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`
@@ -244,7 +245,7 @@ Windows 环境如果想直接拉起四个窗口，使用：
 - `scripts/start_platform_windows.bat`
 
 该脚本会先检查 `uvicorn / fastapi / sqlalchemy / psycopg` 是否已安装；缺失时直接提示先安装 `requirements.txt`，不再继续拉起后端窗口。
-同时也会检查 `8000 / 3000` 端口是否已经被占用，避免重复拉起 API 或前端进程。
+API 窗口会通过 `--replace-existing` 自动替换旧的本项目 API 进程；前端仍会检查 `3000` 端口是否已经被占用，避免重复拉起前端进程。
 
 这里没有继续使用参考示例里的 `type=python`，因为微软当前 Python 调试文档已经把 `debugpy` 作为 Python Debugger 扩展的调试类型；旧写法在部分 VS Code 环境里会导致无法启动调试。
 

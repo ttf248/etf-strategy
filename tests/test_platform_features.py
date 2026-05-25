@@ -22,6 +22,7 @@ class PlatformFeatureTests(unittest.TestCase):
         init_args = parser.parse_args(["init-db"])
         import_args = parser.parse_args(["import-csv", "--source-dir", "data/processed"])
         api_args = parser.parse_args(["api", "--host", "127.0.0.1", "--port", "8000"])
+        replace_args = parser.parse_args(["api", "--replace-existing"])
 
         self.assertEqual(init_args.command, "init-db")
         self.assertEqual(import_args.command, "import-csv")
@@ -29,6 +30,7 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(api_args.command, "api")
         self.assertEqual(api_args.host, "127.0.0.1")
         self.assertEqual(api_args.port, 8000)
+        self.assertTrue(replace_args.replace_existing)
         self.assertEqual(parser.parse_args(["scheduler"]).command, "scheduler")
 
     def test_infer_interval_from_data_path_supports_daily_alias(self) -> None:
@@ -136,6 +138,31 @@ class PlatformFeatureTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(RuntimeError, "已经有本项目 API 在运行"):
                 handle_api(args)
+
+    def test_handle_api_replaces_existing_project_api_when_requested(self) -> None:
+        args = SimpleNamespace(host="127.0.0.1", port=8000, replace_existing=True)
+        run_calls = []
+
+        def fake_import(module_name: str, command_name: str):
+            if module_name == "uvicorn":
+                return SimpleNamespace(run=lambda *args, **kwargs: run_calls.append(kwargs))
+            if module_name == "etf_strategy.db.settings":
+                return SimpleNamespace(load_platform_settings=lambda: SimpleNamespace(api_host="127.0.0.1", api_port=8000))
+            if module_name == "etf_strategy.web.app":
+                return SimpleNamespace(create_app=lambda: object())
+            raise AssertionError(f"unexpected import: {module_name} ({command_name})")
+
+        with (
+            patch("etf_strategy.platform_cli._import_platform_module", side_effect=fake_import),
+            patch("etf_strategy.platform_cli._is_tcp_port_in_use", return_value=True),
+            patch("etf_strategy.platform_cli._replace_existing_platform_api", return_value=True),
+            patch("builtins.print"),
+        ):
+            handle_api(args)
+
+        self.assertEqual(len(run_calls), 1)
+        self.assertEqual(run_calls[0]["host"], "127.0.0.1")
+        self.assertEqual(run_calls[0]["port"], 8000)
 
 
 class StrategyTemplateServiceTests(unittest.TestCase):

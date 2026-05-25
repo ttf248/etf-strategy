@@ -66,6 +66,8 @@ class RepoContractTests(unittest.TestCase):
             self.assertEqual(config["console"], "integratedTerminal")
             self.assertEqual(config["env"]["PYTHONUTF8"], "1")
             self.assertEqual(config["env"]["PYTHONIOENCODING"], "utf-8")
+        api_config = next(config for config in configurations if config["name"] == "启动 API 服务")
+        self.assertIn("--replace-existing", api_config["args"])
         frontend_config = next(config for config in configurations if config["name"] == "启动前端 Dev Server")
         self.assertEqual(frontend_config["type"], "node-terminal")
         self.assertEqual(frontend_config["cwd"], "${workspaceFolder}/frontend")

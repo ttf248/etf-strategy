@@ -136,7 +136,7 @@ npx next dev --hostname 127.0.0.1 --port 3000
 python -m pip install -r requirements.txt
 ```
 
-如果提示 `WinError 10048` 或 “地址只允许使用一次”，说明 `127.0.0.1:8000` 上已经有一个 API 进程在运行。先停止旧的 API，再重新点击启动；如果是本项目自己的 API，直接复用现有进程即可，不要重复拉起第二个。
+VS Code 和 Windows 一键脚本启动 API 时会传入 `--replace-existing`。如果 `127.0.0.1:8000` 被旧的本项目 API 进程占用，会先停止旧进程再启动；如果该端口被其他服务占用，则仍会报错，避免误杀非本项目进程。
 
 ## 你先从哪里开始
 
