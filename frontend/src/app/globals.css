@@ -495,6 +495,40 @@ a {
   background: var(--surface-soft);
 }
 
+.backtest-wizard-card .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.backtest-wizard-steps {
+  padding: 4px 0 8px;
+}
+
+.wizard-step-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.wizard-step-panel h4,
+.wizard-step-panel p {
+  margin: 0 !important;
+}
+
+.wizard-step-panel p {
+  color: var(--muted);
+  line-height: 22px;
+}
+
+.wizard-action-row {
+  margin-top: 0;
+}
+
 .beginner-steps {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

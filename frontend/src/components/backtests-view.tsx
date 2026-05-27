@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Card, Collapse, Descriptions, Form, Input, InputNumber, message, Select, Space, Table, Typography } from "antd";
+import { Button, Card, Collapse, Descriptions, Form, Input, InputNumber, message, Select, Space, Steps, Table, Typography } from "antd";
 import { useEffect, useMemo, useState, type Key } from "react";
 import Link from "next/link";
 import { apiFetch, type BacktestJob, type StrategyTemplate } from "@/lib/api";
@@ -22,6 +22,7 @@ export function BacktestsView() {
   const [templates, setTemplates] = useState<StrategyTemplate[]>([]);
   const [selectedJobIds, setSelectedJobIds] = useState<Key[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [activeStep, setActiveStep] = useState(0);
   const [messageApi, contextHolder] = message.useMessage();
   const selectedStrategy = Form.useWatch("strategy_kind", form) ?? "grid";
   const selectedInterval = Form.useWatch("interval", form) ?? "15m";
@@ -32,6 +33,7 @@ export function BacktestsView() {
     [selectedInterval, selectedStrategy, templates],
   );
   const selectedTemplate = filteredTemplates.find((item) => item.id === selectedTemplateId) ?? null;
+  const recommendedTemplate = filteredTemplates.find((item) => item.is_default) ?? filteredTemplates[0] ?? null;
 
   async function loadJobs() {
     const payload = await apiFetch<BacktestJob[]>("/api/backtests?limit=100");
@@ -75,6 +77,16 @@ export function BacktestsView() {
       left_side_policy: execution.left_side_policy,
       force_exit_loss_pct: execution.force_exit_loss_pct,
     });
+  }
+
+  async function goNextStep() {
+    if (activeStep === 0) {
+      await form.validateFields(["symbol", "interval"]);
+    }
+    if (activeStep === 1) {
+      await form.validateFields(["strategy_kind"]);
+    }
+    setActiveStep((current) => Math.min(current + 1, 2));
   }
 
   async function onFinish(values: Record<string, unknown>) {
@@ -150,26 +162,11 @@ export function BacktestsView() {
       <PageHeader
         eyebrow="Run Backtest"
         title="创建一次回测"
-        description="先输入标的，再选择策略模板。高级参数可以保持默认，适合第一次使用时快速跑通。"
+        description="按 3 步完成：先填标的和周期，再选策略模板，最后确认并提交。"
         actions={<Button onClick={() => void loadJobs()}>刷新结果</Button>}
       />
 
-      <div className="beginner-steps">
-        <Card size="small">
-          <strong>1. 输入标的</strong>
-          <span>例如港股小米是 1810.HK。</span>
-        </Card>
-        <Card size="small">
-          <strong>2. 选择模板</strong>
-          <span>默认模板已经包含常用参数。</span>
-        </Card>
-        <Card size="small">
-          <strong>3. 提交后看报告</strong>
-          <span>任务完成后到“查看报告”阅读结果。</span>
-        </Card>
-      </div>
-
-      <Card title="基础设置" size="small" className="section-card">
+      <Card title="按步骤创建回测" size="small" className="section-card backtest-wizard-card">
         <Form
           form={form}
           layout="vertical"
@@ -185,103 +182,155 @@ export function BacktestsView() {
             }
           }}
         >
-          <div className="strategy-choice-grid">
-            {strategyOptions.map((item) => {
-              const guide = strategyGuide[item.value] ?? { scene: "策略实验", beginnerHint: "按模板说明选择", risk: "先小样本验证" };
-              const hasTemplate = templates.some(
-                (template) => template.is_active && template.strategy_kind === item.value && template.interval === selectedInterval,
-              );
-              const active = selectedStrategy === item.value;
-              return (
-                <button
-                  key={item.value}
-                  type="button"
-                  className={`strategy-choice-card${active ? " is-active" : ""}`}
-                  onClick={() => {
-                    form.setFieldValue("strategy_kind", item.value);
-                    form.setFieldValue("template_id", undefined);
-                  }}
-                >
-                  <strong>{item.label}</strong>
-                  <span>{guide.scene}</span>
-                  <small>{guide.beginnerHint}</small>
-                  <span>主要风险：{guide.risk}</span>
-                  <em>{hasTemplate ? "当前周期有可用模板" : "当前周期暂无模板，建议换周期"}</em>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="template-form-grid">
-            <Form.Item name="symbol" label="回测标的" rules={[{ required: true }]} extra="使用 Yahoo 代码，例如 1810.HK、0700.HK、513050.SS。">
-              <Input placeholder="例如 1810.HK" />
-            </Form.Item>
-            <Form.Item name="interval" label="数据周期" extra="第一次建议选择 15m 或 1d。">
-              <Select options={intervalOptions} />
-            </Form.Item>
-            <Form.Item name="strategy_kind" label="策略类型" extra="不确定时先用网格策略。">
-              <Select options={strategyOptions} />
-            </Form.Item>
-            <Form.Item name="template_id" label="参数模板" extra="推荐选择带“默认”的模板。">
-              <Select
-                allowClear
-                placeholder="按当前策略/周期筛选"
-                options={filteredTemplates.map((item) => ({ label: `${item.template_name}${item.is_default ? " · 默认" : ""}`, value: item.id }))}
-                onChange={(value) => {
-                  const template = filteredTemplates.find((item) => item.id === value) ?? null;
-                  applyTemplate(template);
-                }}
-              />
-            </Form.Item>
-          </div>
-          <Collapse
-            className="advanced-collapse"
+          <Steps
+            className="backtest-wizard-steps"
+            current={activeStep}
             items={[
-              {
-                key: "advanced",
-                label: "高级参数，可保持默认",
-                children: (
-                  <div className="template-form-grid">
-                    <Form.Item name="execution_profile" label="执行口径">
-                      <Select options={[{ label: "实盘口径", value: "realistic" }, { label: "研究口径", value: "research" }]} />
-                    </Form.Item>
-                    <Form.Item name="lookback_days" label="日线样本内天数">
-                      <InputNumber min={1} style={{ width: "100%" }} />
-                    </Form.Item>
-                    <Form.Item name="validation_ratio" label="分钟线样本外比例">
-                      <InputNumber min={0.05} max={0.95} step={0.05} style={{ width: "100%" }} />
-                    </Form.Item>
-                    <Form.Item name="jobs" label="并行数">
-                      <InputNumber min={1} max={16} style={{ width: "100%" }} />
-                    </Form.Item>
-                    <Form.Item name="commission_bps" label="手续费 bps">
-                      <InputNumber min={0} step={0.5} style={{ width: "100%" }} />
-                    </Form.Item>
-                    <Form.Item name="slippage_bps" label="滑点 bps">
-                      <InputNumber min={0} step={0.5} style={{ width: "100%" }} />
-                    </Form.Item>
-                    <Form.Item name="max_position_ratio" label="最大仓位">
-                      <InputNumber min={0} max={1} step={0.05} style={{ width: "100%" }} />
-                    </Form.Item>
-                    <Form.Item name="left_side_policy" label="左侧处理">
-                      <Select
-                        allowClear
-                        options={[
-                          { label: "持有", value: "hold" },
-                          { label: "强平", value: "force_exit" },
-                          { label: "双口径", value: "both" },
-                        ]}
-                      />
-                    </Form.Item>
-                  </div>
-                ),
-              },
+              { title: "标的" },
+              { title: "策略" },
+              { title: "提交" },
             ]}
           />
-          <div className="form-action-row">
-            <Button type="primary" htmlType="submit" loading={submitting}>
-              开始回测
+
+          {activeStep === 0 ? (
+            <div className="wizard-step-panel">
+              <Typography.Title level={4}>先告诉平台要测哪个标的</Typography.Title>
+              <Typography.Paragraph>第一次建议使用已经准备好数据的标的，例如 1810.HK。周期不确定时先用 15m。</Typography.Paragraph>
+              <div className="template-form-grid">
+                <Form.Item name="symbol" label="回测标的" rules={[{ required: true, message: "请输入回测标的" }]} extra="使用 Yahoo 代码，例如 1810.HK、0700.HK、513050.SS。">
+                  <Input placeholder="例如 1810.HK" />
+                </Form.Item>
+                <Form.Item name="interval" label="数据周期" extra="第一次建议选择 15m 或 1d。">
+                  <Select options={intervalOptions} />
+                </Form.Item>
+              </div>
+            </div>
+          ) : null}
+
+          {activeStep === 1 ? (
+            <div className="wizard-step-panel">
+              <Typography.Title level={4}>选择一个容易理解的策略模板</Typography.Title>
+              <Typography.Paragraph>不确定时选“网格”并使用推荐模板。模板已经包含常用参数，后续可以再调整。</Typography.Paragraph>
+              <div className="strategy-choice-grid">
+                {strategyOptions.map((item) => {
+                  const guide = strategyGuide[item.value] ?? { scene: "策略实验", beginnerHint: "按模板说明选择", risk: "先小样本验证" };
+                  const hasTemplate = templates.some(
+                    (template) => template.is_active && template.strategy_kind === item.value && template.interval === selectedInterval,
+                  );
+                  const active = selectedStrategy === item.value;
+                  return (
+                    <button
+                      key={item.value}
+                      type="button"
+                      className={`strategy-choice-card${active ? " is-active" : ""}`}
+                      onClick={() => {
+                        form.setFieldValue("strategy_kind", item.value);
+                        form.setFieldValue("template_id", undefined);
+                      }}
+                    >
+                      <strong>{item.label}</strong>
+                      <span>{guide.scene}</span>
+                      <small>{guide.beginnerHint}</small>
+                      <span>主要风险：{guide.risk}</span>
+                      <em>{hasTemplate ? "当前周期有可用模板" : "当前周期暂无模板，建议换周期"}</em>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="template-form-grid">
+                <Form.Item name="strategy_kind" label="策略类型" extra="也可以直接点上面的策略卡片。">
+                  <Select options={strategyOptions} />
+                </Form.Item>
+                <Form.Item name="template_id" label="参数模板" extra="推荐选择带“默认”的模板。">
+                  <Select
+                    allowClear
+                    placeholder="按当前策略/周期筛选"
+                    options={filteredTemplates.map((item) => ({ label: `${item.template_name}${item.is_default ? " · 默认" : ""}`, value: item.id }))}
+                    onChange={(value) => {
+                      const template = filteredTemplates.find((item) => item.id === value) ?? null;
+                      applyTemplate(template);
+                    }}
+                  />
+                </Form.Item>
+              </div>
+              {recommendedTemplate ? (
+                <Button onClick={() => applyTemplate(recommendedTemplate)}>使用推荐模板：{recommendedTemplate.template_name}</Button>
+              ) : (
+                <Typography.Text type="secondary">当前策略和周期没有可用模板，建议换一个周期或先到策略模板页启用模板。</Typography.Text>
+              )}
+            </div>
+          ) : null}
+
+          {activeStep === 2 ? (
+            <div className="wizard-step-panel">
+              <Typography.Title level={4}>确认后提交任务</Typography.Title>
+              <Typography.Paragraph>确认标的、周期和策略无误即可提交。高级参数可以保持默认。</Typography.Paragraph>
+              <div className="detail-grid">
+                <div className="detail-item"><span className="detail-label">标的</span><span className="detail-value">{form.getFieldValue("symbol") || "-"}</span></div>
+                <div className="detail-item"><span className="detail-label">周期</span><span className="detail-value">{selectedInterval}</span></div>
+                <div className="detail-item"><span className="detail-label">策略</span><span className="detail-value">{strategyLabel(selectedStrategy)}</span></div>
+                <div className="detail-item"><span className="detail-label">模板</span><span className="detail-value">{selectedTemplate?.template_name ?? "未选择模板"}</span></div>
+              </div>
+              <Collapse
+                className="advanced-collapse"
+                items={[
+                  {
+                    key: "advanced",
+                    label: "高级参数，可保持默认",
+                    children: (
+                      <div className="template-form-grid">
+                        <Form.Item name="execution_profile" label="执行口径">
+                          <Select options={[{ label: "实盘口径", value: "realistic" }, { label: "研究口径", value: "research" }]} />
+                        </Form.Item>
+                        <Form.Item name="lookback_days" label="日线样本内天数">
+                          <InputNumber min={1} style={{ width: "100%" }} />
+                        </Form.Item>
+                        <Form.Item name="validation_ratio" label="分钟线样本外比例">
+                          <InputNumber min={0.05} max={0.95} step={0.05} style={{ width: "100%" }} />
+                        </Form.Item>
+                        <Form.Item name="jobs" label="并行数">
+                          <InputNumber min={1} max={16} style={{ width: "100%" }} />
+                        </Form.Item>
+                        <Form.Item name="commission_bps" label="手续费 bps">
+                          <InputNumber min={0} step={0.5} style={{ width: "100%" }} />
+                        </Form.Item>
+                        <Form.Item name="slippage_bps" label="滑点 bps">
+                          <InputNumber min={0} step={0.5} style={{ width: "100%" }} />
+                        </Form.Item>
+                        <Form.Item name="max_position_ratio" label="最大仓位">
+                          <InputNumber min={0} max={1} step={0.05} style={{ width: "100%" }} />
+                        </Form.Item>
+                        <Form.Item name="left_side_policy" label="左侧处理">
+                          <Select
+                            allowClear
+                            options={[
+                              { label: "持有", value: "hold" },
+                              { label: "强平", value: "force_exit" },
+                              { label: "双口径", value: "both" },
+                            ]}
+                          />
+                        </Form.Item>
+                      </div>
+                    ),
+                  },
+                ]}
+              />
+            </div>
+          ) : null}
+
+          <div className="form-action-row wizard-action-row">
+            <Button disabled={activeStep === 0} onClick={() => setActiveStep((current) => Math.max(current - 1, 0))}>
+              上一步
             </Button>
+            {activeStep < 2 ? (
+              <Button type="primary" onClick={() => void goNextStep()}>
+                下一步
+              </Button>
+            ) : (
+              <Button type="primary" htmlType="submit" loading={submitting}>
+                开始回测
+              </Button>
+            )}
           </div>
         </Form>
       </Card>
