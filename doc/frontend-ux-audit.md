@@ -43,6 +43,13 @@
 - 发现本地数据库缺少 `platform_heartbeats` 表时，Worker/Scheduler 会重复输出底层 SQL 错误；已改为一次性初始化提示。
 - 使用 Playwright 对 6 个页面生成桌面和移动端截图，输出到 `outputs/frontend-screenshots/`；截图发现开发浮层 `1 Issue`，来源为 Drawer `width` 弃用告警，已修复。
 
+2026-05-27 复核：
+
+- 前端路由 `/`、`/backtests`、`/reports`、`/reports/2`、`/market-data`、`/templates`、`/platform` 均返回 200。
+- 后端接口 `/api/market-data/stats`、`/api/backtests?limit=5`、`/api/reports?limit=5`、`/api/reports/2`、`/api/templates?active_only=true`、`/api/platform/status` 均返回 200。
+- 使用 Playwright 重新生成 7 个移动端截图，输出到 `outputs/frontend-screenshots/final-mobile-pass/`；未再出现红色开发错误浮层。
+- 当前移动端主路径已经覆盖：首页开始回测、创建回测、查看报告、报告详情、数据准备、策略模板和系统状态维护页。
+
 ## 重构原则
 
 - 首页只回答三个问题：能不能开始、怎么开始、结果在哪里看。
