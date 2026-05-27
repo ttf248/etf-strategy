@@ -110,7 +110,7 @@ test("首页到回测提交主路径可用", async ({ page, request }) => {
   const payload = (await submitResponse.json()) as { job_id: number };
   expect(payload.job_id).toBeGreaterThan(0);
 
-  await expect(page.getByText(`任务已提交，ID=${payload.job_id}`)).toBeVisible();
+  await expect(page.getByText(`任务已提交，编号=${payload.job_id}`)).toBeVisible();
   const jobResponse = await request.get(`${apiBaseUrl}/api/backtests/${payload.job_id}`);
   expect(jobResponse.ok(), `无法读取新提交任务 ${payload.job_id} 的详情。`).toBeTruthy();
   const jobPayload = (await jobResponse.json()) as { id: number; request_payload: { symbol?: string } };

@@ -563,7 +563,7 @@ export function DashboardView() {
                       rowKey="id"
                       dataSource={stats.recent_sync_runs}
                       columns={[
-                        { title: "ID", dataIndex: "id", width: 72 },
+                        { title: "编号", dataIndex: "id", width: 72 },
                         { title: "周期", dataIndex: "interval", width: 90 },
                         { title: "状态", dataIndex: "status", render: (value: string) => <StatusTag value={value} /> },
                         { title: "新增", dataIndex: "bars_inserted" },

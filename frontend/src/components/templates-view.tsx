@@ -825,7 +825,7 @@ export function TemplatesView() {
             <Form.Item name="interval" label="周期" rules={[{ required: true }]}>
               <Select options={intervalOptions} />
             </Form.Item>
-            <Form.Item name="execution_profile" label="执行口径">
+            <Form.Item name="execution_profile" label="成交假设">
               <Select options={executionProfiles} />
             </Form.Item>
             <Form.Item name="jobs" label="并行数">
@@ -851,12 +851,12 @@ export function TemplatesView() {
             </Form.Item>
           </div>
 
-          <Typography.Title level={5}>执行口径</Typography.Title>
+          <Typography.Title level={5}>成交假设</Typography.Title>
           <div className="template-form-grid">
-            <Form.Item name="commission_bps" label="手续费 bps">
+            <Form.Item name="commission_bps" label="手续费（万分比）">
               <InputNumber min={0} step={0.5} style={{ width: "100%" }} />
             </Form.Item>
-            <Form.Item name="slippage_bps" label="滑点 bps">
+            <Form.Item name="slippage_bps" label="滑点（万分比）">
               <InputNumber min={0} step={0.5} style={{ width: "100%" }} />
             </Form.Item>
             <Form.Item name="max_position_ratio" label="最大仓位">
@@ -865,7 +865,7 @@ export function TemplatesView() {
             <Form.Item name="stop_loss_pct" label="停手跌幅">
               <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
             </Form.Item>
-            <Form.Item name="cooldown_bars" label="冷却 Bar">
+            <Form.Item name="cooldown_bars" label="冷却 K 线数">
               <InputNumber min={0} style={{ width: "100%" }} />
             </Form.Item>
             <Form.Item name="benchmark" label="基准">

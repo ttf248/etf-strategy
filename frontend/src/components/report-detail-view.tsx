@@ -34,7 +34,7 @@ const baseParameterLabels: Record<string, string> = {
   force_exit_loss_pct: "强制离场亏损线",
   GridCount: "网格层数",
   GridMode: "网格模式",
-  jobs: "并行寻参任务数",
+  jobs: "同时尝试的参数组数",
   left_side_policy: "左侧行情处理",
   lookback_days: "回看天数",
   LotSize: "每手数量",
@@ -51,7 +51,7 @@ const baseParameterLabels: Record<string, string> = {
   StartDate: "开始时间",
   stop_loss_pct: "停手跌幅",
   Symbol: "标的代码",
-  template_id: "模板 ID",
+  template_id: "模板编号",
   total_capital: "初始资金",
   validation_ratio: "样本外比例",
   validation_start: "样本外起点",
@@ -295,7 +295,7 @@ function formatScalar(key: string, value: unknown): string {
   }
   if (typeof value === "number") {
     if (key.endsWith("_bps")) {
-      return `${value} bps`;
+      return `万分之 ${value}`;
     }
     if ((key.includes("ratio") || key.includes("spacing") || key.includes("profit")) && Math.abs(value) <= 1) {
       return `${(value * 100).toFixed(2)}%`;
@@ -476,7 +476,7 @@ function rerunFocusGuide(strategyKind: string): string {
     return "优先改入场阈值、止盈止损和最长持有时间。";
   }
   if (strategyKind === "minute_rebound" || strategyKind === "minute_rebound_with_fade_filter") {
-    return "优先改入场跌幅、RSI 条件和最大持仓 Bar。";
+    return "优先改入场跌幅、RSI 条件和最大持仓 K 线数。";
   }
   if (strategyKind === "minute_index_grid_retrace" || strategyKind === "grid") {
     return "优先改网格间距、层数和止盈节奏。";
@@ -539,10 +539,10 @@ function buildParameterHighlights(
   }
   const costParts: string[] = [];
   if (commissionBps !== null) {
-    costParts.push(`佣金 ${commissionBps} bps`);
+      costParts.push(`佣金万分之 ${commissionBps}`);
   }
   if (slippageBps !== null) {
-    costParts.push(`滑点 ${slippageBps} bps`);
+      costParts.push(`滑点万分之 ${slippageBps}`);
   }
   let riskDescription = costParts.length > 0 ? `成交假设按 ${costParts.join("，")} 计入。` : "这份报告没有额外展示成交成本假设。";
   if (takeProfitPct !== null || stopLossPct !== null) {
@@ -677,7 +677,7 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
           <DetailItem label="周期" value={report.interval} />
           <DetailItem label="样本区间" value={`${report.dataset_start} 至 ${report.dataset_end}`} />
           <DetailItem label="报告生成时间" value={report.created_at} />
-          <DetailItem label="任务ID" value={report.job_id} />
+          <DetailItem label="任务编号" value={report.job_id} />
         </div>
       </Card>
 
@@ -779,8 +779,8 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
                         <Descriptions.Item label="策略">{strategyLabel(String(templateSnapshot.strategy_kind ?? report.strategy_kind))}</Descriptions.Item>
                         <Descriptions.Item label="周期">{String(templateSnapshot.interval ?? "-")}</Descriptions.Item>
                         <Descriptions.Item label="默认模板">{Boolean(templateSnapshot.is_default) ? "是" : "否"}</Descriptions.Item>
-                        <Descriptions.Item label="模板键">{String(templateSnapshot.template_key ?? "-")}</Descriptions.Item>
-                        <Descriptions.Item label="模板 ID">{String(templateSnapshot.id ?? "-")}</Descriptions.Item>
+                        <Descriptions.Item label="模板标识">{String(templateSnapshot.template_key ?? "-")}</Descriptions.Item>
+                        <Descriptions.Item label="模板编号">{String(templateSnapshot.id ?? "-")}</Descriptions.Item>
                       </Descriptions>
                     </div>
                   ) : null}

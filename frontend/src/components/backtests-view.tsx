@@ -213,7 +213,7 @@ export function BacktestsView() {
           parameter_space: selectedTemplate?.parameter_space_json,
         }),
       });
-      messageApi.success(`任务已提交，ID=${result.job_id}`);
+      messageApi.success(`任务已提交，编号=${result.job_id}`);
       await loadJobs();
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "提交失败");
@@ -475,7 +475,7 @@ export function BacktestsView() {
                     label: "高级参数，可保持默认",
                     children: (
                       <div className="template-form-grid">
-                        <Form.Item name="execution_profile" label="执行口径">
+                        <Form.Item name="execution_profile" label="成交假设">
                           <Select options={[{ label: "实盘口径", value: "realistic" }, { label: "研究口径", value: "research" }]} />
                         </Form.Item>
                         <Form.Item name="lookback_days" label="日线样本内天数">
@@ -487,10 +487,10 @@ export function BacktestsView() {
                         <Form.Item name="jobs" label="并行数">
                           <InputNumber min={1} max={16} style={{ width: "100%" }} />
                         </Form.Item>
-                        <Form.Item name="commission_bps" label="手续费 bps">
+                        <Form.Item name="commission_bps" label="手续费（万分比）">
                           <InputNumber min={0} step={0.5} style={{ width: "100%" }} />
                         </Form.Item>
-                        <Form.Item name="slippage_bps" label="滑点 bps">
+                        <Form.Item name="slippage_bps" label="滑点（万分比）">
                           <InputNumber min={0} step={0.5} style={{ width: "100%" }} />
                         </Form.Item>
                         <Form.Item name="max_position_ratio" label="最大仓位">
@@ -537,9 +537,9 @@ export function BacktestsView() {
             <Descriptions.Item label="模板">{selectedTemplate.template_name}</Descriptions.Item>
             <Descriptions.Item label="策略">{strategyLabel(selectedTemplate.strategy_kind)}</Descriptions.Item>
             <Descriptions.Item label="周期">{selectedTemplate.interval}</Descriptions.Item>
-            <Descriptions.Item label="执行口径">{selectedTemplate.execution_profile}</Descriptions.Item>
+            <Descriptions.Item label="成交假设">{selectedTemplate.execution_profile}</Descriptions.Item>
             <Descriptions.Item label="说明">{selectedTemplate.description || "使用模板默认参数"}</Descriptions.Item>
-            <Descriptions.Item label="寻参任务数">{selectedTemplate.jobs}</Descriptions.Item>
+            <Descriptions.Item label="同时尝试的参数组数">{selectedTemplate.jobs}</Descriptions.Item>
             <Descriptions.Item label="默认模板">{selectedTemplate.is_default ? "是" : "否"}</Descriptions.Item>
             <Descriptions.Item label="状态">{selectedTemplate.is_active ? "启用" : "停用"}</Descriptions.Item>
           </Descriptions>
@@ -651,7 +651,7 @@ export function BacktestsView() {
                         pagination={{ pageSize: 12, showSizeChanger: false }}
                         scroll={{ x: 1180 }}
                         columns={[
-                          { title: "任务ID", dataIndex: "id", width: 88, fixed: "left" },
+                          { title: "任务编号", dataIndex: "id", width: 88, fixed: "left" },
                           { title: "标的", render: (_, row) => String(row.request_payload.symbol ?? "-"), width: 120 },
                           { title: "周期", render: (_, row) => String(row.request_payload.interval ?? "-"), width: 90 },
                           { title: "策略", render: (_, row) => strategyLabel(String(row.request_payload.strategy_kind ?? "-")), width: 160, ellipsis: true },
