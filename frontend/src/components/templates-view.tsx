@@ -806,7 +806,7 @@ export function TemplatesView() {
         onClose={() => setDrawerOpen(false)}
       >
         <Card size="small" className="advanced-editor-note">
-          这里是高级编辑区。新手用户通常不需要修改模板，直接在“创建回测”页选择默认模板即可。
+          这里是详细设置区。新手用户通常不需要修改模板，直接在“创建回测”页选择默认模板即可。
         </Card>
         <Form
           form={form}
