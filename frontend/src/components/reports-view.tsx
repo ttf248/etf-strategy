@@ -1,11 +1,14 @@
 "use client";
 
+import { StarFilled, StarOutlined } from "@ant-design/icons";
 import { Button, Card, Empty, Input, Select, Space, Table, Tag, Typography } from "antd";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type ReportSummary } from "@/lib/api";
 import { FormatPercent, MetricCard, PageHeader, ToolbarCount } from "@/components/platform-ui";
 import { strategyLabel } from "@/lib/strategy-template-config";
+
+const FAVORITE_REPORTS_STORAGE_KEY = "etf-strategy.favorite-report-ids";
 
 type Verdict = {
   label: string;
@@ -39,10 +42,49 @@ export function ReportsView() {
   const [keyword, setKeyword] = useState("");
   const [interval, setInterval] = useState<string | undefined>(undefined);
   const [selectedReportIds, setSelectedReportIds] = useState<number[]>([]);
+  const [favoriteReportIds, setFavoriteReportIds] = useState<number[]>([]);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [favoritesHydrated, setFavoritesHydrated] = useState(false);
 
   useEffect(() => {
     void apiFetch<ReportSummary[]>("/api/reports?limit=200").then(setReports);
   }, []);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      if (typeof window === "undefined") {
+        setFavoritesHydrated(true);
+        return;
+      }
+      try {
+        const storedValue = window.localStorage.getItem(FAVORITE_REPORTS_STORAGE_KEY);
+        if (!storedValue) {
+          setFavoritesHydrated(true);
+          return;
+        }
+        const parsed = JSON.parse(storedValue);
+        if (Array.isArray(parsed)) {
+          setFavoriteReportIds(parsed.map(Number).filter(Number.isFinite));
+        }
+      } catch {
+        window.localStorage.removeItem(FAVORITE_REPORTS_STORAGE_KEY);
+      } finally {
+        setFavoritesHydrated(true);
+      }
+    });
+  }, []);
+
+  const validFavoriteReportIds = useMemo(
+    () => favoriteReportIds.filter((reportId) => reports.some((item) => item.id === reportId)),
+    [favoriteReportIds, reports],
+  );
+
+  useEffect(() => {
+    if (!favoritesHydrated || typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(FAVORITE_REPORTS_STORAGE_KEY, JSON.stringify(validFavoriteReportIds));
+  }, [validFavoriteReportIds, favoritesHydrated]);
 
   const intervalOptions = useMemo(
     () => Array.from(new Set(reports.map((item) => item.interval))).map((item) => ({ label: item, value: item })),
@@ -56,12 +98,17 @@ export function ReportsView() {
         item.symbol.toLowerCase().includes(keyword.toLowerCase()) ||
         item.name.toLowerCase().includes(keyword.toLowerCase());
       const matchesInterval = !interval || item.interval === interval;
-      return matchesKeyword && matchesInterval;
+      const matchesFavorite = !showFavoritesOnly || validFavoriteReportIds.includes(item.id);
+      return matchesKeyword && matchesInterval && matchesFavorite;
     });
-  }, [reports, keyword, interval]);
+  }, [reports, keyword, interval, showFavoritesOnly, validFavoriteReportIds]);
 
   const latestReport = filteredReports[0];
   const positiveReports = filteredReports.filter((item) => getValidationMetrics(item).netReturn > 0).length;
+  const favoriteReports = useMemo(
+    () => reports.filter((item) => validFavoriteReportIds.includes(item.id)),
+    [reports, validFavoriteReportIds],
+  );
   const bestReport = filteredReports.reduce<ReportSummary | null>((best, current) => {
     if (!best) {
       return current;
@@ -82,6 +129,15 @@ export function ReportsView() {
     });
   }
 
+  function toggleFavorite(reportId: number) {
+    setFavoriteReportIds((current) => {
+      if (current.includes(reportId)) {
+        return current.filter((item) => item !== reportId);
+      }
+      return [reportId, ...current];
+    });
+  }
+
   return (
     <div className="page-stack">
       <PageHeader
@@ -93,6 +149,7 @@ export function ReportsView() {
       <div className="summary-grid">
         <MetricCard label="报告数量" value={filteredReports.length} note="当前筛选范围" />
         <MetricCard label="收益为正" value={positiveReports} note="样本外收益 > 0" />
+        <MetricCard label="已收藏" value={favoriteReports.length} note="保存在当前浏览器" />
         <MetricCard
           label="最佳样本外收益"
           value={bestReport ? <FormatPercent value={getValidationMetrics(bestReport).netReturn} /> : "-"}
@@ -116,7 +173,10 @@ export function ReportsView() {
               return (
                 <article key={report.id} className="report-compare-item">
                   <div className="report-compare-head">
-                    <strong>#{report.id} {report.symbol}</strong>
+                    <strong>
+                      #{report.id} {report.symbol}
+                      {validFavoriteReportIds.includes(report.id) ? " · 已收藏" : ""}
+                    </strong>
                     <Button size="small" type="link" onClick={() => toggleCompare(report.id)}>移除</Button>
                   </div>
                   <span>{report.interval} / {strategyLabel(report.strategy_kind)}</span>
@@ -137,17 +197,26 @@ export function ReportsView() {
           <Space wrap>
             <Input placeholder="筛选标的或名称" value={keyword} onChange={(event) => setKeyword(event.target.value)} style={{ width: 240 }} />
             <Select allowClear placeholder="按周期筛选" value={interval} onChange={setInterval} options={intervalOptions} style={{ width: 150 }} />
+            <Button
+              icon={showFavoritesOnly ? <StarFilled /> : <StarOutlined />}
+              type={showFavoritesOnly ? "primary" : "default"}
+              onClick={() => setShowFavoritesOnly((current) => !current)}
+            >
+              {showFavoritesOnly ? "只看收藏中" : "只看收藏"}
+            </Button>
           </Space>
-          <ToolbarCount>共 {filteredReports.length} 份报告</ToolbarCount>
+          <ToolbarCount>共 {filteredReports.length} 份报告，收藏 {favoriteReports.length} 份</ToolbarCount>
         </div>
         {filteredReports.length === 0 ? (
-          <Empty description="暂无报告" />
+          <Empty description={showFavoritesOnly ? "暂无收藏报告" : "暂无报告"} />
         ) : (
           <>
             <div className="report-mobile-list">
               {filteredReports.map((report) => {
                 const { netReturn, maxDrawdown, closedTrades } = getValidationMetrics(report);
                 const verdict = buildVerdict(netReturn, maxDrawdown);
+                const isFavorite = validFavoriteReportIds.includes(report.id);
+                const isCompared = selectedReportIds.includes(report.id);
                 return (
                   <article key={report.id} className="report-mobile-card">
                     <div className="report-mobile-card-head">
@@ -155,7 +224,10 @@ export function ReportsView() {
                         <strong>#{report.id} {report.symbol}</strong>
                         <span>{report.name || "未命名标的"} / {report.interval}</span>
                       </div>
-                      <Tag color={verdict.color}>{verdict.label}</Tag>
+                      <div className="report-mobile-card-tags">
+                        {isFavorite ? <Tag color="gold">已收藏</Tag> : null}
+                        <Tag color={verdict.color}>{verdict.label}</Tag>
+                      </div>
                     </div>
                     <p>{verdict.description}</p>
                     <div className="report-mobile-metrics">
@@ -163,9 +235,14 @@ export function ReportsView() {
                       <span>回撤 {maxDrawdown.toFixed(2)}%</span>
                       <span>交易 {closedTrades}</span>
                     </div>
-                    <Button block onClick={() => toggleCompare(report.id)}>
-                      {selectedReportIds.includes(report.id) ? "已加入对比" : "加入对比"}
-                    </Button>
+                    <div className="report-mobile-actions">
+                      <Button block icon={isFavorite ? <StarFilled /> : <StarOutlined />} onClick={() => toggleFavorite(report.id)}>
+                        {isFavorite ? "取消收藏" : "收藏报告"}
+                      </Button>
+                      <Button block onClick={() => toggleCompare(report.id)}>
+                        {isCompared ? "已加入对比" : "加入对比"}
+                      </Button>
+                    </div>
                     <Button type="primary" block>
                       <Link href={`/reports/${report.id}`}>打开报告详情</Link>
                     </Button>
@@ -189,7 +266,7 @@ export function ReportsView() {
                 { title: "标的", dataIndex: "symbol", width: 120 },
                 { title: "名称", dataIndex: "name", ellipsis: true },
                 { title: "周期", dataIndex: "interval", width: 90 },
-              { title: "策略", dataIndex: "strategy_kind", width: 180, ellipsis: true, render: (value: string) => strategyLabel(value) },
+                { title: "策略", dataIndex: "strategy_kind", width: 180, ellipsis: true, render: (value: string) => strategyLabel(value) },
                 {
                   title: "结论",
                   width: 150,
@@ -219,6 +296,20 @@ export function ReportsView() {
                   },
                 },
                 { title: "生成时间", dataIndex: "created_at", width: 180, ellipsis: true },
+                {
+                      title: "收藏",
+                      width: 110,
+                      render: (_, row) => (
+                        <Button
+                          size="small"
+                          type={validFavoriteReportIds.includes(row.id) ? "primary" : "default"}
+                          icon={validFavoriteReportIds.includes(row.id) ? <StarFilled /> : <StarOutlined />}
+                          onClick={() => toggleFavorite(row.id)}
+                        >
+                          {validFavoriteReportIds.includes(row.id) ? "已收藏" : "收藏"}
+                        </Button>
+                      ),
+                    },
                 {
                   title: "操作",
                   width: 88,
