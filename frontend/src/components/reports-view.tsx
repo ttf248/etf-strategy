@@ -97,59 +97,88 @@ export function ReportsView() {
         {filteredReports.length === 0 ? (
           <Empty description="暂无报告" />
         ) : (
-          <Table
-            rowKey="id"
-            size="small"
-            dataSource={filteredReports}
-            pagination={{ pageSize: 12, showSizeChanger: false }}
-            scroll={{ x: 980 }}
-            columns={[
-              { title: "报告", dataIndex: "id", width: 88, fixed: "left", render: (value: number) => `#${value}` },
-              { title: "标的", dataIndex: "symbol", width: 120 },
-              { title: "名称", dataIndex: "name", ellipsis: true },
-              { title: "周期", dataIndex: "interval", width: 90 },
-              { title: "策略", dataIndex: "strategy_kind", width: 180, ellipsis: true },
-              {
-                title: "结论",
-                width: 150,
-                render: (_, row) => {
-                  const { netReturn, maxDrawdown } = getValidationMetrics(row);
-                  const verdict = buildVerdict(netReturn, maxDrawdown);
-                  return <Tag color={verdict.color}>{verdict.label}</Tag>;
+          <>
+            <div className="report-mobile-list">
+              {filteredReports.map((report) => {
+                const { netReturn, maxDrawdown, closedTrades } = getValidationMetrics(report);
+                const verdict = buildVerdict(netReturn, maxDrawdown);
+                return (
+                  <article key={report.id} className="report-mobile-card">
+                    <div className="report-mobile-card-head">
+                      <div>
+                        <strong>#{report.id} {report.symbol}</strong>
+                        <span>{report.name || "未命名标的"} / {report.interval}</span>
+                      </div>
+                      <Tag color={verdict.color}>{verdict.label}</Tag>
+                    </div>
+                    <p>{verdict.description}</p>
+                    <div className="report-mobile-metrics">
+                      <span>收益 <FormatPercent value={netReturn} /></span>
+                      <span>回撤 {maxDrawdown.toFixed(2)}%</span>
+                      <span>交易 {closedTrades}</span>
+                    </div>
+                    <Button type="primary" block>
+                      <Link href={`/reports/${report.id}`}>打开报告详情</Link>
+                    </Button>
+                  </article>
+                );
+              })}
+            </div>
+            <Table
+              className="report-desktop-table"
+              rowKey="id"
+              size="small"
+              dataSource={filteredReports}
+              pagination={{ pageSize: 12, showSizeChanger: false }}
+              scroll={{ x: 980 }}
+              columns={[
+                { title: "报告", dataIndex: "id", width: 88, fixed: "left", render: (value: number) => `#${value}` },
+                { title: "标的", dataIndex: "symbol", width: 120 },
+                { title: "名称", dataIndex: "name", ellipsis: true },
+                { title: "周期", dataIndex: "interval", width: 90 },
+                { title: "策略", dataIndex: "strategy_kind", width: 180, ellipsis: true },
+                {
+                  title: "结论",
+                  width: 150,
+                  render: (_, row) => {
+                    const { netReturn, maxDrawdown } = getValidationMetrics(row);
+                    const verdict = buildVerdict(netReturn, maxDrawdown);
+                    return <Tag color={verdict.color}>{verdict.label}</Tag>;
+                  },
                 },
-              },
-              {
-                title: "样本外收益",
-                width: 120,
-                render: (_, row) => <FormatPercent value={getValidationMetrics(row).netReturn} />,
-              },
-              {
-                title: "最大回撤",
-                width: 120,
-                render: (_, row) => `${getValidationMetrics(row).maxDrawdown.toFixed(2)}%`,
-              },
-              {
-                title: "怎么理解",
-                width: 260,
-                render: (_, row) => {
-                  const { netReturn, maxDrawdown } = getValidationMetrics(row);
-                  const verdict = buildVerdict(netReturn, maxDrawdown);
-                  return <Typography.Text type="secondary">{verdict.description}</Typography.Text>;
+                {
+                  title: "样本外收益",
+                  width: 120,
+                  render: (_, row) => <FormatPercent value={getValidationMetrics(row).netReturn} />,
                 },
-              },
-              { title: "生成时间", dataIndex: "created_at", width: 180, ellipsis: true },
-              {
-                title: "操作",
-                width: 88,
-                fixed: "right",
-                render: (_, row) => (
-                  <Button size="small" type="link">
-                    <Link href={`/reports/${row.id}`}>打开</Link>
-                  </Button>
-                ),
-              },
-            ]}
-          />
+                {
+                  title: "最大回撤",
+                  width: 120,
+                  render: (_, row) => `${getValidationMetrics(row).maxDrawdown.toFixed(2)}%`,
+                },
+                {
+                  title: "怎么理解",
+                  width: 260,
+                  render: (_, row) => {
+                    const { netReturn, maxDrawdown } = getValidationMetrics(row);
+                    const verdict = buildVerdict(netReturn, maxDrawdown);
+                    return <Typography.Text type="secondary">{verdict.description}</Typography.Text>;
+                  },
+                },
+                { title: "生成时间", dataIndex: "created_at", width: 180, ellipsis: true },
+                {
+                  title: "操作",
+                  width: 88,
+                  fixed: "right",
+                  render: (_, row) => (
+                    <Button size="small" type="link">
+                      <Link href={`/reports/${row.id}`}>打开</Link>
+                    </Button>
+                  ),
+                },
+              ]}
+            />
+          </>
         )}
       </Card>
     </div>
