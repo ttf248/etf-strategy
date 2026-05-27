@@ -173,23 +173,45 @@ export function MarketDataView() {
         {filteredRows.length === 0 ? (
           <Empty description="没有匹配的数据" />
         ) : (
-          <Table<MarketCoverage>
-            rowKey={(row) => `${row.symbol}-${row.interval}`}
-            size="small"
-            dataSource={filteredRows}
-            pagination={{ pageSize: 20, showSizeChanger: false }}
-            scroll={{ x: 1160 }}
-            columns={[
-              { title: "标的", dataIndex: "symbol", width: 120, fixed: "left" },
-              { title: "名称", dataIndex: "name", ellipsis: true },
-            { title: "交易所", dataIndex: "exchange", width: 90 },
-            { title: "周期", dataIndex: "interval", width: 90 },
-              { title: "K 线数量", dataIndex: "bar_count", width: 120, render: (value: number) => value.toLocaleString() },
-              { title: "开始日期", dataIndex: "start_time", width: 180 },
-              { title: "结束日期", dataIndex: "end_time", width: 180 },
-              { title: "最近更新", dataIndex: "last_ingested_at", width: 220 },
-            ]}
-          />
+          <>
+            <div className="coverage-mobile-list">
+              {filteredRows.slice(0, 20).map((row) => (
+                <article key={`${row.symbol}-${row.interval}`} className="coverage-mobile-card">
+                  <div className="coverage-mobile-card-head">
+                    <div>
+                      <strong>{row.symbol}</strong>
+                      <span>{row.name || "未命名标的"} / {row.exchange}</span>
+                    </div>
+                    <Tag color={row.interval === "1d" ? "blue" : "cyan"}>{row.interval}</Tag>
+                  </div>
+                  <div className="coverage-mobile-metrics">
+                    <span>{row.bar_count.toLocaleString()} 条 K 线</span>
+                    <span>{row.start_time} 至 {row.end_time}</span>
+                  </div>
+                  <small>最近更新：{row.last_ingested_at || "-"}</small>
+                </article>
+              ))}
+              {filteredRows.length > 20 ? <Typography.Text type="secondary">移动端先显示前 20 条，可用筛选缩小范围。</Typography.Text> : null}
+            </div>
+            <Table<MarketCoverage>
+              className="coverage-desktop-table"
+              rowKey={(row) => `${row.symbol}-${row.interval}`}
+              size="small"
+              dataSource={filteredRows}
+              pagination={{ pageSize: 20, showSizeChanger: false }}
+              scroll={{ x: 1160 }}
+              columns={[
+                { title: "标的", dataIndex: "symbol", width: 120, fixed: "left" },
+                { title: "名称", dataIndex: "name", ellipsis: true },
+                { title: "交易所", dataIndex: "exchange", width: 90 },
+                { title: "周期", dataIndex: "interval", width: 90 },
+                { title: "K 线数量", dataIndex: "bar_count", width: 120, render: (value: number) => value.toLocaleString() },
+                { title: "开始日期", dataIndex: "start_time", width: 180 },
+                { title: "结束日期", dataIndex: "end_time", width: 180 },
+                { title: "最近更新", dataIndex: "last_ingested_at", width: 220 },
+              ]}
+            />
+          </>
         )}
       </Card>
     </div>
