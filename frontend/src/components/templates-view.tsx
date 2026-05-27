@@ -424,13 +424,13 @@ export function TemplatesView() {
         <div className="start-path-main">
           <strong>
             {defaultRecommendedTemplate
-              ? "先从推荐模板里挑一个开始，不要一上来新建高级模板"
+              ? "先从推荐模板里挑一个开始，不要一上来新建自定义模板"
               : "当前没有可直接使用的模板，先到高级管理里启用一个默认模板"}
           </strong>
           <p>
             {defaultRecommendedTemplate
               ? "新手更需要先把回测流程和报告阅读跑通，而不是先改参数。只有当默认模板明显不适合你的标的、周期或手续费假设时，再去编辑或新建模板。"
-              : "如果当前没有启用模板，先在下方高级管理区启用默认模板，或者在确实需要时新建高级模板。"}
+              : "如果当前没有启用模板，先在下方高级管理区启用默认模板，或者在确实需要时新建自定义模板。"}
           </p>
           <div className="start-path-guide-grid">
             <article className="start-path-guide-card">
@@ -441,7 +441,7 @@ export function TemplatesView() {
             <article className="start-path-guide-card">
               <span>为什么不先新建</span>
               <strong>先确认默认模板哪里不够用</strong>
-              <p>只有当默认模板明显不适合你的标的、周期或手续费假设时，新建或编辑高级模板才有明确价值。</p>
+              <p>只有当默认模板明显不适合你的标的、周期或手续费假设时，新建或编辑自定义模板才有明确价值。</p>
             </article>
             <article className="start-path-guide-card">
               <span>什么时候进高级管理</span>
@@ -466,7 +466,7 @@ export function TemplatesView() {
           ) : null}
           <Button onClick={() => applyQuickPick(templateQuickPicks[0])}>只看第一次先跑一轮</Button>
           {!defaultRecommendedTemplate ? (
-            <Button onClick={openCreateDrawer}>确实需要时再新建高级模板</Button>
+            <Button onClick={openCreateDrawer}>确实需要时再新建自定义模板</Button>
           ) : null}
         </div>
       </Card>
@@ -485,7 +485,7 @@ export function TemplatesView() {
 
       <Card title="推荐模板" size="small" className="section-card">
         {recommendedTemplates.length === 0 ? (
-          <Typography.Text type="secondary">当前没有启用的模板。先展开下方高级管理，启用一个默认模板或新建高级模板，再回到这里选择。</Typography.Text>
+          <Typography.Text type="secondary">当前没有启用的模板。先展开下方高级管理，启用一个默认模板或新建自定义模板，再回到这里选择。</Typography.Text>
         ) : (
           <>
             <div className="template-order-banner">
@@ -654,7 +654,7 @@ export function TemplatesView() {
                     <Space wrap>
                       <Button onClick={() => void loadTemplates()}>重新读取模板列表</Button>
                       <Button type="primary" onClick={openCreateDrawer}>
-                        新建高级模板
+                        新建自定义模板
                       </Button>
                     </Space>
                     <ToolbarCount>当前共 {filteredTemplates.length} 个模板；只有在需要维护时再处理这里。</ToolbarCount>
@@ -799,7 +799,7 @@ export function TemplatesView() {
       </Card>
 
       <Drawer
-        title={editingTemplate ? `编辑高级模板，编号 ${editingTemplate.id}` : "新建高级模板"}
+        title={editingTemplate ? `编辑自定义模板，编号 ${editingTemplate.id}` : "新建自定义模板"}
         size="large"
         open={drawerOpen}
         destroyOnHidden
