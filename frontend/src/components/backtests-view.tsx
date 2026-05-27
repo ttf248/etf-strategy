@@ -1,12 +1,12 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Button, Card, Collapse, Descriptions, Form, Input, InputNumber, message, Select, Space, Steps, Table, Tag, Typography } from "antd";
+import { Button, Card, Collapse, Descriptions, Empty, Form, Input, InputNumber, message, Select, Space, Steps, Table, Tag, Typography } from "antd";
 import { useEffect, useMemo, useRef, useState, type Key } from "react";
 import Link from "next/link";
 import { apiFetch, type BacktestJob, type MarketDataStats, type StrategyTemplate } from "@/lib/api";
 import { intervalOptions, strategyLabel, strategyOptions } from "@/lib/strategy-template-config";
-import { PageHeader, StatusTag } from "@/components/platform-ui";
+import { PageHeader, StatusTag, ToolbarCount } from "@/components/platform-ui";
 import { buildBeginnerPresets } from "@/lib/beginner-presets";
 
 const strategyGuide: Record<string, { scene: string; beginnerHint: string; risk: string }> = {
@@ -40,6 +40,25 @@ function buildTemplateFieldValues(template: StrategyTemplate) {
   };
 }
 
+function buildJobReadingHint(job: BacktestJob) {
+  if (job.status === "succeeded") {
+    return job.reports?.length ? "这次已经生成报告，优先打开结果看收益、回撤和交易记录。" : "任务执行完成，但报告还没挂上时，先去报告列表刷新确认。";
+  }
+  if (job.status === "failed") {
+    return "这次失败先看错误提示，通常是数据不足、模板不匹配，或参数不适合当前标的。";
+  }
+  if (job.status === "queued") {
+    return "任务还在排队，先不用重复提交；等它开始运行后再决定是否取消。";
+  }
+  if (job.status === "running") {
+    return "任务正在执行，先等待结果；如果长时间不动，再去系统状态页排查。";
+  }
+  if (job.status === "cancelled" || job.status === "cancel_requested") {
+    return "这次任务已经取消。如果你还想继续验证，直接按原配置重跑就行。";
+  }
+  return "先看状态和错误提示，再决定是重跑、取消，还是去报告页看结果。";
+}
+
 export function BacktestsView() {
   const [form] = Form.useForm();
   const [jobs, setJobs] = useState<BacktestJob[]>([]);
@@ -63,6 +82,12 @@ export function BacktestsView() {
   const selectedTemplate = filteredTemplates.find((item) => item.id === selectedTemplateId) ?? null;
   const recommendedTemplate = filteredTemplates.find((item) => item.is_default) ?? filteredTemplates[0] ?? null;
   const beginnerPresets = useMemo(() => (stats ? buildBeginnerPresets(stats.coverages) : []), [stats]);
+  const runningJobs = useMemo(() => jobs.filter((item) => item.status === "running"), [jobs]);
+  const queuedJobs = useMemo(() => jobs.filter((item) => item.status === "queued"), [jobs]);
+  const failedJobs = useMemo(() => jobs.filter((item) => item.status === "failed"), [jobs]);
+  const succeededJobs = useMemo(() => jobs.filter((item) => item.status === "succeeded"), [jobs]);
+  const recentJobs = useMemo(() => jobs.slice(0, 6), [jobs]);
+  const latestSucceededJob = useMemo(() => succeededJobs.find((item) => item.reports?.length), [succeededJobs]);
   const queryPreset = useMemo(() => {
     const symbol = searchParams.get("symbol")?.trim().toUpperCase();
     const interval = searchParams.get("interval");
@@ -472,102 +497,147 @@ export function BacktestsView() {
       ) : null}
 
       <Card
-        title="回测运行记录"
+        title="最近回测任务"
         size="small"
         className="section-card"
-        extra={
-          <Space>
-            <span className="toolbar-count">已选 {selectedJobIds.length} 项</span>
-            <Button size="small" disabled={selectedJobIds.length === 0} onClick={() => void bulkCancelJobs()}>
-              批量取消
-            </Button>
-            <Button size="small" disabled={selectedJobIds.length === 0} onClick={() => void bulkRetryJobs()}>
-              批量重试
-            </Button>
-          </Space>
-        }
       >
-        <div className="job-mobile-list">
-          {jobs.map((job) => {
-            const payload = job.request_payload;
-            const reportId = job.reports?.[0]?.id;
-            const templateName = (payload.template_snapshot as { template_name?: string } | undefined)?.template_name;
-            return (
-              <article key={job.id} className="job-mobile-card">
-                <div className="job-mobile-card-head">
-                  <div>
-                    <strong>任务 #{job.id}</strong>
-                    <span>{String(payload.symbol ?? "-")} / {String(payload.interval ?? "-")} / {strategyLabel(String(payload.strategy_kind ?? "-"))}</span>
-                  </div>
-                  <StatusTag value={job.status} />
-                </div>
-                <div className="job-mobile-metrics">
-                  <span>进度 {job.progress_pct.toFixed(0)}%</span>
-                  <span>模板 {templateName ?? "未选择"}</span>
-                </div>
-                {job.error_message ? <p className="job-mobile-error">{job.error_message}</p> : null}
-                <div className="job-mobile-actions">
-                  {reportId ? (
-                    <Button type="primary">
-                      <Link href={`/reports/${reportId}`}>查看报告</Link>
-                    </Button>
-                  ) : job.status === "succeeded" ? (
-                    <Button type="primary">
-                      <Link href="/reports">查看报告列表</Link>
-                    </Button>
-                  ) : (
-                    <Button disabled>等待报告</Button>
-                  )}
-                  <Button disabled={!["queued", "running"].includes(job.status)} onClick={() => void cancelJob(job.id)}>
-                    取消
+        {jobs.length === 0 ? (
+          <Empty description="还没有回测任务，先按上面的步骤提交第一轮。" />
+        ) : (
+          <>
+            <div className="job-summary-banner">
+              <div className="job-summary-main">
+                <strong>先看最近几次任务，再决定要不要展开完整历史</strong>
+                <p>新手更需要先确认“有没有成功生成报告、失败是不是同一个原因、现在还有没有任务在跑”，而不是直接翻完整任务表。</p>
+              </div>
+              <div className="job-summary-metrics">
+                <span>运行中 {runningJobs.length}</span>
+                <span>排队 {queuedJobs.length}</span>
+                <span>失败 {failedJobs.length}</span>
+                <span>已完成 {succeededJobs.length}</span>
+              </div>
+              <div className="job-summary-actions">
+                {latestSucceededJob?.reports?.[0]?.id ? (
+                  <Button type="primary">
+                    <Link href={`/reports/${latestSucceededJob.reports[0].id}`}>打开最近成功报告</Link>
                   </Button>
-                  <Button disabled={job.status !== "failed"} onClick={() => void retryJob(job.id)}>
-                    重试
-                  </Button>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-        <Table
-          className="job-desktop-table"
-          rowKey="id"
-          size="small"
-          dataSource={jobs}
-          rowSelection={{ selectedRowKeys: selectedJobIds, onChange: setSelectedJobIds }}
-          pagination={{ pageSize: 12, showSizeChanger: false }}
-          scroll={{ x: 1180 }}
-          columns={[
-            { title: "任务ID", dataIndex: "id", width: 88, fixed: "left" },
-            { title: "标的", render: (_, row) => String(row.request_payload.symbol ?? "-"), width: 120 },
-            { title: "周期", render: (_, row) => String(row.request_payload.interval ?? "-"), width: 90 },
-            { title: "策略", render: (_, row) => strategyLabel(String(row.request_payload.strategy_kind ?? "-")), width: 160, ellipsis: true },
-            { title: "模板", render: (_, row) => String((row.request_payload.template_snapshot as { template_name?: string } | undefined)?.template_name ?? "-"), ellipsis: true },
-            { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <StatusTag value={value} /> },
-            { title: "进度", dataIndex: "progress_pct", width: 90, render: (value: number) => `${value.toFixed(0)}%` },
-            { title: "提交时间", dataIndex: "submitted_at", width: 180 },
-            { title: "完成时间", dataIndex: "completed_at", width: 180 },
-            { title: "错误", dataIndex: "error_message", ellipsis: true },
-            {
-              title: "操作",
-              width: 150,
-              fixed: "right",
-              render: (_, row) => (
-                <Space size="small">
-                  <Button size="small" disabled={!["queued", "running"].includes(row.status)} onClick={() => void cancelJob(row.id)}>
-                    取消
-                  </Button>
-                  <Button size="small" disabled={row.status !== "failed"} onClick={() => void retryJob(row.id)}>
-                    重试
-                  </Button>
-                </Space>
-              ),
-            },
-          ]}
-        />
-        <Typography.Paragraph className="table-help">
-          任务成功后会自动生成报告，可到“查看报告”页面打开。失败任务通常是标的数据不足、代码写错或参数组合不适用。
-        </Typography.Paragraph>
+                ) : null}
+                <Button>
+                  <Link href="/reports">去看报告列表</Link>
+                </Button>
+              </div>
+            </div>
+
+            <div className="job-mobile-list">
+              {recentJobs.map((job) => {
+                const payload = job.request_payload;
+                const reportId = job.reports?.[0]?.id;
+                const templateName = (payload.template_snapshot as { template_name?: string } | undefined)?.template_name;
+                return (
+                  <article key={job.id} className="job-mobile-card">
+                    <div className="job-mobile-card-head">
+                      <div>
+                        <strong>任务 #{job.id}</strong>
+                        <span>{String(payload.symbol ?? "-")} / {String(payload.interval ?? "-")} / {strategyLabel(String(payload.strategy_kind ?? "-"))}</span>
+                      </div>
+                      <StatusTag value={job.status} />
+                    </div>
+                    <p>{buildJobReadingHint(job)}</p>
+                    <div className="job-mobile-metrics">
+                      <span>进度 {job.progress_pct.toFixed(0)}%</span>
+                      <span>模板 {templateName ?? "未选择"}</span>
+                    </div>
+                    {job.error_message ? <p className="job-mobile-error">{job.error_message}</p> : null}
+                    <div className="job-mobile-actions">
+                      {reportId ? (
+                        <Button type="primary">
+                          <Link href={`/reports/${reportId}`}>查看报告</Link>
+                        </Button>
+                      ) : job.status === "succeeded" ? (
+                        <Button type="primary">
+                          <Link href="/reports">查看报告列表</Link>
+                        </Button>
+                      ) : (
+                        <Button disabled>等待报告</Button>
+                      )}
+                      <Button disabled={!["queued", "running"].includes(job.status)} onClick={() => void cancelJob(job.id)}>
+                        取消
+                      </Button>
+                      <Button disabled={job.status !== "failed"} onClick={() => void retryJob(job.id)}>
+                        重试
+                      </Button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            <Collapse
+              className="advanced-table-panel"
+              ghost
+              items={[
+                {
+                  key: "history",
+                  label: "高级历史记录：批量取消、批量重试和完整任务表",
+                  children: (
+                    <>
+                      <div className="table-toolbar">
+                        <ToolbarCount>已选 {selectedJobIds.length} 项，只有在确实需要批量处理时再操作。</ToolbarCount>
+                        <Space>
+                          <Button size="small" disabled={selectedJobIds.length === 0} onClick={() => void bulkCancelJobs()}>
+                            批量取消
+                          </Button>
+                          <Button size="small" disabled={selectedJobIds.length === 0} onClick={() => void bulkRetryJobs()}>
+                            批量重试
+                          </Button>
+                        </Space>
+                      </div>
+                      <Table
+                        className="job-desktop-table"
+                        rowKey="id"
+                        size="small"
+                        dataSource={jobs}
+                        rowSelection={{ selectedRowKeys: selectedJobIds, onChange: setSelectedJobIds }}
+                        pagination={{ pageSize: 12, showSizeChanger: false }}
+                        scroll={{ x: 1180 }}
+                        columns={[
+                          { title: "任务ID", dataIndex: "id", width: 88, fixed: "left" },
+                          { title: "标的", render: (_, row) => String(row.request_payload.symbol ?? "-"), width: 120 },
+                          { title: "周期", render: (_, row) => String(row.request_payload.interval ?? "-"), width: 90 },
+                          { title: "策略", render: (_, row) => strategyLabel(String(row.request_payload.strategy_kind ?? "-")), width: 160, ellipsis: true },
+                          { title: "模板", render: (_, row) => String((row.request_payload.template_snapshot as { template_name?: string } | undefined)?.template_name ?? "-"), ellipsis: true },
+                          { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <StatusTag value={value} /> },
+                          { title: "进度", dataIndex: "progress_pct", width: 90, render: (value: number) => `${value.toFixed(0)}%` },
+                          { title: "提交时间", dataIndex: "submitted_at", width: 180 },
+                          { title: "完成时间", dataIndex: "completed_at", width: 180 },
+                          { title: "错误", dataIndex: "error_message", ellipsis: true },
+                          {
+                            title: "操作",
+                            width: 150,
+                            fixed: "right",
+                            render: (_, row) => (
+                              <Space size="small">
+                                <Button size="small" disabled={!["queued", "running"].includes(row.status)} onClick={() => void cancelJob(row.id)}>
+                                  取消
+                                </Button>
+                                <Button size="small" disabled={row.status !== "failed"} onClick={() => void retryJob(row.id)}>
+                                  重试
+                                </Button>
+                              </Space>
+                            ),
+                          },
+                        ]}
+                      />
+                      <Typography.Paragraph className="table-help">
+                        任务成功后会自动生成报告，可到“查看报告”页面打开。失败任务通常是标的数据不足、代码写错或参数组合不适用。
+                      </Typography.Paragraph>
+                    </>
+                  ),
+                },
+              ]}
+            />
+          </>
+        )}
       </Card>
     </div>
   );
