@@ -529,7 +529,7 @@ export function TemplatesView() {
                         <Link href={buildBacktestLaunchHref({ interval: template.interval, strategyKind: template.strategy_kind, templateId: template.id })}>用这个模板去回测</Link>
                       </Button>
                       <Button onClick={() => toggleCompare(template.id)}>{selectedTemplateIds.includes(template.id) ? "已加入对比" : "加入对比"}</Button>
-                      <Button onClick={() => openEditDrawer(template)}>查看高级参数</Button>
+                      <Button onClick={() => openEditDrawer(template)}>看详细设置</Button>
                     </div>
                   </article>
                 );
@@ -574,7 +574,7 @@ export function TemplatesView() {
                       <Button size="small" type="primary">
                         <Link href={buildBacktestLaunchHref({ interval: template.interval, strategyKind: template.strategy_kind, templateId: template.id })}>用这个去回测</Link>
                       </Button>
-                      <Button size="small" onClick={() => openEditDrawer(template)}>看高级参数</Button>
+                      <Button size="small" onClick={() => openEditDrawer(template)}>看详细设置</Button>
                     </div>
                   </article>
                 );
@@ -611,7 +611,7 @@ export function TemplatesView() {
                   </Button>
                 ) : null}
                 {easiestComparedTemplate ? (
-                  <Button onClick={() => openEditDrawer(easiestComparedTemplate)}>查看这份模板的高级参数</Button>
+                  <Button onClick={() => openEditDrawer(easiestComparedTemplate)}>看这份模板的详细设置</Button>
                 ) : null}
               </div>
             </div>
@@ -719,7 +719,7 @@ export function TemplatesView() {
                               {selectedTemplateIds.includes(template.id) ? "已加入对比" : "加入对比"}
                             </Button>
                             <Button size="small" onClick={() => openEditDrawer(template)}>
-                              编辑高级参数
+                              改详细设置
                             </Button>
                             <Button size="small" onClick={() => void toggleTemplate(template, !template.is_active)}>
                               {template.is_active ? "停用" : "启用"}
@@ -781,7 +781,7 @@ export function TemplatesView() {
                               {selectedTemplateIds.includes(row.id) ? "已对比" : "加入对比"}
                             </Button>
                             <Button size="small" onClick={() => openEditDrawer(row)}>
-                              编辑
+                              改设置
                             </Button>
                             <Button size="small" onClick={() => void toggleTemplate(row, !row.is_active)}>
                               {row.is_active ? "停用" : "启用"}
