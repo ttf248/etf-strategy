@@ -20,8 +20,8 @@ Worker   Scheduler
 Backtest  Yahoo Sync
 ```
 
-- 前端负责控制台交互，包括行情统计、回测提交、模板管理和历史报告查看。
-- FastAPI 负责 JSON API、任务入队、报告查询和同步触发。
+- 前端负责控制台交互，包括平台总控、行情统计、回测提交、模板管理和历史报告查看。
+- FastAPI 负责 JSON API、任务入队、报告查询、同步触发和平台状态聚合，是前端统一访问后端能力的门面。
 - PostgreSQL 是平台主存储，保存行情、同步记录、回测任务、报告、交易流水和参数模板。
 - Worker 常驻轮询数据库中的回测任务，执行完成后写回报告数据。
 - Scheduler 按固定时间从 Yahoo 同步行情。
@@ -41,11 +41,14 @@ Backtest  Yahoo Sync
 - `etf_strategy/runtime/`：常驻 Worker 和 Scheduler。
 - `etf_strategy/web/`：FastAPI 应用和请求模型。
 
+当前后端保持模块化单体，不单独引入前置网关或 RPC 框架。API、Worker 和 Scheduler 是同一代码包的不同进程入口，跨进程协作通过 PostgreSQL 中的任务、同步记录和心跳表完成；只有出现跨语言、跨机器或独立扩缩容需求时，才需要升级为独立网关加 RPC。
+
 ## 前端模块
 
 `frontend/` 是 Next.js 控制台，使用 Ant Design 和 ECharts：
 
 - `/`：平台概览。
+- `/platform`：平台总控，查看 API、Frontend、Worker、Scheduler、数据库、任务队列、同步调度和最近日志。
 - `/market-data`：行情统计、覆盖区间和同步记录。
 - `/templates`：策略参数模板管理。
 - `/backtests`：提交回测任务、查看队列和重试任务。
@@ -64,6 +67,8 @@ Backtest  Yahoo Sync
 - Frontend：`npx next start` 或开发模式 `npx next dev`
 
 Windows 开发环境可以使用 `.vscode/launch.json` 或 `scripts/start_platform_windows.bat` 一键拉起。
+
+Worker 和 Scheduler 会写入 `platform_heartbeats` 心跳记录，前端平台总控页据此判断常驻进程是否可见。Web 进程控制默认关闭；只有设置 `ETF_STRATEGY_ENABLE_PROCESS_CONTROL=true` 后，相关接口才允许进入后续受控操作。
 
 ## 数据存储原则
 

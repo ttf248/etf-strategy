@@ -7,6 +7,7 @@
 ## 页面
 
 - `/`：平台概览。
+- `/platform`：平台总控，展示服务健康、队列、同步调度、本机进程和最近日志。
 - `/market-data`：行情统计、覆盖区间、同步记录。
 - `/templates`：策略参数模板管理。
 - `/backtests`：回测任务提交、队列查看和重试。
@@ -50,6 +51,7 @@ npm run start
 - `/api/backtests/*`
 - `/api/reports/*`
 - `/api/templates/*`
+- `/api/platform/*`
 
 接口说明见 [API 接口说明](../doc/api.md)。整体架构见 [架构设计](../doc/architecture.md)。
 

@@ -22,6 +22,14 @@ curl http://127.0.0.1:8000/health
 http://127.0.0.1:3000
 ```
 
+平台总控页：
+
+```text
+http://127.0.0.1:3000/platform
+```
+
+总控页会聚合 API、Frontend、数据库、Worker、Scheduler、队列、同步调度和最近日志。Worker 与 Scheduler 通过数据库心跳判断可见性，心跳长期不更新时应优先检查对应进程是否仍在运行。
+
 ## 行情同步
 
 手动同步单个标的：
@@ -52,6 +60,8 @@ Scheduler 默认在 Asia/Shanghai 时区运行：
 
 失败任务可以通过前端重试，也可以调用 `POST /api/backtests/{job_id}/retry`。
 
+取消任务可以在前端任务中心执行，也可以调用 `POST /api/backtests/{job_id}/cancel`。排队任务会立即取消，运行中任务会先进入 `cancel_requested`，等待 Worker 到达安全检查点后变为 `cancelled`。
+
 ## 日志
 
 后端日志会输出到终端，并写入：
@@ -65,6 +75,18 @@ log/etf_strategy_YYYY-MM-DD.log
 1. 先看对应进程终端输出。
 2. 再看当天日志文件。
 3. 数据问题再查前端同步记录或 `data_sync_runs`。
+
+前端平台总控页提供最近日志摘录，只用于快速定位；完整排查仍以 `log/` 下文件为准。
+
+## 进程控制
+
+Web 端进程控制默认关闭，避免误杀本机服务。只有本地开发确实需要时才设置：
+
+```powershell
+$env:ETF_STRATEGY_ENABLE_PROCESS_CONTROL="true"
+```
+
+当前接口只作为受控入口，不建议把它当作生产进程管理方案。生产环境应使用系统服务、Supervisor、容器编排或 CI/CD 发布脚本管理进程。
 
 ## 端口占用
 
