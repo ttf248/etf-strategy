@@ -431,7 +431,7 @@ export function DashboardView() {
           <div className="recent-success-card">
             <div className="recent-success-head">
               <div>
-                <strong>任务 #{latestSucceededJob.id} 已成功完成</strong>
+                <strong>任务编号 {latestSucceededJob.id} 已成功完成</strong>
                 <span>
                   {String(latestSucceededPayload.symbol ?? "-")} / {String(latestSucceededPayload.interval ?? "-")} / {strategyLabel(String(latestSucceededPayload.strategy_kind ?? "-"))}
                 </span>
