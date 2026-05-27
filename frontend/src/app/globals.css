@@ -1730,6 +1730,52 @@ a {
   line-height: 20px;
 }
 
+.report-reading-order-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.report-reading-order-tags span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.report-spotlight {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.report-spotlight-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.report-spotlight-head span {
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.report-spotlight p,
+.report-card-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .result-verdict-card .ant-card-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);

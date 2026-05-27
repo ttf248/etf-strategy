@@ -23,6 +23,7 @@ test("报告详情可以带着当前报告进入对比区", async ({ page, reque
 
   await expect(page).toHaveURL(new RegExp(`/reports\\?compare=${report.id}.*keyword=${report.symbol}.*interval=${report.interval}`));
   await expect(page.getByText("已从详情页带入报告")).toBeVisible();
-  await expect(page.getByText("先用卡片挑出想看的报告")).toBeVisible();
+  await expect(page.getByText("报告默认不是按时间堆叠，而是按更适合先看的顺序排好")).toBeVisible();
+  await expect(page.getByText("1. 先看收藏")).toBeVisible();
   await expect(page.locator(".report-compare-item").first().getByText(`#${report.id} ${report.symbol}`)).toBeVisible();
 });

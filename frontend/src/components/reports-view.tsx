@@ -18,6 +18,13 @@ type Verdict = {
   description: string;
 };
 
+type ReportSpotlight = {
+  rank: number;
+  label: string;
+  color: string;
+  reason: string;
+};
+
 function getValidationMetrics(report: ReportSummary) {
   const validation = report.summary_metrics.validation ?? {};
   const netReturn = Number(validation.NetReturnPct ?? validation.ReturnPct ?? 0);
@@ -59,6 +66,48 @@ function buildCardHint(report: ReportSummary) {
     return "这份结果有收益，但要先看回撤和净值曲线是否在你的承受范围内。";
   }
   return "这份结果更适合当作反面对照，重跑时优先换模板、参数或周期。";
+}
+
+function buildReportSpotlight(report: ReportSummary, isFavorite: boolean): ReportSpotlight {
+  const { netReturn, maxDrawdown, closedTrades } = getValidationMetrics(report);
+  if (isFavorite) {
+    return {
+      rank: 0,
+      label: "已收藏，优先回看",
+      color: "gold",
+      reason: "你已经手动收藏了这份结果，所以默认排在最前，方便反复比较、复盘和重跑。",
+    };
+  }
+  if (closedTrades === 0) {
+    return {
+      rank: 3,
+      label: "先查为什么没成交",
+      color: "default",
+      reason: "这类结果会排在正收益报告后面，先确认是不是条件过严，再决定要不要换标的、周期或模板。",
+    };
+  }
+  if (netReturn > 0 && maxDrawdown <= 8) {
+    return {
+      rank: 1,
+      label: "适合先看",
+      color: "green",
+      reason: "样本外收益为正，回撤也相对可控，适合作为第一批重点复盘的候选结果。",
+    };
+  }
+  if (netReturn > 0) {
+    return {
+      rank: 2,
+      label: "重点看波动",
+      color: "gold",
+      reason: "虽然收益为正，但波动和回撤更大，所以排在更稳的正收益结果后面，先判断你能否接受。",
+    };
+  }
+  return {
+    rank: 4,
+    label: "适合做反面对照",
+    color: "red",
+    reason: "这份结果默认排在后面，更适合拿来和前面的候选结果做反面对照，判断该避开什么配置。",
+  };
 }
 
 function parseCompareIds(values: string[]): number[] {
@@ -216,10 +265,10 @@ export function ReportsView() {
   );
   const sortedCardReports = useMemo(() => {
     return [...filteredReports].sort((left, right) => {
-      const leftFavorite = validFavoriteReportIds.includes(left.id) ? 1 : 0;
-      const rightFavorite = validFavoriteReportIds.includes(right.id) ? 1 : 0;
-      if (leftFavorite !== rightFavorite) {
-        return rightFavorite - leftFavorite;
+      const leftSpotlight = buildReportSpotlight(left, validFavoriteReportIds.includes(left.id));
+      const rightSpotlight = buildReportSpotlight(right, validFavoriteReportIds.includes(right.id));
+      if (leftSpotlight.rank !== rightSpotlight.rank) {
+        return leftSpotlight.rank - rightSpotlight.rank;
       }
       const leftMetrics = getValidationMetrics(left);
       const rightMetrics = getValidationMetrics(right);
@@ -387,8 +436,15 @@ export function ReportsView() {
         ) : (
           <>
             <div className="report-library-banner">
-              <strong>先用卡片挑出想看的报告，再决定是否展开高级表格</strong>
-              <p>卡片已经把结论、收益、回撤和下一步动作放在一起。只有当你需要批量勾选或细看全部字段时，再展开下面的高级表格视图。</p>
+              <strong>报告默认不是按时间堆叠，而是按更适合先看的顺序排好</strong>
+              <p>排序顺序固定为：先看收藏，再看回撤更可控的正收益结果，然后看高波动正收益、没成交结果，最后再看反面对照。只有当你需要批量勾选或细看全部字段时，再展开下面的高级表格视图。</p>
+              <div className="report-reading-order-tags">
+                <span>1. 先看收藏</span>
+                <span>2. 稳健正收益</span>
+                <span>3. 高波动正收益</span>
+                <span>4. 没成交结果</span>
+                <span>5. 反面对照</span>
+              </div>
             </div>
             <div className="report-mobile-list">
               {sortedCardReports.map((report) => {
@@ -396,6 +452,7 @@ export function ReportsView() {
                 const verdict = buildVerdict(netReturn, maxDrawdown);
                 const isFavorite = validFavoriteReportIds.includes(report.id);
                 const isCompared = selectedReportIds.includes(report.id);
+                const spotlight = buildReportSpotlight(report, isFavorite);
                 return (
                   <article key={report.id} className="report-mobile-card">
                     <div className="report-mobile-card-head">
@@ -408,7 +465,14 @@ export function ReportsView() {
                         <Tag color={verdict.color}>{verdict.label}</Tag>
                       </div>
                     </div>
-                    <p>{buildCardHint(report)}</p>
+                    <div className="report-spotlight">
+                      <div className="report-spotlight-head">
+                        <Tag color={spotlight.color}>{spotlight.label}</Tag>
+                        <span>{strategyLabel(report.strategy_kind)} / {report.interval}</span>
+                      </div>
+                      <p>{spotlight.reason}</p>
+                    </div>
+                    <p className="report-card-hint">{buildCardHint(report)}</p>
                     <div className="report-mobile-metrics">
                       <span>收益 <FormatPercent value={netReturn} /></span>
                       <span>回撤 {maxDrawdown.toFixed(2)}%</span>
@@ -444,7 +508,7 @@ export function ReportsView() {
                       className="report-desktop-table"
                       rowKey="id"
                       size="small"
-                      dataSource={filteredReports}
+                      dataSource={sortedCardReports}
                       rowSelection={{
                         selectedRowKeys: selectedReportIds,
                         onChange: (keys) => setSelectedReportIds(keys.map(Number).slice(-4)),
@@ -475,6 +539,19 @@ export function ReportsView() {
                           title: "最大回撤",
                           width: 120,
                           render: (_, row) => `${getValidationMetrics(row).maxDrawdown.toFixed(2)}%`,
+                        },
+                        {
+                          title: "为什么先看",
+                          width: 240,
+                          render: (_, row) => {
+                            const spotlight = buildReportSpotlight(row, validFavoriteReportIds.includes(row.id));
+                            return (
+                              <Space direction="vertical" size={4}>
+                                <Tag color={spotlight.color}>{spotlight.label}</Tag>
+                                <Typography.Text type="secondary">{spotlight.reason}</Typography.Text>
+                              </Space>
+                            );
+                          },
                         },
                         {
                           title: "怎么理解",
