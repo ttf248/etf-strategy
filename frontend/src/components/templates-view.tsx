@@ -621,7 +621,7 @@ export function TemplatesView() {
 
       <Card size="small" title="高级模板管理" className="section-card">
         <div className="template-management-banner">
-          <strong>只有在你需要维护模板时，再展开完整模板库和高级参数编辑</strong>
+          <strong>只有在你需要维护模板时，再展开完整列表和高级参数编辑</strong>
           <p>日常使用优先在上面的推荐模板和对比区做选择。启用模板、新建模板、查看完整列表和调整详细设置都保留在这里，但不再作为首屏主路径。</p>
         </div>
         <div className="template-management-grid">
@@ -638,7 +638,7 @@ export function TemplatesView() {
           <article className="template-management-card">
             <span>什么时候不用碰</span>
             <strong>只想先跑通和读懂报告时</strong>
-            <p>如果你当前只是第一次试跑，优先回到上面的推荐模板和对比区，不需要先维护完整模板库。</p>
+            <p>如果你当前只是第一次试跑，优先回到上面的推荐模板和对比区，不需要先维护完整列表。</p>
           </article>
         </div>
         <Collapse
