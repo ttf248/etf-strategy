@@ -488,7 +488,7 @@ export function BacktestsView() {
                         <Form.Item name="execution_profile" label="成交假设">
                           <Select options={[{ label: "实盘口径", value: "realistic" }, { label: "研究口径", value: "research" }]} />
                         </Form.Item>
-                        <Form.Item name="lookback_days" label="日线样本内天数">
+                        <Form.Item name="lookback_days" label="先回看多少天历史">
                           <InputNumber min={1} style={{ width: "100%" }} />
                         </Form.Item>
                         <Form.Item name="validation_ratio" label="最后留多少比例做验证">

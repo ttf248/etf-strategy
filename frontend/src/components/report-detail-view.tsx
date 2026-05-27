@@ -36,7 +36,7 @@ const baseParameterLabels: Record<string, string> = {
   GridMode: "网格模式",
   jobs: "同时尝试的参数组数",
   left_side_policy: "左侧行情时怎么处理",
-  lookback_days: "回看天数",
+  lookback_days: "回看多少天历史",
   LotSize: "每手数量",
   Market: "市场",
   max_position_ratio: "最大仓位",
