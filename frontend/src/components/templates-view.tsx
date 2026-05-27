@@ -40,19 +40,96 @@ type TemplateFormValues = {
   parameter_fields?: Record<string, string>;
 };
 
+type StrategyGuide = {
+  scene: string;
+  level: string;
+  audience: string;
+  starterRank: number;
+};
+
+type TemplateQuickPick = {
+  key: string;
+  title: string;
+  description: string;
+  strategyKind: string;
+  interval: string;
+};
+
 const executionProfiles = [
   { label: "实盘口径", value: "realistic" },
   { label: "研究口径", value: "research" },
 ];
 
-const strategyGuide: Record<string, { scene: string; level: string }> = {
-  grid: { scene: "震荡行情，低买高卖", level: "新手可先用" },
-  dca: { scene: "长期分批买入", level: "最容易理解" },
-  daily_rebound: { scene: "日线超跌反弹", level: "需要看回撤" },
-  minute_rebound: { scene: "分钟级急跌反抽", level: "偏进阶" },
-  minute_rebound_with_fade_filter: { scene: "带过滤的分钟反抽", level: "偏进阶" },
-  minute_index_grid_retrace: { scene: "指数回落后的网格", level: "偏进阶" },
+const strategyGuide: Record<string, StrategyGuide> = {
+  grid: { scene: "震荡行情，低买高卖", level: "新手可先用", audience: "第一次短线试跑", starterRank: 0 },
+  dca: { scene: "长期分批买入", level: "最容易理解", audience: "想先看长期持有", starterRank: 1 },
+  daily_rebound: { scene: "日线超跌反弹", level: "需要看回撤", audience: "想验证日线择时", starterRank: 2 },
+  minute_rebound: { scene: "分钟级急跌反抽", level: "偏进阶", audience: "已经能接受短线波动", starterRank: 3 },
+  minute_rebound_with_fade_filter: { scene: "带过滤的分钟反抽", level: "偏进阶", audience: "想进一步过滤噪音", starterRank: 4 },
+  minute_index_grid_retrace: { scene: "指数回落后的网格", level: "偏进阶", audience: "专项指数策略研究", starterRank: 5 },
 };
+
+const templateQuickPicks: TemplateQuickPick[] = [
+  {
+    key: "starter",
+    title: "第一次先跑一轮",
+    description: "优先看 15m 网格默认模板，先把回测流程和报告阅读跑通。",
+    strategyKind: "grid",
+    interval: "15m",
+  },
+  {
+    key: "long-term",
+    title: "想看长期持有",
+    description: "先看日线定投模板，最接近日常理解，也最容易和买入持有对照。",
+    strategyKind: "dca",
+    interval: "1d",
+  },
+  {
+    key: "daily-timing",
+    title: "想试日线择时",
+    description: "先看日线超跌反弹模板，重点比较收益和回撤是否值得承担。",
+    strategyKind: "daily_rebound",
+    interval: "1d",
+  },
+  {
+    key: "intraday",
+    title: "已经会看分钟波动",
+    description: "再看分钟反抽类模板，适合已经理解滑点、回撤和频繁交易的人。",
+    strategyKind: "minute_rebound",
+    interval: "15m",
+  },
+];
+
+function templateSortKey(template: StrategyTemplate): [number, number, number, number, string] {
+  const guide = strategyGuide[template.strategy_kind] ?? {
+    scene: "自定义策略",
+    level: "自定义",
+    audience: "自定义",
+    starterRank: 99,
+  };
+  const intervalRank = template.interval === "15m" ? 0 : template.interval === "1d" ? 1 : 2;
+  return [
+    template.is_default ? 0 : 1,
+    guide.starterRank,
+    intervalRank,
+    template.is_active ? 0 : 1,
+    template.template_name,
+  ];
+}
+
+function compareTemplateSort(left: StrategyTemplate, right: StrategyTemplate): number {
+  const leftKey = templateSortKey(left);
+  const rightKey = templateSortKey(right);
+  for (let index = 0; index < leftKey.length; index += 1) {
+    if (leftKey[index] < rightKey[index]) {
+      return -1;
+    }
+    if (leftKey[index] > rightKey[index]) {
+      return 1;
+    }
+  }
+  return 0;
+}
 
 export function TemplatesView() {
   const [form] = Form.useForm<TemplateFormValues>();
@@ -62,40 +139,53 @@ export function TemplatesView() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<StrategyTemplate | null>(null);
   const [filters, setFilters] = useState<{ strategy_kind?: string; interval?: string; active?: string }>({});
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<number[]>([]);
   const [messageApi, contextHolder] = message.useMessage();
   const strategyKind = Form.useWatch("strategy_kind", form) ?? "grid";
   const parameterSpecs = parameterFieldSpecsByStrategy[strategyKind] ?? [];
 
   const filteredTemplates = useMemo(() => {
-    return templates.filter((item) => {
-      if (filters.strategy_kind && item.strategy_kind !== filters.strategy_kind) {
-        return false;
-      }
-      if (filters.interval && item.interval !== filters.interval) {
-        return false;
-      }
-      if (filters.active === "active" && !item.is_active) {
-        return false;
-      }
-      if (filters.active === "inactive" && item.is_active) {
-        return false;
-      }
-      return true;
-    });
+    return templates
+      .filter((item) => {
+        if (filters.strategy_kind && item.strategy_kind !== filters.strategy_kind) {
+          return false;
+        }
+        if (filters.interval && item.interval !== filters.interval) {
+          return false;
+        }
+        if (filters.active === "active" && !item.is_active) {
+          return false;
+        }
+        if (filters.active === "inactive" && item.is_active) {
+          return false;
+        }
+        return true;
+      })
+      .sort(compareTemplateSort);
   }, [filters, templates]);
 
   const recommendedTemplates = useMemo(() => {
     return templates
       .filter((item) => item.is_active)
-      .sort((left, right) => {
-        const defaultScore = Number(right.is_default) - Number(left.is_default);
-        if (defaultScore !== 0) {
-          return defaultScore;
-        }
-        return left.updated_at < right.updated_at ? 1 : -1;
-      })
+      .sort(compareTemplateSort)
       .slice(0, 4);
   }, [templates]);
+
+  const comparedTemplates = useMemo(
+    () => templates.filter((item) => selectedTemplateIds.includes(item.id)).sort(compareTemplateSort),
+    [selectedTemplateIds, templates],
+  );
+
+  const easiestComparedTemplate = useMemo(() => comparedTemplates[0] ?? null, [comparedTemplates]);
+  const longTermComparedTemplate = useMemo(
+    () => comparedTemplates.find((item) => item.interval === "1d") ?? null,
+    [comparedTemplates],
+  );
+  const intradayComparedTemplate = useMemo(
+    () => comparedTemplates.find((item) => item.interval !== "1d") ?? null,
+    [comparedTemplates],
+  );
+  const hasActiveFilters = Boolean(filters.strategy_kind || filters.interval || filters.active);
 
   async function loadTemplates(showSpinner: boolean = true) {
     if (showSpinner) {
@@ -240,6 +330,23 @@ export function TemplatesView() {
     }
   }
 
+  function toggleCompare(templateId: number) {
+    setSelectedTemplateIds((current) => {
+      if (current.includes(templateId)) {
+        return current.filter((item) => item !== templateId);
+      }
+      return [...current, templateId].slice(-4);
+    });
+  }
+
+  function applyQuickPick(pick: TemplateQuickPick) {
+    setFilters({
+      strategy_kind: pick.strategyKind,
+      interval: pick.interval,
+      active: "active",
+    });
+  }
+
   return (
     <div className="page-stack">
       {contextHolder}
@@ -272,6 +379,18 @@ export function TemplatesView() {
         </Card>
       </div>
 
+      <Card title="按你的目标找模板" size="small" className="section-card">
+        <div className="template-persona-grid">
+          {templateQuickPicks.map((pick) => (
+            <article key={pick.key} className="template-persona-card">
+              <strong>{pick.title}</strong>
+              <span>{pick.description}</span>
+              <Button onClick={() => applyQuickPick(pick)}>只看这类模板</Button>
+            </article>
+          ))}
+        </div>
+      </Card>
+
       <Card title="推荐模板" size="small" className="section-card">
         {recommendedTemplates.length === 0 ? (
           <Typography.Text type="secondary">当前没有启用的模板，先到下方启用一个默认模板，再去创建回测。</Typography.Text>
@@ -290,6 +409,7 @@ export function TemplatesView() {
                   </div>
                   <p>{template.description || guide.scene}</p>
                   <div className="template-recommend-meta">
+                    <span>适合谁：{guide.audience}</span>
                     <span>适合：{guide.scene}</span>
                     <span>难度：{guide.level}</span>
                   </div>
@@ -297,11 +417,92 @@ export function TemplatesView() {
                     <Button type="primary">
                       <Link href={buildBacktestLaunchHref({ interval: template.interval, strategyKind: template.strategy_kind, templateId: template.id })}>用这个模板去回测</Link>
                     </Button>
+                    <Button onClick={() => toggleCompare(template.id)}>{selectedTemplateIds.includes(template.id) ? "已加入对比" : "加入对比"}</Button>
                     <Button onClick={() => openEditDrawer(template)}>查看高级参数</Button>
                   </div>
                 </article>
               );
             })}
+          </div>
+        )}
+      </Card>
+
+      <Card
+        title="模板对比"
+        size="small"
+        className="section-card template-compare-card"
+        extra={selectedTemplateIds.length > 0 ? <Button size="small" onClick={() => setSelectedTemplateIds([])}>清空对比</Button> : null}
+      >
+        {comparedTemplates.length === 0 ? (
+          <Typography.Text type="secondary">先从推荐模板或模板库里选 2 到 4 个模板，对比“适合谁用、周期、难度和下一步建议”。</Typography.Text>
+        ) : (
+          <div className="template-compare-stack">
+            <div className="template-compare-grid">
+              {comparedTemplates.map((template) => {
+                const guide = strategyGuide[template.strategy_kind] ?? {
+                  scene: "自定义策略",
+                  level: "自定义",
+                  audience: "自定义",
+                  starterRank: 99,
+                };
+                return (
+                  <article key={template.id} className="template-compare-item">
+                    <div className="template-compare-head">
+                      <strong>{template.template_name}</strong>
+                      <Button size="small" type="link" onClick={() => toggleCompare(template.id)}>移除</Button>
+                    </div>
+                    <span>{strategyLabel(template.strategy_kind)} / {template.interval} / {template.execution_profile}</span>
+                    <div className="template-compare-metrics">
+                      <span>适合谁：{guide.audience}</span>
+                      <span>难度：{guide.level}</span>
+                      <span>{template.is_default ? "默认推荐" : template.is_active ? "可直接使用" : "需先启用"}</span>
+                    </div>
+                    <p>{template.description || guide.scene}</p>
+                    <div className="template-compare-actions">
+                      <Button size="small" type="primary">
+                        <Link href={buildBacktestLaunchHref({ interval: template.interval, strategyKind: template.strategy_kind, templateId: template.id })}>用这个去回测</Link>
+                      </Button>
+                      <Button size="small" onClick={() => openEditDrawer(template)}>看高级参数</Button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            <div className="template-compare-summary">
+              <strong>对比后怎么选</strong>
+              <p>
+                {comparedTemplates.length === 1
+                  ? `当前只选了 ${comparedTemplates[0].template_name}。再加 1 到 3 个模板，才能更清楚地比较谁更适合第一次试跑、谁更适合长期或分钟策略。`
+                  : ""}
+                {comparedTemplates.length > 1 && easiestComparedTemplate
+                  ? `如果你是第一次跑回测，优先试 ${easiestComparedTemplate.template_name}。`
+                  : ""}
+                {comparedTemplates.length > 1 && longTermComparedTemplate
+                  ? ` 如果你更想看长期持有或日线节奏，可以先试 ${longTermComparedTemplate.template_name}。`
+                  : ""}
+                {comparedTemplates.length > 1 && intradayComparedTemplate
+                  ? ` 如果你已经接受分钟波动，再看 ${intradayComparedTemplate.template_name} 这类短周期模板。`
+                  : ""}
+              </p>
+              <div className="template-compare-summary-actions">
+                {easiestComparedTemplate ? (
+                  <Button type="primary">
+                    <Link
+                      href={buildBacktestLaunchHref({
+                        interval: easiestComparedTemplate.interval,
+                        strategyKind: easiestComparedTemplate.strategy_kind,
+                        templateId: easiestComparedTemplate.id,
+                      })}
+                    >
+                      先用最容易上手的模板
+                    </Link>
+                  </Button>
+                ) : null}
+                {easiestComparedTemplate ? (
+                  <Button onClick={() => openEditDrawer(easiestComparedTemplate)}>查看这份模板的高级参数</Button>
+                ) : null}
+              </div>
+            </div>
           </div>
         )}
       </Card>
@@ -333,6 +534,9 @@ export function TemplatesView() {
               ]}
               onChange={(value) => setFilters((current) => ({ ...current, active: value }))}
             />
+            {hasActiveFilters ? (
+              <Button onClick={() => setFilters({})}>清空筛选</Button>
+            ) : null}
           </Space>
           <ToolbarCount>共 {filteredTemplates.length} 个模板</ToolbarCount>
         </div>
@@ -352,12 +556,16 @@ export function TemplatesView() {
                 </div>
                 <p>{template.description || guide.scene}</p>
                 <div className="template-mobile-meta">
+                  <span>适合谁：{guide.audience}</span>
                   <span>适合：{guide.scene}</span>
                   <span>难度：{guide.level}</span>
                 </div>
                 <div className="template-mobile-actions">
                   <Button size="small" type="primary">
                     <Link href={buildBacktestLaunchHref({ interval: template.interval, strategyKind: template.strategy_kind, templateId: template.id })}>去回测</Link>
+                  </Button>
+                  <Button size="small" onClick={() => toggleCompare(template.id)}>
+                    {selectedTemplateIds.includes(template.id) ? "已加入对比" : "加入对比"}
                   </Button>
                   <Button size="small" onClick={() => openEditDrawer(template)}>
                     编辑高级参数
@@ -382,6 +590,12 @@ export function TemplatesView() {
             { title: "名称", dataIndex: "template_name", width: 240, fixed: "left" },
             { title: "策略", dataIndex: "strategy_kind", render: (value: string) => strategyLabel(value), width: 220 },
             {
+              title: "适合谁",
+              dataIndex: "strategy_kind",
+              width: 180,
+              render: (value: string) => strategyGuide[value]?.audience ?? "自定义策略",
+            },
+            {
               title: "适合什么",
               dataIndex: "strategy_kind",
               width: 220,
@@ -400,12 +614,15 @@ export function TemplatesView() {
             { title: "说明", dataIndex: "description", ellipsis: true },
             {
               title: "操作",
-              width: 250,
+              width: 340,
               fixed: "right",
               render: (_, row) => (
                 <Space size="small">
                   <Button size="small" type="primary">
                     <Link href={buildBacktestLaunchHref({ interval: row.interval, strategyKind: row.strategy_kind, templateId: row.id })}>去回测</Link>
+                  </Button>
+                  <Button size="small" onClick={() => toggleCompare(row.id)}>
+                    {selectedTemplateIds.includes(row.id) ? "已对比" : "加入对比"}
                   </Button>
                   <Button size="small" onClick={() => openEditDrawer(row)}>
                     编辑
