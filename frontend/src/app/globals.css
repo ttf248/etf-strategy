@@ -590,6 +590,11 @@ a {
   line-height: 28px;
 }
 
+.data-check-result small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .data-check-result span {
   color: var(--muted);
   line-height: 22px;

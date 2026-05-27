@@ -7,7 +7,9 @@ import { MetricCard, PageHeader, ToolbarCount } from "@/components/platform-ui";
 
 export function MarketDataView() {
   const [stats, setStats] = useState<MarketDataStats | null>(null);
-  const [keyword, setKeyword] = useState("1810.HK");
+  const [checkInput, setCheckInput] = useState("1810.HK");
+  const [checkedSymbol, setCheckedSymbol] = useState("1810.HK");
+  const [tableKeyword, setTableKeyword] = useState("");
   const [interval, setInterval] = useState<string | undefined>(undefined);
   const [syncInterval, setSyncInterval] = useState("1d");
   const [syncing, setSyncing] = useState(false);
@@ -43,24 +45,24 @@ export function MarketDataView() {
     }
     return stats.coverages.filter((item) => {
       const matchesKeyword =
-        !keyword ||
-        item.symbol.toLowerCase().includes(keyword.toLowerCase()) ||
-        item.name.toLowerCase().includes(keyword.toLowerCase());
+        !tableKeyword ||
+        item.symbol.toLowerCase().includes(tableKeyword.toLowerCase()) ||
+        item.name.toLowerCase().includes(tableKeyword.toLowerCase());
       const matchesInterval = !interval || item.interval === interval;
       return matchesKeyword && matchesInterval;
     });
-  }, [stats, keyword, interval]);
+  }, [stats, tableKeyword, interval]);
 
   const symbolRows = useMemo(() => {
-    if (!stats || !keyword.trim()) {
+    if (!stats || !checkedSymbol.trim()) {
       return [];
     }
-    const normalizedKeyword = keyword.trim().toLowerCase();
+    const normalizedKeyword = checkedSymbol.trim().toLowerCase();
     return stats.coverages.filter((item) => item.symbol.toLowerCase() === normalizedKeyword);
-  }, [stats, keyword]);
+  }, [stats, checkedSymbol]);
 
   const readiness = useMemo(() => {
-    if (!keyword.trim()) {
+    if (!checkedSymbol.trim()) {
       return { label: "输入标的开始检查", color: "default", description: "例如 1810.HK、0700.HK、513050.SS。" };
     }
     if (symbolRows.length === 0) {
@@ -72,7 +74,13 @@ export function MarketDataView() {
       return { label: "适合开始回测", color: "green", description: "该标的同时有日线和分钟线数据，可以创建回测。" };
     }
     return { label: "可回测但数据有限", color: "gold", description: "该标的已有部分周期数据，建议确认策略所需周期是否存在。" };
-  }, [keyword, symbolRows]);
+  }, [checkedSymbol, symbolRows]);
+
+  function checkSymbol() {
+    const normalizedSymbol = checkInput.trim().toUpperCase();
+    setCheckedSymbol(normalizedSymbol);
+    setTableKeyword(normalizedSymbol);
+  }
 
   if (!stats) {
     return <Skeleton active paragraph={{ rows: 10 }} />;
@@ -100,13 +108,21 @@ export function MarketDataView() {
           <Typography.Title level={4}>检查标的是否能回测</Typography.Title>
           <Typography.Paragraph>输入 Yahoo 标的代码，系统会告诉你当前有哪些周期、覆盖到哪一天。</Typography.Paragraph>
           <Space.Compact className="data-check-input">
-            <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="例如 1810.HK" />
-            <Button type="primary">检查</Button>
+            <Input
+              value={checkInput}
+              onChange={(event) => setCheckInput(event.target.value)}
+              onPressEnter={checkSymbol}
+              placeholder="例如 1810.HK"
+            />
+            <Button type="primary" onClick={checkSymbol}>
+              检查
+            </Button>
           </Space.Compact>
         </div>
         <div className="data-check-result">
           <Tag color={readiness.color}>{readiness.label}</Tag>
-          <strong>{symbolRows[0]?.name ?? (keyword || "等待输入")}</strong>
+          <strong>{symbolRows[0]?.name ?? (checkedSymbol || "等待输入")}</strong>
+          {checkedSymbol ? <small>最近检查：{checkedSymbol}</small> : null}
           <span>{readiness.description}</span>
         </div>
       </Card>
@@ -138,8 +154,8 @@ export function MarketDataView() {
           <Space wrap>
             <Input
               placeholder="筛选标的或名称"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
+              value={tableKeyword}
+              onChange={(event) => setTableKeyword(event.target.value)}
               style={{ width: 240 }}
             />
             <Select
