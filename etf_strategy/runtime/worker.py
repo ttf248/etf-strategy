@@ -9,12 +9,19 @@ from loguru import logger
 from etf_strategy.services.backtests import execute_next_job
 from etf_strategy.services.platform import record_platform_heartbeat
 
+_HEARTBEAT_INIT_WARNING_SHOWN = False
+
 
 def _safe_heartbeat(poll_interval_seconds: int) -> None:
+    global _HEARTBEAT_INIT_WARNING_SHOWN
     try:
-        record_platform_heartbeat("worker", {"poll_interval_seconds": poll_interval_seconds})
+        heartbeat_recorded = record_platform_heartbeat("worker", {"poll_interval_seconds": poll_interval_seconds})
     except Exception as exc:
         logger.warning("回测 worker 心跳写入失败: {}", exc)
+        return
+    if not heartbeat_recorded and not _HEARTBEAT_INIT_WARNING_SHOWN:
+        _HEARTBEAT_INIT_WARNING_SHOWN = True
+        logger.warning("回测 worker 心跳未启用：请执行 `py -3.13 main.py init-db` 完成数据库迁移；任务轮询会继续运行。")
 
 
 def run_worker_loop(poll_interval_seconds: int = 5) -> None:

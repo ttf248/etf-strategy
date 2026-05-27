@@ -24,17 +24,36 @@ SERVICE_LOG_KEYWORDS = {
 }
 
 
-def record_platform_heartbeat(service_name: str, details: dict[str, object] | None = None) -> None:
-    """常驻进程定期写心跳，供前端判断服务是否真实存活。"""
-    with open_session() as session:
-        upsert_platform_heartbeat(
-            session,
-            service_name,
-            status="running",
-            pid=os.getpid(),
-            details=details,
-        )
-        session.commit()
+def _is_missing_heartbeat_table(exc: Exception) -> bool:
+    """识别未执行平台迁移导致的心跳表缺失。"""
+    message = str(exc).lower()
+    return "platform_heartbeats" in message and (
+        "undefinedtable" in message or "does not exist" in message or "不存在" in message
+    )
+
+
+def record_platform_heartbeat(service_name: str, details: dict[str, object] | None = None) -> bool:
+    """常驻进程定期写心跳，供前端判断服务是否真实存活。
+
+    开发机第一次启动平台时，数据库可能还没执行最新迁移。心跳只是控制面信息，
+    表缺失不应阻断 Worker/Scheduler 主流程，因此这里返回 False 让调用方给出
+    一次性初始化提示；其他数据库异常继续抛出，避免掩盖真实故障。
+    """
+    try:
+        with open_session() as session:
+            upsert_platform_heartbeat(
+                session,
+                service_name,
+                status="running",
+                pid=os.getpid(),
+                details=details,
+            )
+            session.commit()
+    except Exception as exc:
+        if _is_missing_heartbeat_table(exc):
+            return False
+        raise
+    return True
 
 
 def _safe_database_url() -> str:

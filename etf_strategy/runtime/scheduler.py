@@ -9,12 +9,19 @@ from etf_strategy.db.settings import load_platform_settings
 from etf_strategy.services.platform import record_platform_heartbeat
 from etf_strategy.services.sync import sync_market_data
 
+_HEARTBEAT_INIT_WARNING_SHOWN = False
+
 
 def _safe_heartbeat() -> None:
+    global _HEARTBEAT_INIT_WARNING_SHOWN
     try:
-        record_platform_heartbeat("scheduler", {"timezone": "Asia/Shanghai"})
+        heartbeat_recorded = record_platform_heartbeat("scheduler", {"timezone": "Asia/Shanghai"})
     except Exception as exc:
         logger.warning("调度器心跳写入失败: {}", exc)
+        return
+    if not heartbeat_recorded and not _HEARTBEAT_INIT_WARNING_SHOWN:
+        _HEARTBEAT_INIT_WARNING_SHOWN = True
+        logger.warning("调度器心跳未启用：请执行 `py -3.13 main.py init-db` 完成数据库迁移；定时同步会继续运行。")
 
 
 def run_scheduler(proxy: str | None = None) -> None:

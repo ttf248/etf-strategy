@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from etf_strategy.cli import build_parser
 from etf_strategy.platform_cli import handle_api
 from etf_strategy.services.market_data import infer_interval_from_data_path
+from etf_strategy.services.platform import record_platform_heartbeat
 from etf_strategy.services.templates import build_seed_templates, normalize_parameter_space, resolve_backtest_request_payload
 from etf_strategy.web.app import create_app
 
@@ -82,6 +83,16 @@ class PlatformFeatureTests(unittest.TestCase):
         mock_status.assert_called_once()
         mock_processes.assert_called_once()
         mock_logs.assert_called_once_with(service="api", limit=10)
+
+    def test_heartbeat_missing_table_does_not_break_runtime_loop(self) -> None:
+        missing_table_error = Exception("psycopg.errors.UndefinedTable: relation platform_heartbeats does not exist")
+
+        with patch("etf_strategy.services.platform.open_session", side_effect=missing_table_error):
+            self.assertFalse(record_platform_heartbeat("worker"))
+
+        with patch("etf_strategy.services.platform.open_session", side_effect=RuntimeError("database is offline")):
+            with self.assertRaisesRegex(RuntimeError, "database is offline"):
+                record_platform_heartbeat("worker")
 
     def test_web_api_backtest_cancel_and_bulk_routes(self) -> None:
         app = create_app()

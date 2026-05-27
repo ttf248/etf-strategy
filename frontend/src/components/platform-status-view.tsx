@@ -110,19 +110,29 @@ export function PlatformStatusView() {
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={12}>
           <Card title="服务心跳" size="small" className="section-card">
-            <Table
-              rowKey="service_name"
-              size="small"
-              pagination={false}
-              dataSource={status.heartbeats}
-              columns={[
-                { title: "服务", dataIndex: "service_name", width: 120 },
-                { title: "状态", dataIndex: "status", width: 100, render: (value: string) => <StatusTag value={value} /> },
-                { title: "PID", dataIndex: "pid", width: 90 },
-                { title: "心跳延迟", dataIndex: "age_seconds", width: 110, render: (value: number) => `${value}s` },
-                { title: "最近心跳", dataIndex: "last_seen_at", ellipsis: true },
-              ]}
-            />
+            {status.heartbeats.length === 0 ? (
+              <Empty
+                description={
+                  <span>
+                    暂无 Worker/Scheduler 心跳。若日志提示心跳表不存在，请先执行 <code>py -3.13 main.py init-db</code>。
+                  </span>
+                }
+              />
+            ) : (
+              <Table
+                rowKey="service_name"
+                size="small"
+                pagination={false}
+                dataSource={status.heartbeats}
+                columns={[
+                  { title: "服务", dataIndex: "service_name", width: 120 },
+                  { title: "状态", dataIndex: "status", width: 100, render: (value: string) => <StatusTag value={value} /> },
+                  { title: "PID", dataIndex: "pid", width: 90 },
+                  { title: "心跳延迟", dataIndex: "age_seconds", width: 110, render: (value: number) => `${value}s` },
+                  { title: "最近心跳", dataIndex: "last_seen_at", ellipsis: true },
+                ]}
+              />
+            )}
           </Card>
         </Col>
         <Col xs={24} xl={12}>
