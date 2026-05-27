@@ -1013,6 +1013,41 @@ a {
   gap: 10px;
 }
 
+.reading-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.reading-guide-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.reading-guide-label {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.reading-guide-card strong {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.reading-guide-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .trade-mobile-list,
 .event-mobile-list {
   display: none;

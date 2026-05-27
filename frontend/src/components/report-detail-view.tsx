@@ -143,6 +143,118 @@ function buildVerdict(netReturn: number, maxDrawdown: number, closedTrades: numb
   };
 }
 
+function readNumberMetric(metrics: Record<string, unknown>, ...keys: string[]): number | null {
+  for (const key of keys) {
+    const value = metrics[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function benchmarkGuide(validation: Record<string, unknown>) {
+  const buyHoldReturn = readNumberMetric(validation, "BuyHoldReturnPct");
+  const relativeEquity = readNumberMetric(validation, "StrategyVsBuyHold", "GridVsBuyHold");
+  const outperform = typeof validation.OutperformBuyHold === "boolean" ? validation.OutperformBuyHold : null;
+
+  if (buyHoldReturn === null && relativeEquity === null && outperform === null) {
+    return {
+      title: "和买入持有比",
+      value: "暂无对照",
+      description: "这份报告没有提供买入持有对照，先看收益、回撤和交易记录是否符合你的预期。",
+    };
+  }
+
+  const parts: string[] = [];
+  if (buyHoldReturn !== null) {
+    parts.push(`买入持有收益 ${buyHoldReturn.toFixed(2)}%`);
+  }
+  if (relativeEquity !== null) {
+    parts.push(`${relativeEquity >= 0 ? "期末多赚" : "期末少赚"} ${Math.abs(relativeEquity).toFixed(2)}`);
+  }
+  const value = outperform === null ? "有对照数据" : outperform ? "跑赢买入持有" : "没跑赢买入持有";
+  return {
+    title: "和买入持有比",
+    value,
+    description: parts.join("，") || "这份报告提供了和买入持有的对照，可用来判断策略是否值得替代最简单的持有方案。",
+  };
+}
+
+function riskGuide(maxDrawdown: number) {
+  if (maxDrawdown <= 5) {
+    return {
+      title: "回撤怎么看",
+      value: "波动较小",
+      description: `最大回撤 ${maxDrawdown.toFixed(2)}%，说明账户从阶段高点回落的幅度相对较小。`,
+    };
+  }
+  if (maxDrawdown <= 12) {
+    return {
+      title: "回撤怎么看",
+      value: "中等波动",
+      description: `最大回撤 ${maxDrawdown.toFixed(2)}%，继续使用前要结合净值曲线确认自己能否接受中途回撤。`,
+    };
+  }
+  return {
+    title: "回撤怎么看",
+    value: "波动偏大",
+    description: `最大回撤 ${maxDrawdown.toFixed(2)}%，这类波动对新手通常偏大，建议优先换参数、换周期或缩小仓位。`,
+  };
+}
+
+function tradeGuide(closedTrades: number, validation: Record<string, unknown>) {
+  const winRate = readNumberMetric(validation, "WinRatePct");
+  if (closedTrades === 0) {
+    return {
+      title: "交易活跃度",
+      value: "没有成交",
+      description: "样本外阶段没有形成完整交易，先检查标的是否太平、周期是否不匹配，或参数是否过于保守。",
+    };
+  }
+  if (winRate === null) {
+    return {
+      title: "交易活跃度",
+      value: `${closedTrades} 笔成交`,
+      description: "先结合交易记录查看买卖节奏，再判断这类频率是否符合你的交易习惯。",
+    };
+  }
+  return {
+    title: "交易活跃度",
+    value: `${closedTrades} 笔 / 胜率 ${winRate.toFixed(1)}%`,
+    description: "胜率不是越高越好，还要结合单笔盈亏和回撤一起看，避免只看命中率。",
+  };
+}
+
+function nextActionGuide(netReturn: number, maxDrawdown: number, closedTrades: number) {
+  if (closedTrades === 0) {
+    return {
+      title: "下一步建议",
+      value: "换标的或周期",
+      description: "优先换一个数据更活跃的标的，或把 1d / 15m 切换后再跑一轮，先让策略真正触发交易。",
+    };
+  }
+  if (netReturn > 0 && maxDrawdown <= 8) {
+    return {
+      title: "下一步建议",
+      value: "拿去做对比",
+      description: "这份结果可以加入报告对比区，再和同标的其他策略或买入持有方案一起看，确认是否稳定领先。",
+    };
+  }
+  if (netReturn > 0) {
+    return {
+      title: "下一步建议",
+      value: "先压回撤",
+      description: "可以先减少仓位、缩短持仓周期，或换更稳的模板，看看能否在保住收益的同时降低波动。",
+    };
+  }
+  return {
+    title: "下一步建议",
+    value: "重跑一轮",
+    description: "这次结果不理想，优先回到创建回测页换模板或周期，再和当前报告做对比，不建议直接采用。",
+  };
+}
+
 function parameterLabel(strategyKind: string, key: string): string {
   const strategyField = parameterFieldSpecsByStrategy[strategyKind]?.find((item) => item.key === key);
   return strategyField?.label ?? baseParameterLabels[key] ?? key;
@@ -234,6 +346,20 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
   const closedTrades = Number(validation.ClosedTrades ?? 0);
   const verdict = buildVerdict(netReturn, maxDrawdown, closedTrades);
   const returnTone = netReturn > 0 ? "positive" : netReturn < 0 ? "negative" : undefined;
+  const readingGuides = [
+    {
+      title: "收益怎么看",
+      value: `${netReturn >= 0 ? "盈利" : "亏损"} ${netReturn.toFixed(2)}%`,
+      description:
+        netReturn > 0
+          ? "先确认这是样本外收益，再继续看回撤是否也能接受；只看赚钱与否还不够。"
+          : "样本外收益为负，说明这套组合至少在当前测试区间没有证明自己有效。",
+    },
+    riskGuide(maxDrawdown),
+    benchmarkGuide(validation),
+    tradeGuide(closedTrades, validation),
+    nextActionGuide(netReturn, maxDrawdown, closedTrades),
+  ];
 
   return (
     <div className="page-stack">
@@ -264,6 +390,18 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
           <DetailItem label="样本区间" value={`${report.dataset_start} 至 ${report.dataset_end}`} />
           <DetailItem label="报告生成时间" value={report.created_at} />
           <DetailItem label="任务ID" value={report.job_id} />
+        </div>
+      </Card>
+
+      <Card size="small" title="这几个数字怎么判断" className="section-card">
+        <div className="reading-guide-grid">
+          {readingGuides.map((item) => (
+            <article key={item.title} className="reading-guide-card">
+              <span className="reading-guide-label">{item.title}</span>
+              <strong>{item.value}</strong>
+              <p>{item.description}</p>
+            </article>
+          ))}
         </div>
       </Card>
 
