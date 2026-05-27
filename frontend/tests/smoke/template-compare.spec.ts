@@ -15,11 +15,12 @@ test("模板页可以按目标筛选并加入对比", async ({ page, request }) 
 
   await page.goto("/templates");
   await expect(page.getByRole("heading", { name: "策略模板" })).toBeVisible();
+  await expect(page.getByText("高级管理：启用停用、新建模板和完整模板库")).toBeVisible();
 
   await page.locator(".template-persona-card").first().getByRole("button", { name: "只看这类模板" }).click();
-  await expect(page.getByText("共")).toBeVisible();
 
   const recommendCards = page.locator(".template-recommend-card");
+  await expect(recommendCards.first()).toBeVisible();
   await recommendCards.first().getByRole("button", { name: "加入对比" }).click();
   await recommendCards.nth(1).getByRole("button", { name: "加入对比" }).click();
 

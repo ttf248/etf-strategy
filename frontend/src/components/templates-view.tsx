@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Button, Card, Drawer, Form, Input, InputNumber, message, Select, Space, Switch, Table, Tag, Typography } from "antd";
+import { Button, Card, Collapse, Drawer, Form, Input, InputNumber, message, Select, Space, Switch, Table, Tag, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type StrategyTemplate } from "@/lib/api";
 import {
@@ -186,6 +186,10 @@ export function TemplatesView() {
     [comparedTemplates],
   );
   const hasActiveFilters = Boolean(filters.strategy_kind || filters.interval || filters.active);
+  const defaultRecommendedTemplate = useMemo(
+    () => recommendedTemplates.find((item) => item.is_default) ?? recommendedTemplates[0] ?? null,
+    [recommendedTemplates],
+  );
 
   async function loadTemplates(showSpinner: boolean = true) {
     if (showSpinner) {
@@ -354,14 +358,6 @@ export function TemplatesView() {
         eyebrow="Strategy Presets"
         title="策略模板"
         description="模板是预设好的回测参数。第一次使用建议直接选默认模板，不需要先理解每一个参数。"
-        actions={
-          <Space>
-            <Button onClick={() => void loadTemplates()}>刷新</Button>
-            <Button type="primary" onClick={openCreateDrawer}>
-              新建高级模板
-            </Button>
-          </Space>
-        }
       />
 
       <div className="template-guide-grid">
@@ -379,6 +375,40 @@ export function TemplatesView() {
         </Card>
       </div>
 
+      <Card size="small" className="section-card start-path-card">
+        <div className="start-path-main">
+          <strong>
+            {defaultRecommendedTemplate
+              ? "先从推荐模板里挑一个开始，不要一上来新建高级模板"
+              : "当前没有可直接使用的模板，先到高级管理里启用一个默认模板"}
+          </strong>
+          <p>
+            {defaultRecommendedTemplate
+              ? "新手更需要先把回测流程和报告阅读跑通，而不是先改参数。只有当默认模板明显不适合你的标的、周期或手续费假设时，再去编辑或新建模板。"
+              : "如果当前没有启用模板，先在下方高级管理区启用默认模板，或者在确实需要时新建高级模板。"}
+          </p>
+        </div>
+        <div className="start-path-actions">
+          {defaultRecommendedTemplate ? (
+            <Button type="primary">
+              <Link
+                href={buildBacktestLaunchHref({
+                  interval: defaultRecommendedTemplate.interval,
+                  strategyKind: defaultRecommendedTemplate.strategy_kind,
+                  templateId: defaultRecommendedTemplate.id,
+                })}
+              >
+                先用默认模板去回测
+              </Link>
+            </Button>
+          ) : null}
+          <Button onClick={() => applyQuickPick(templateQuickPicks[0])}>只看第一次先跑一轮</Button>
+          {!defaultRecommendedTemplate ? (
+            <Button onClick={openCreateDrawer}>确实需要时再新建高级模板</Button>
+          ) : null}
+        </div>
+      </Card>
+
       <Card title="按你的目标找模板" size="small" className="section-card">
         <div className="template-persona-grid">
           {templateQuickPicks.map((pick) => (
@@ -393,7 +423,7 @@ export function TemplatesView() {
 
       <Card title="推荐模板" size="small" className="section-card">
         {recommendedTemplates.length === 0 ? (
-          <Typography.Text type="secondary">当前没有启用的模板，先到下方启用一个默认模板，再去创建回测。</Typography.Text>
+          <Typography.Text type="secondary">当前没有启用的模板。先展开下方高级管理，启用一个默认模板或新建高级模板，再回到这里选择。</Typography.Text>
         ) : (
           <div className="template-recommend-grid">
             {recommendedTemplates.map((template) => {
@@ -507,130 +537,157 @@ export function TemplatesView() {
         )}
       </Card>
 
-      <Card size="small" title="策略模板库" className="section-card">
-        <div className="table-toolbar">
-          <Space wrap>
-            <Select
-              allowClear
-              placeholder="策略"
-              style={{ width: 220 }}
-              options={strategyOptions}
-              onChange={(value) => setFilters((current) => ({ ...current, strategy_kind: value }))}
-            />
-            <Select
-              allowClear
-              placeholder="周期"
-              style={{ width: 130 }}
-              options={intervalOptions}
-              onChange={(value) => setFilters((current) => ({ ...current, interval: value }))}
-            />
-            <Select
-              allowClear
-              placeholder="状态"
-              style={{ width: 130 }}
-              options={[
-                { label: "启用", value: "active" },
-                { label: "停用", value: "inactive" },
-              ]}
-              onChange={(value) => setFilters((current) => ({ ...current, active: value }))}
-            />
-            {hasActiveFilters ? (
-              <Button onClick={() => setFilters({})}>清空筛选</Button>
-            ) : null}
-          </Space>
-          <ToolbarCount>共 {filteredTemplates.length} 个模板</ToolbarCount>
+      <Card size="small" title="高级模板管理" className="section-card">
+        <div className="template-management-banner">
+          <strong>只有在你需要维护模板时，再展开完整模板库和高级参数编辑</strong>
+          <p>日常使用优先在上面的推荐模板和对比区做选择。启用停用、新建模板、完整筛选表和参数编辑都保留在这里，但不再作为首屏主路径。</p>
         </div>
-        <div className="template-mobile-list">
-          {filteredTemplates.map((template) => {
-            const guide = strategyGuide[template.strategy_kind] ?? { scene: "自定义策略", level: "自定义" };
-            return (
-              <article key={template.id} className="template-mobile-card">
-                <div className="template-mobile-card-head">
-                  <div>
-                    <strong>{template.template_name}</strong>
-                    <span>{strategyLabel(template.strategy_kind)} / {template.interval} / {template.execution_profile}</span>
+        <Collapse
+          className="advanced-table-panel"
+          ghost
+          items={[
+            {
+              key: "template-library",
+              label: "高级管理：启用停用、新建模板和完整模板库",
+              children: (
+                <>
+                  <div className="table-toolbar">
+                    <Space wrap>
+                      <Button onClick={() => void loadTemplates()}>刷新模板库</Button>
+                      <Button type="primary" onClick={openCreateDrawer}>
+                        新建高级模板
+                      </Button>
+                    </Space>
+                    <ToolbarCount>当前共 {filteredTemplates.length} 个模板；只有在需要维护时再处理这里。</ToolbarCount>
                   </div>
-                  <Tag color={template.is_default ? "gold" : template.is_active ? "green" : "default"}>
-                    {template.is_default ? "默认" : template.is_active ? "启用" : "停用"}
-                  </Tag>
-                </div>
-                <p>{template.description || guide.scene}</p>
-                <div className="template-mobile-meta">
-                  <span>适合谁：{guide.audience}</span>
-                  <span>适合：{guide.scene}</span>
-                  <span>难度：{guide.level}</span>
-                </div>
-                <div className="template-mobile-actions">
-                  <Button size="small" type="primary">
-                    <Link href={buildBacktestLaunchHref({ interval: template.interval, strategyKind: template.strategy_kind, templateId: template.id })}>去回测</Link>
-                  </Button>
-                  <Button size="small" onClick={() => toggleCompare(template.id)}>
-                    {selectedTemplateIds.includes(template.id) ? "已加入对比" : "加入对比"}
-                  </Button>
-                  <Button size="small" onClick={() => openEditDrawer(template)}>
-                    编辑高级参数
-                  </Button>
-                  <Button size="small" onClick={() => void toggleTemplate(template, !template.is_active)}>
-                    {template.is_active ? "停用" : "启用"}
-                  </Button>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-        <Table
-          className="template-desktop-table"
-          rowKey="id"
-          size="small"
-          loading={loading}
-          dataSource={filteredTemplates}
-          pagination={{ pageSize: 12, showSizeChanger: false }}
-          scroll={{ x: 1240 }}
-          columns={[
-            { title: "名称", dataIndex: "template_name", width: 240, fixed: "left" },
-            { title: "策略", dataIndex: "strategy_kind", render: (value: string) => strategyLabel(value), width: 220 },
-            {
-              title: "适合谁",
-              dataIndex: "strategy_kind",
-              width: 180,
-              render: (value: string) => strategyGuide[value]?.audience ?? "自定义策略",
-            },
-            {
-              title: "适合什么",
-              dataIndex: "strategy_kind",
-              width: 220,
-              render: (value: string) => strategyGuide[value]?.scene ?? "自定义策略",
-            },
-            {
-              title: "难度",
-              dataIndex: "strategy_kind",
-              width: 120,
-              render: (value: string) => strategyGuide[value]?.level ?? "自定义",
-            },
-            { title: "周期", dataIndex: "interval", width: 90 },
-            { title: "口径", dataIndex: "execution_profile", width: 100 },
-            { title: "默认", dataIndex: "is_default", width: 90, render: (value: boolean) => <Tag color={value ? "gold" : "default"}>{value ? "默认" : "-"}</Tag> },
-            { title: "状态", dataIndex: "is_active", width: 90, render: (value: boolean) => <Tag color={value ? "green" : "default"}>{value ? "启用" : "停用"}</Tag> },
-            { title: "说明", dataIndex: "description", ellipsis: true },
-            {
-              title: "操作",
-              width: 340,
-              fixed: "right",
-              render: (_, row) => (
-                <Space size="small">
-                  <Button size="small" type="primary">
-                    <Link href={buildBacktestLaunchHref({ interval: row.interval, strategyKind: row.strategy_kind, templateId: row.id })}>去回测</Link>
-                  </Button>
-                  <Button size="small" onClick={() => toggleCompare(row.id)}>
-                    {selectedTemplateIds.includes(row.id) ? "已对比" : "加入对比"}
-                  </Button>
-                  <Button size="small" onClick={() => openEditDrawer(row)}>
-                    编辑
-                  </Button>
-                  <Button size="small" onClick={() => void toggleTemplate(row, !row.is_active)}>
-                    {row.is_active ? "停用" : "启用"}
-                  </Button>
-                </Space>
+                  <div className="table-toolbar">
+                    <Space wrap>
+                      <Select
+                        allowClear
+                        placeholder="策略"
+                        style={{ width: 220 }}
+                        options={strategyOptions}
+                        onChange={(value) => setFilters((current) => ({ ...current, strategy_kind: value }))}
+                      />
+                      <Select
+                        allowClear
+                        placeholder="周期"
+                        style={{ width: 130 }}
+                        options={intervalOptions}
+                        onChange={(value) => setFilters((current) => ({ ...current, interval: value }))}
+                      />
+                      <Select
+                        allowClear
+                        placeholder="状态"
+                        style={{ width: 130 }}
+                        options={[
+                          { label: "启用", value: "active" },
+                          { label: "停用", value: "inactive" },
+                        ]}
+                        onChange={(value) => setFilters((current) => ({ ...current, active: value }))}
+                      />
+                      {hasActiveFilters ? (
+                        <Button onClick={() => setFilters({})}>清空筛选</Button>
+                      ) : null}
+                    </Space>
+                    <ToolbarCount>共 {filteredTemplates.length} 个模板</ToolbarCount>
+                  </div>
+                  <div className="template-mobile-list">
+                    {filteredTemplates.map((template) => {
+                      const guide = strategyGuide[template.strategy_kind] ?? { scene: "自定义策略", level: "自定义" };
+                      return (
+                        <article key={template.id} className="template-mobile-card">
+                          <div className="template-mobile-card-head">
+                            <div>
+                              <strong>{template.template_name}</strong>
+                              <span>{strategyLabel(template.strategy_kind)} / {template.interval} / {template.execution_profile}</span>
+                            </div>
+                            <Tag color={template.is_default ? "gold" : template.is_active ? "green" : "default"}>
+                              {template.is_default ? "默认" : template.is_active ? "启用" : "停用"}
+                            </Tag>
+                          </div>
+                          <p>{template.description || guide.scene}</p>
+                          <div className="template-mobile-meta">
+                            <span>适合谁：{guide.audience}</span>
+                            <span>适合：{guide.scene}</span>
+                            <span>难度：{guide.level}</span>
+                          </div>
+                          <div className="template-mobile-actions">
+                            <Button size="small" type="primary">
+                              <Link href={buildBacktestLaunchHref({ interval: template.interval, strategyKind: template.strategy_kind, templateId: template.id })}>去回测</Link>
+                            </Button>
+                            <Button size="small" onClick={() => toggleCompare(template.id)}>
+                              {selectedTemplateIds.includes(template.id) ? "已加入对比" : "加入对比"}
+                            </Button>
+                            <Button size="small" onClick={() => openEditDrawer(template)}>
+                              编辑高级参数
+                            </Button>
+                            <Button size="small" onClick={() => void toggleTemplate(template, !template.is_active)}>
+                              {template.is_active ? "停用" : "启用"}
+                            </Button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                  <Table
+                    className="template-desktop-table"
+                    rowKey="id"
+                    size="small"
+                    loading={loading}
+                    dataSource={filteredTemplates}
+                    pagination={{ pageSize: 12, showSizeChanger: false }}
+                    scroll={{ x: 1240 }}
+                    columns={[
+                      { title: "名称", dataIndex: "template_name", width: 240, fixed: "left" },
+                      { title: "策略", dataIndex: "strategy_kind", render: (value: string) => strategyLabel(value), width: 220 },
+                      {
+                        title: "适合谁",
+                        dataIndex: "strategy_kind",
+                        width: 180,
+                        render: (value: string) => strategyGuide[value]?.audience ?? "自定义策略",
+                      },
+                      {
+                        title: "适合什么",
+                        dataIndex: "strategy_kind",
+                        width: 220,
+                        render: (value: string) => strategyGuide[value]?.scene ?? "自定义策略",
+                      },
+                      {
+                        title: "难度",
+                        dataIndex: "strategy_kind",
+                        width: 120,
+                        render: (value: string) => strategyGuide[value]?.level ?? "自定义",
+                      },
+                      { title: "周期", dataIndex: "interval", width: 90 },
+                      { title: "口径", dataIndex: "execution_profile", width: 100 },
+                      { title: "默认", dataIndex: "is_default", width: 90, render: (value: boolean) => <Tag color={value ? "gold" : "default"}>{value ? "默认" : "-"}</Tag> },
+                      { title: "状态", dataIndex: "is_active", width: 90, render: (value: boolean) => <Tag color={value ? "green" : "default"}>{value ? "启用" : "停用"}</Tag> },
+                      { title: "说明", dataIndex: "description", ellipsis: true },
+                      {
+                        title: "操作",
+                        width: 340,
+                        fixed: "right",
+                        render: (_, row) => (
+                          <Space size="small">
+                            <Button size="small" type="primary">
+                              <Link href={buildBacktestLaunchHref({ interval: row.interval, strategyKind: row.strategy_kind, templateId: row.id })}>去回测</Link>
+                            </Button>
+                            <Button size="small" onClick={() => toggleCompare(row.id)}>
+                              {selectedTemplateIds.includes(row.id) ? "已对比" : "加入对比"}
+                            </Button>
+                            <Button size="small" onClick={() => openEditDrawer(row)}>
+                              编辑
+                            </Button>
+                            <Button size="small" onClick={() => void toggleTemplate(row, !row.is_active)}>
+                              {row.is_active ? "停用" : "启用"}
+                            </Button>
+                          </Space>
+                        ),
+                      },
+                    ]}
+                  />
+                </>
               ),
             },
           ]}
