@@ -436,6 +436,35 @@ a {
   font-size: 13px;
 }
 
+.result-verdict-card .ant-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.result-verdict-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.result-verdict-main h3 {
+  margin: 0 !important;
+}
+
+.result-verdict-main p {
+  max-width: 720px;
+  color: var(--muted);
+  line-height: 24px;
+}
+
+.result-verdict-metrics {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -558,6 +587,10 @@ a {
   }
 
   .beginner-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .result-verdict-card .ant-card-body {
     grid-template-columns: 1fr;
   }
 
