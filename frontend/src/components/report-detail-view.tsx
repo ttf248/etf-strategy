@@ -639,7 +639,7 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Result Detail"
+        eyebrow="报告详情"
         title={`回测报告 #${report.id}`}
         description={`${report.symbol} / ${report.interval} / ${strategyLabel(report.strategy_kind)}`}
         actions={

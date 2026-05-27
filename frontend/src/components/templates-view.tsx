@@ -396,7 +396,7 @@ export function TemplatesView() {
     <div className="page-stack">
       {contextHolder}
       <PageHeader
-        eyebrow="Strategy Presets"
+        eyebrow="策略模板"
         title="策略模板"
         description="模板是预设好的回测参数。第一次使用建议直接选默认模板，不需要先理解每一个参数。"
       />
