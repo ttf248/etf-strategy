@@ -98,7 +98,7 @@ function buildStartDecisionCards(
     currentDecision = {
       title: "当前判断",
       value: `${normalizedSymbol} 还没数据`,
-      description: "当前数据库里还没有这个标的，先把它补到可用，再考虑其他标的和更多周期。",
+      description: "当前还没有这个标的的行情，先把它补到可用，再考虑其他标的和更多周期。",
     };
     nextAction = {
       title: "现在最该做",
@@ -305,7 +305,7 @@ export function MarketDataView() {
       return { label: "输入标的开始检查", color: "default", description: "例如 1810.HK、0700.HK、513050.SS。" };
     }
     if (symbolRows.length === 0) {
-      return { label: "暂未找到数据", color: "red", description: "当前数据库没有这个标的。可以先检查代码格式，再同步行情。" };
+      return { label: "暂未找到数据", color: "red", description: "当前还没有这个标的的行情。可以先检查代码格式，再同步数据。" };
     }
     const daily = symbolIntervals.has("1d");
     const intraday = Array.from(symbolIntervals).some((item) => item !== "1d");
@@ -399,9 +399,9 @@ export function MarketDataView() {
     <div className="page-stack">
       {contextHolder}
       <PageHeader
-        eyebrow="Data Setup"
+        eyebrow="数据准备"
         title="数据准备"
-        description="先检查一个标的是否已有可回测行情。缺数据时再同步，不需要先理解数据库表。"
+        description="先检查一个标的是否已有可回测行情。缺数据时再同步，不需要先研究完整数据明细。"
       />
 
       <Card size="small" className="section-card data-check-card">
@@ -569,7 +569,7 @@ export function MarketDataView() {
 
       <div className="summary-grid">
         <MetricCard label="已准备标的" value={stats.instrument_count} note="可以在创建回测时选择" />
-        <MetricCard label="行情记录" value={stats.total_bars.toLocaleString()} note="已入库 K 线" />
+        <MetricCard label="行情记录" value={stats.total_bars.toLocaleString()} note="已准备的 K 线" />
         {stats.by_interval.map((item) => (
           <MetricCard key={item.interval} label={`${item.interval} 数据`} value={item.bar_count.toLocaleString()} note="该周期可用于对应策略" />
         ))}

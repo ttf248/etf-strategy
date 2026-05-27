@@ -295,9 +295,9 @@ export function DashboardView() {
       <section className="hero-panel beginner-hero">
         <div className="beginner-hero-copy">
           <PageHeader
-            eyebrow="Backtest Lab"
+            eyebrow="开始使用"
             title="从一个标的开始，跑出第一份回测报告"
-            description="不用先理解数据库、Worker 或调度器。选择标的、套用策略模板、提交回测，然后在报告里看收益、回撤和交易记录。"
+            description="不用先理解内部服务怎么运作。选择标的、套用策略模板、提交回测，然后在报告里看收益、回撤和交易记录。"
           />
           <Space wrap className="hero-actions">
             <Button type="primary" size="large" icon={<PlayCircleOutlined />}>
