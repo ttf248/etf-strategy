@@ -4,6 +4,13 @@ import { Button, Card, Empty, Input, Select, Skeleton, Space, Table, Tag, Typogr
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type MarketCoverage, type MarketDataStats } from "@/lib/api";
 import { MetricCard, PageHeader, ToolbarCount } from "@/components/platform-ui";
+import { intervalOptions } from "@/lib/strategy-template-config";
+
+type IntervalRecommendation = {
+  interval: string;
+  title: string;
+  description: string;
+};
 
 export function MarketDataView() {
   const [stats, setStats] = useState<MarketDataStats | null>(null);
@@ -45,18 +52,23 @@ export function MarketDataView() {
   }
 
   async function syncCheckedSymbol() {
+    await syncSymbolForInterval(syncInterval);
+  }
+
+  async function syncSymbolForInterval(targetInterval: string) {
     const targetSymbol = checkedSymbol.trim().toUpperCase();
     if (!targetSymbol) {
       messageApi.warning("请先输入并检查一个标的");
       return;
     }
     setSyncingSymbol(true);
+    setSyncInterval(targetInterval);
     try {
       await apiFetch("/api/market-data/sync", {
         method: "POST",
-        body: JSON.stringify({ symbol: targetSymbol, interval: syncInterval, period: syncPeriodForInterval(syncInterval) }),
+        body: JSON.stringify({ symbol: targetSymbol, interval: targetInterval, period: syncPeriodForInterval(targetInterval) }),
       });
-      messageApi.success(`${targetSymbol} ${syncInterval} 同步完成`);
+      messageApi.success(`${targetSymbol} ${targetInterval} 同步完成`);
       setStats(await fetchStats());
       setTableKeyword(targetSymbol);
     } catch (error) {
@@ -88,6 +100,8 @@ export function MarketDataView() {
     return stats.coverages.filter((item) => item.symbol.toLowerCase() === normalizedKeyword);
   }, [stats, checkedSymbol]);
 
+  const symbolIntervals = useMemo(() => new Set(symbolRows.map((item) => item.interval)), [symbolRows]);
+
   const readiness = useMemo(() => {
     if (!checkedSymbol.trim()) {
       return { label: "输入标的开始检查", color: "default", description: "例如 1810.HK、0700.HK、513050.SS。" };
@@ -95,13 +109,57 @@ export function MarketDataView() {
     if (symbolRows.length === 0) {
       return { label: "暂未找到数据", color: "red", description: "当前数据库没有这个标的。可以先检查代码格式，再同步行情。" };
     }
-    const daily = symbolRows.find((item) => item.interval === "1d");
-    const intraday = symbolRows.find((item) => item.interval !== "1d");
+    const daily = symbolIntervals.has("1d");
+    const intraday = Array.from(symbolIntervals).some((item) => item !== "1d");
     if (daily && intraday) {
       return { label: "适合开始回测", color: "green", description: "该标的同时有日线和分钟线数据，可以创建回测。" };
     }
     return { label: "可回测但数据有限", color: "gold", description: "该标的已有部分周期数据，建议确认策略所需周期是否存在。" };
-  }, [checkedSymbol, symbolRows]);
+  }, [checkedSymbol, symbolRows, symbolIntervals]);
+
+  const intervalRecommendations = useMemo<IntervalRecommendation[]>(() => {
+    if (!checkedSymbol.trim()) {
+      return [];
+    }
+    if (symbolRows.length === 0) {
+      return [
+        {
+          interval: "1d",
+          title: "先补日线",
+          description: "第一次建库先补 1d，最适合做长期回测、定投和基础可用性检查。",
+        },
+        {
+          interval: "15m",
+          title: "再补 15m",
+          description: "如果你准备跑网格或短周期反弹策略，再补 15m 就能开始大部分分钟研究。",
+        },
+      ];
+    }
+
+    const recommendations: IntervalRecommendation[] = [];
+    if (!symbolIntervals.has("1d")) {
+      recommendations.push({
+        interval: "1d",
+        title: "补日线",
+        description: "补 1d 后可以做定投、日线择时和更长区间的稳健复盘。",
+      });
+    }
+    if (!symbolIntervals.has("15m")) {
+      recommendations.push({
+        interval: "15m",
+        title: "补 15m",
+        description: "补 15m 后可以直接跑默认分钟网格和大多数新手第一轮短线策略。",
+      });
+    }
+    if (symbolIntervals.has("15m") && !symbolIntervals.has("1m")) {
+      recommendations.push({
+        interval: "1m",
+        title: "补 1m",
+        description: "只有当你需要更细粒度的分钟信号时，再补 1m 做更高频的研究。",
+      });
+    }
+    return recommendations;
+  }, [checkedSymbol, symbolRows, symbolIntervals]);
 
   function checkSymbol() {
     const normalizedSymbol = checkInput.trim().toUpperCase();
@@ -122,7 +180,7 @@ export function MarketDataView() {
         description="先检查一个标的是否已有可回测行情。缺数据时再同步，不需要先理解数据库表。"
         actions={
           <Space>
-            <Select value={syncInterval} options={stats.by_interval.map((item) => ({ label: item.interval, value: item.interval }))} onChange={setSyncInterval} style={{ width: 120 }} />
+            <Select value={syncInterval} options={intervalOptions} onChange={setSyncInterval} style={{ width: 120 }} />
             <Button loading={syncing} onClick={() => void syncAll()}>
               同步全部
             </Button>
@@ -151,11 +209,26 @@ export function MarketDataView() {
           <strong>{symbolRows[0]?.name ?? (checkedSymbol || "等待输入")}</strong>
           {checkedSymbol ? <small>最近检查：{checkedSymbol}</small> : null}
           <span>{readiness.description}</span>
+          {intervalRecommendations.length > 0 ? (
+            <div className="data-recommend-list">
+              {intervalRecommendations.map((item) => (
+                <div key={item.interval} className="data-recommend-item">
+                  <div>
+                    <b>{item.title}</b>
+                    <small>{item.description}</small>
+                  </div>
+                  <Button size="small" loading={syncingSymbol && syncInterval === item.interval} onClick={() => void syncSymbolForInterval(item.interval)}>
+                    同步 {item.interval}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <div className="data-check-actions">
             <Button loading={syncingSymbol} onClick={() => void syncCheckedSymbol()}>
               同步当前标的 {syncInterval}
             </Button>
-            <small>缺少周期时，先选周期再同步当前标的。</small>
+            <small>不会补数据时，优先按上面的推荐周期同步；第一次短线研究建议先补 15m。</small>
           </div>
         </div>
       </Card>
@@ -196,7 +269,7 @@ export function MarketDataView() {
               placeholder="按周期筛选"
               value={interval}
               onChange={setInterval}
-              options={stats.by_interval.map((item) => ({ label: item.interval, value: item.interval }))}
+              options={intervalOptions}
               style={{ width: 150 }}
             />
           </Space>

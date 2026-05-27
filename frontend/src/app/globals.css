@@ -1035,6 +1035,40 @@ a {
   line-height: 22px;
 }
 
+.data-recommend-list {
+  display: grid;
+  gap: 8px;
+}
+
+.data-recommend-item {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.data-recommend-item div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.data-recommend-item b {
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.data-recommend-item small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .data-check-actions {
   display: flex;
   flex-direction: column;
@@ -1308,6 +1342,11 @@ a {
 
   .data-check-card .ant-card-body {
     grid-template-columns: 1fr;
+  }
+
+  .data-recommend-item {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .report-mobile-list {
