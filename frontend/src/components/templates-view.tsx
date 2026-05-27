@@ -66,6 +66,10 @@ const executionProfiles = [
   { label: "研究口径", value: "research" },
 ];
 
+function executionProfileLabel(profile: string): string {
+  return executionProfiles.find((item) => item.value === profile)?.label ?? profile;
+}
+
 const strategyGuide: Record<string, StrategyGuide> = {
   grid: { scene: "震荡行情，低买高卖", level: "新手可先用", audience: "第一次短线试跑", starterRank: 0 },
   dca: { scene: "长期分批买入", level: "最容易理解", audience: "想先看长期持有", starterRank: 1 },
@@ -442,7 +446,7 @@ export function TemplatesView() {
             <article className="start-path-guide-card">
               <span>什么时候进高级管理</span>
               <strong>需要维护时再进去</strong>
-              <p>例如当前没有启用模板、默认模板不适合当前场景，或者你确实要新增自己的参数空间。</p>
+              <p>例如当前没有启用模板、默认模板不适合当前场景，或者你确实要新增自己的参数范围。</p>
             </article>
           </div>
         </div>
@@ -503,7 +507,7 @@ export function TemplatesView() {
                     <div className="template-recommend-head">
                       <div>
                         <strong>{template.template_name}</strong>
-                        <span>{strategyLabel(template.strategy_kind)} / {template.interval} / {template.execution_profile}</span>
+                        <span>{strategyLabel(template.strategy_kind)} / {template.interval} / {executionProfileLabel(template.execution_profile)}</span>
                       </div>
                       <Tag color={template.is_default ? "gold" : "green"}>{template.is_default ? "默认推荐" : "可直接使用"}</Tag>
                     </div>
@@ -559,7 +563,7 @@ export function TemplatesView() {
                       <strong>{template.template_name}</strong>
                       <Button size="small" type="link" onClick={() => toggleCompare(template.id)}>移除</Button>
                     </div>
-                    <span>{strategyLabel(template.strategy_kind)} / {template.interval} / {template.execution_profile}</span>
+                    <span>{strategyLabel(template.strategy_kind)} / {template.interval} / {executionProfileLabel(template.execution_profile)}</span>
                     <div className="template-compare-metrics">
                       <span>适合谁：{guide.audience}</span>
                       <span>难度：{guide.level}</span>
@@ -629,7 +633,7 @@ export function TemplatesView() {
           <article className="template-management-card">
             <span>什么时候值得编辑</span>
             <strong>默认模板不适合你的实际条件</strong>
-            <p>例如手续费、滑点、仓位或参数空间明显不符合你的标的和交易方式，这时再改高级参数更有意义。</p>
+            <p>例如手续费、滑点、仓位或参数范围明显不符合你的标的和交易方式，这时再改高级参数更有意义。</p>
           </article>
           <article className="template-management-card">
             <span>什么时候不用碰</span>
@@ -695,7 +699,7 @@ export function TemplatesView() {
                           <div className="template-mobile-card-head">
                             <div>
                               <strong>{template.template_name}</strong>
-                              <span>{strategyLabel(template.strategy_kind)} / {template.interval} / {template.execution_profile}</span>
+                              <span>{strategyLabel(template.strategy_kind)} / {template.interval} / {executionProfileLabel(template.execution_profile)}</span>
                             </div>
                             <Tag color={template.is_default ? "gold" : template.is_active ? "green" : "default"}>
                               {template.is_default ? "默认" : template.is_active ? "启用" : "停用"}
@@ -755,7 +759,12 @@ export function TemplatesView() {
                         render: (value: string) => strategyGuide[value]?.level ?? "自定义",
                       },
                       { title: "周期", dataIndex: "interval", width: 90 },
-                      { title: "口径", dataIndex: "execution_profile", width: 100 },
+                      {
+                        title: "成交假设",
+                        dataIndex: "execution_profile",
+                        width: 120,
+                        render: (value: string) => executionProfileLabel(value),
+                      },
                       { title: "默认", dataIndex: "is_default", width: 90, render: (value: boolean) => <Tag color={value ? "gold" : "default"}>{value ? "默认" : "-"}</Tag> },
                       { title: "状态", dataIndex: "is_active", width: 90, render: (value: boolean) => <Tag color={value ? "green" : "default"}>{value ? "启用" : "停用"}</Tag> },
                       { title: "说明", dataIndex: "description", ellipsis: true },
@@ -816,7 +825,7 @@ export function TemplatesView() {
             <Form.Item name="template_name" label="模板名称" rules={[{ required: true }]}>
               <Input />
             </Form.Item>
-            <Form.Item name="template_key" label="模板键" rules={[{ required: true }]}>
+            <Form.Item name="template_key" label="模板标识" rules={[{ required: true }]}>
               <Input />
             </Form.Item>
             <Form.Item name="strategy_kind" label="策略" rules={[{ required: true }]}>
@@ -828,16 +837,16 @@ export function TemplatesView() {
             <Form.Item name="execution_profile" label="成交假设">
               <Select options={executionProfiles} />
             </Form.Item>
-            <Form.Item name="jobs" label="并行数">
+            <Form.Item name="jobs" label="同时尝试的参数组数">
               <InputNumber min={1} max={32} style={{ width: "100%" }} />
             </Form.Item>
-            <Form.Item name="validation_start" label="样本外起点">
+            <Form.Item name="validation_start" label="从哪一天开始算样本外">
               <Input placeholder="日线模板使用" />
             </Form.Item>
             <Form.Item name="lookback_days" label="样本内天数">
               <InputNumber min={1} style={{ width: "100%" }} />
             </Form.Item>
-            <Form.Item name="validation_ratio" label="样本外比例">
+            <Form.Item name="validation_ratio" label="留给样本外验证的比例">
               <InputNumber min={0.05} max={0.95} step={0.05} style={{ width: "100%" }} />
             </Form.Item>
             <Form.Item name="description" label="说明">
@@ -868,24 +877,24 @@ export function TemplatesView() {
             <Form.Item name="cooldown_bars" label="冷却 K 线数">
               <InputNumber min={0} style={{ width: "100%" }} />
             </Form.Item>
-            <Form.Item name="benchmark" label="基准">
+            <Form.Item name="benchmark" label="默认对照">
               <Select options={[{ label: "买入持有", value: "buy_hold" }, { label: "现金空仓", value: "cash_idle" }]} />
             </Form.Item>
-            <Form.Item name="left_side_policy" label="左侧处理">
+            <Form.Item name="left_side_policy" label="左侧行情时怎么处理">
               <Select
                 options={[
                   { label: "持有", value: "hold" },
-                  { label: "强平", value: "force_exit" },
-                  { label: "双口径", value: "both" },
+                  { label: "强制离场", value: "force_exit" },
+                  { label: "两种都保留", value: "both" },
                 ]}
               />
             </Form.Item>
-            <Form.Item name="force_exit_loss_pct" label="强平阈值">
+            <Form.Item name="force_exit_loss_pct" label="达到多大亏损时强制离场">
               <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
             </Form.Item>
           </div>
 
-          <Typography.Title level={5}>参数空间</Typography.Title>
+          <Typography.Title level={5}>可尝试的参数范围</Typography.Title>
           <div className="template-form-grid">
             {parameterSpecs.length === 0 ? (
               <Card size="small">当前策略不需要自定义寻参空间。</Card>
