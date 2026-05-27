@@ -3,7 +3,8 @@
 import { StarFilled, StarOutlined } from "@ant-design/icons";
 import { Button, Card, Empty, Input, Select, Space, Table, Tag, Typography } from "antd";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, type ReportSummary } from "@/lib/api";
 import { FormatPercent, MetricCard, PageHeader, ToolbarCount } from "@/components/platform-ui";
 import { strategyLabel } from "@/lib/strategy-template-config";
@@ -46,6 +47,19 @@ function buildRerunHref(report: ReportSummary) {
   });
 }
 
+function parseCompareIds(values: string[]): number[] {
+  const uniqueIds = new Set<number>();
+  for (const value of values) {
+    for (const item of value.split(",")) {
+      const parsed = Number(item.trim());
+      if (Number.isFinite(parsed)) {
+        uniqueIds.add(parsed);
+      }
+    }
+  }
+  return Array.from(uniqueIds).slice(0, 4);
+}
+
 export function ReportsView() {
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [keyword, setKeyword] = useState("");
@@ -54,6 +68,8 @@ export function ReportsView() {
   const [favoriteReportIds, setFavoriteReportIds] = useState<number[]>([]);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [favoritesHydrated, setFavoritesHydrated] = useState(false);
+  const searchParams = useSearchParams();
+  const searchPresetAppliedRef = useRef(false);
 
   useEffect(() => {
     void apiFetch<ReportSummary[]>("/api/reports?limit=200").then(setReports);
@@ -82,6 +98,38 @@ export function ReportsView() {
       }
     });
   }, []);
+
+  const queryPreset = useMemo(() => {
+    const compareIds = parseCompareIds(searchParams.getAll("compare"));
+    const keywordValue = searchParams.get("keyword")?.trim().toUpperCase();
+    const intervalValue = searchParams.get("interval")?.trim();
+    if (compareIds.length === 0 && !keywordValue && !intervalValue) {
+      return null;
+    }
+    return {
+      compareIds,
+      keyword: keywordValue || undefined,
+      interval: intervalValue || undefined,
+    };
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (searchPresetAppliedRef.current || !queryPreset) {
+      return;
+    }
+    queueMicrotask(() => {
+      if (queryPreset.keyword) {
+        setKeyword(queryPreset.keyword);
+      }
+      if (queryPreset.interval) {
+        setInterval(queryPreset.interval);
+      }
+      if (queryPreset.compareIds.length > 0) {
+        setSelectedReportIds(queryPreset.compareIds);
+      }
+      searchPresetAppliedRef.current = true;
+    });
+  }, [queryPreset]);
 
   const validFavoriteReportIds = useMemo(
     () => favoriteReportIds.filter((reportId) => reports.some((item) => item.id === reportId)),
@@ -148,6 +196,10 @@ export function ReportsView() {
       }, null),
     [comparedReports],
   );
+  const queryComparedReports = useMemo(
+    () => reports.filter((item) => queryPreset?.compareIds.includes(item.id) && selectedReportIds.includes(item.id)),
+    [queryPreset, reports, selectedReportIds],
+  );
 
   function toggleCompare(reportId: number) {
     setSelectedReportIds((current) => {
@@ -193,6 +245,15 @@ export function ReportsView() {
         className="section-card report-compare-card"
         extra={selectedReportIds.length ? <Button size="small" onClick={() => setSelectedReportIds([])}>清空对比</Button> : null}
       >
+        {queryComparedReports.length > 0 ? (
+          <div className="compare-prefill-banner">
+            <strong>已从详情页带入报告</strong>
+            <span>
+              {queryComparedReports.map((item) => `#${item.id} ${item.symbol}`).join("、")} 已经加入对比区。
+              {selectedReportIds.length < 2 ? " 再勾选 1 到 3 份报告，就能直接比较收益、回撤和交易次数。" : " 现在已经可以直接查看对比结果。"}
+            </span>
+          </div>
+        ) : null}
         {comparedReports.length === 0 ? (
           <Typography.Text type="secondary">从报告列表中选择 2 到 4 份报告，对比样本外收益、最大回撤和交易次数。</Typography.Text>
         ) : (
@@ -230,21 +291,25 @@ export function ReportsView() {
             <div className="report-compare-summary">
               <strong>对比后下一步</strong>
               <p>
-                {bestComparedReport
+                {comparedReports.length === 1
+                  ? `当前只带入了 #${comparedReports[0].id} ${comparedReports[0].symbol}，先再选 1 到 3 份报告，才能真正比较哪套策略更稳或更赚钱。`
+                  : bestComparedReport
                   ? `收益最高的是 #${bestComparedReport.id} ${bestComparedReport.symbol}。`
                   : "先选出你最关心的那份报告。"}
-                {safestComparedReport
+                {comparedReports.length > 1 && safestComparedReport
                   ? ` 回撤最小的是 #${safestComparedReport.id} ${safestComparedReport.symbol}。`
                   : ""}
-                如果你更看重赚钱效率，先打开收益最高那份；如果你更看重稳健，先看回撤最小那份，再决定要不要重跑。
+                {comparedReports.length > 1
+                  ? " 如果你更看重赚钱效率，先打开收益最高那份；如果你更看重稳健，先看回撤最小那份，再决定要不要重跑。"
+                  : ""}
               </p>
               <div className="report-compare-summary-actions">
-                {bestComparedReport ? (
+                {comparedReports.length > 1 && bestComparedReport ? (
                   <Button type="primary">
                     <Link href={`/reports/${bestComparedReport.id}`}>打开收益最高报告</Link>
                   </Button>
                 ) : null}
-                {safestComparedReport ? (
+                {comparedReports.length > 1 && safestComparedReport ? (
                   <Button>
                     <Link href={buildRerunHref(safestComparedReport)}>按低回撤配置重跑</Link>
                   </Button>

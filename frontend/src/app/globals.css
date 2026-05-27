@@ -1010,6 +1010,28 @@ a {
   min-height: 76px;
 }
 
+.compare-prefill-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #eff6ff 0%, #f8fbff 100%);
+}
+
+.compare-prefill-banner strong {
+  color: #0f172a;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.compare-prefill-banner span {
+  color: var(--muted-strong);
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .report-compare-stack {
   display: flex;
   flex-direction: column;
@@ -1228,6 +1250,37 @@ a {
   color: var(--muted);
   font-size: 13px;
   line-height: 20px;
+}
+
+.compare-next-card .ant-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, max-content);
+  gap: 18px;
+  align-items: center;
+}
+
+.compare-next-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compare-next-main strong {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.compare-next-main p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 22px;
+}
+
+.compare-next-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 
 .trade-mobile-list,
@@ -1695,6 +1748,10 @@ a {
   }
 
   .result-verdict-card .ant-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .compare-next-card .ant-card-body {
     grid-template-columns: 1fr;
   }
 

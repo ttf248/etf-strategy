@@ -346,6 +346,14 @@ function readTemplateId(report: ReportDetail, templateSnapshot?: Record<string, 
   return undefined;
 }
 
+function buildCompareHref(report: ReportDetail): string {
+  const searchParams = new URLSearchParams();
+  searchParams.set("compare", String(report.id));
+  searchParams.set("keyword", report.symbol);
+  searchParams.set("interval", report.interval);
+  return `/reports?${searchParams.toString()}`;
+}
+
 export function ReportDetailView({ reportId }: ReportDetailViewProps) {
   const [report, setReport] = useState<ReportDetail | null>(null);
 
@@ -371,6 +379,7 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
     strategyKind: report.strategy_kind,
     templateId,
   });
+  const compareHref = buildCompareHref(report);
   const readingGuides = [
     {
       title: "收益怎么看",
@@ -396,6 +405,9 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
           <Space wrap>
             <Button>
               <Link href="/reports">回到报告列表</Link>
+            </Button>
+            <Button>
+              <Link href={compareHref}>去对比同标的报告</Link>
             </Button>
             <Button type="primary">
               <Link href={rerunHref}>按当前配置重跑</Link>
@@ -437,6 +449,21 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
               <p>{item.description}</p>
             </article>
           ))}
+        </div>
+      </Card>
+
+      <Card size="small" title="读完这份报告后，下一步做什么" className="section-card compare-next-card">
+        <div className="compare-next-main">
+          <strong>先把这份结果带去对比区</strong>
+          <p>系统会预先带入当前报告，并按同一标的和周期筛好列表。接下来只要再勾选 1 到 3 份报告，就能直接比较收益、回撤和交易次数。</p>
+        </div>
+        <div className="compare-next-actions">
+          <Button type="primary">
+            <Link href={compareHref}>去对比同标的报告</Link>
+          </Button>
+          <Button>
+            <Link href={rerunHref}>按当前配置重跑</Link>
+          </Button>
         </div>
       </Card>
 
