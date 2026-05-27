@@ -459,11 +459,11 @@ export function DashboardView() {
                 <Button type="primary">
                   <Link href={`/reports/${latestSucceededReportId}`}>打开这份报告</Link>
                 </Button>
-              ) : (
-                <Button type="primary">
-                  <Link href="/reports">去报告列表查找</Link>
-                </Button>
-              )}
+                ) : (
+                  <Button type="primary">
+                  <Link href="/reports">去查看所有报告</Link>
+                  </Button>
+                )}
               <Button>
                 <Link href={latestSucceededRerunHref ?? "/backtests"}>
                   按相同配置再跑一次
@@ -578,13 +578,13 @@ export function DashboardView() {
           },
           {
             key: "jobs",
-            label: `高级运行明细：最近回测任务（成功 ${succeededJobs} / 失败 ${failedJobs}）`,
+            label: `高级明细：最近回测记录（已完成 ${succeededJobs} / 未跑通 ${failedJobs}）`,
             children: (
               <Card
-                title="最近运行的回测"
+                title="最近几次回测记录"
                 size="small"
                 className="section-card"
-                extra={<span className="toolbar-count"><CheckCircleOutlined /> 成功 {succeededJobs} / 失败 {failedJobs}</span>}
+                extra={<span className="toolbar-count"><CheckCircleOutlined /> 已完成 {succeededJobs} / 未跑通 {failedJobs}</span>}
               >
                 <Table
                   size="small"
@@ -592,7 +592,7 @@ export function DashboardView() {
                   rowKey="id"
                   dataSource={jobs}
                   columns={[
-                    { title: "任务", dataIndex: "id", width: 72 },
+                    { title: "编号", dataIndex: "id", width: 72 },
                     { title: "标的", render: (_, row) => String(row.request_payload.symbol ?? "-") },
                     { title: "周期", render: (_, row) => String(row.request_payload.interval ?? "-"), width: 80 },
                     { title: "策略", render: (_, row) => strategyLabel(String(row.request_payload.strategy_kind ?? "-")), ellipsis: true },
