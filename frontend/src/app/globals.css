@@ -372,6 +372,36 @@ a {
   box-shadow: var(--shadow-sm);
 }
 
+.maintenance-guide-card {
+  background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
+}
+
+.maintenance-guide-card h4 {
+  margin: 0 0 8px !important;
+}
+
+.maintenance-guide-card p {
+  margin: 0 !important;
+  color: var(--muted);
+  line-height: 24px;
+}
+
+.maintenance-collapse {
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.maintenance-collapse .ant-collapse-item {
+  border-bottom-color: var(--line-soft) !important;
+}
+
+.maintenance-collapse .ant-collapse-header {
+  color: #0f172a !important;
+  font-weight: 650;
+}
+
 .chart-frame {
   height: 360px;
 }
