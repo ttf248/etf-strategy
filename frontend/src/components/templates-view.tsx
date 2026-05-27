@@ -841,7 +841,7 @@ export function TemplatesView() {
               <InputNumber min={1} max={32} style={{ width: "100%" }} />
             </Form.Item>
             <Form.Item name="validation_start" label="从哪一天开始算样本外">
-              <Input placeholder="日线模板使用" />
+              <Input placeholder="只在日线模板里填写" />
             </Form.Item>
             <Form.Item name="lookback_days" label="样本内天数">
               <InputNumber min={1} style={{ width: "100%" }} />
