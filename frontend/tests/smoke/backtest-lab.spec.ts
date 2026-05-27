@@ -64,7 +64,12 @@ async function pickLaunchPreset(request: APIRequestContext): Promise<LaunchPrese
 test("首页到回测提交主路径可用", async ({ page, request }) => {
   const preset = await pickLaunchPreset(request);
 
-  await page.goto("/");
+  await Promise.all([
+    page.waitForResponse((response) => response.url() === `${apiBaseUrl}/api/market-data/stats` && response.ok()),
+    page.waitForResponse((response) => response.url().startsWith(`${apiBaseUrl}/api/backtests?limit=`) && response.ok()),
+    page.waitForResponse((response) => response.url().startsWith(`${apiBaseUrl}/api/reports?limit=`) && response.ok()),
+    page.goto("/"),
+  ]);
   await expect(page.getByRole("heading", { name: "从一个标的开始，跑出第一份回测报告" })).toBeVisible();
   await expect(page.getByText("第一次使用建议按这条路走")).toBeVisible();
   await expect(page.getByText("数据准备 -> 创建回测 -> 查看报告。只有页面打不开或任务长期不动时，再去系统状态。")).toBeVisible();

@@ -35,5 +35,6 @@ test("维护页首屏先给出是否需要排障的判断", async ({ page, reque
 
   await expect(page.getByRole("heading", { name: "系统状态" })).toBeVisible();
   await expect(page.getByText(expectedBanner)).toBeVisible();
-  await expect(page.getByText("如果页面打不开，再看心跳与同步调度")).toBeVisible();
+  await expect(page.getByText("如果页面打不开，再看服务心跳与定时同步")).toBeVisible();
+  await expect(page.getByText("如果怀疑执行服务没运行，再看本机服务")).toBeVisible();
 });
