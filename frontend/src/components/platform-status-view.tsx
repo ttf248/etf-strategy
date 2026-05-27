@@ -16,6 +16,17 @@ function serviceOk(status: string): boolean {
   return status === "ok" || status === "completed" || status === "succeeded";
 }
 
+function formatActiveTaskNote(runningJobs: number, queuedJobs: number, cancelRequestedJobs: number) {
+  if (runningJobs === 0 && queuedJobs === 0 && cancelRequestedJobs === 0) {
+    return "当前没有正在跑或等待处理的任务";
+  }
+  const parts = [`运行中 ${runningJobs}`, `排队 ${queuedJobs}`];
+  if (cancelRequestedJobs > 0) {
+    parts.push(`等待取消 ${cancelRequestedJobs}`);
+  }
+  return parts.join(" / ");
+}
+
 export function PlatformStatusView() {
   const [status, setStatus] = useState<PlatformStatus | null>(null);
   const [processes, setProcesses] = useState<PlatformProcess[]>([]);
@@ -93,10 +104,33 @@ export function PlatformStatusView() {
     return <Empty description="暂时无法读取平台状态" />;
   }
 
-  const queueTotal = Object.values(status.queue).reduce((sum, value) => sum + Number(value || 0), 0);
   const platformReady = serviceOk(status.api.status) && serviceOk(status.frontend.status) && serviceOk(status.database.status);
   const queuedJobs = Number(status.queue.queued ?? 0);
   const runningJobs = Number(status.queue.running ?? 0);
+  const cancelRequestedJobs = Number(status.queue.cancel_requested ?? 0);
+  const activeTaskCount = queuedJobs + runningJobs + cancelRequestedJobs;
+  const failedJobs = Number(status.queue.failed ?? 0);
+  const unhealthyServices = [
+    !serviceOk(status.api.status) ? "API" : null,
+    !serviceOk(status.frontend.status) ? "前端页面" : null,
+    !serviceOk(status.database.status) ? "数据库" : null,
+  ].filter(Boolean) as string[];
+  const attentionLabel = !platformReady ? "需要排障" : activeTaskCount > 0 ? "暂时观察任务" : "现在不用处理";
+  const attentionNote = !platformReady
+    ? `优先确认 ${unhealthyServices.join("、")} 是否异常。`
+    : activeTaskCount > 0
+      ? formatActiveTaskNote(runningJobs, queuedJobs, cancelRequestedJobs)
+      : "页面、接口和数据库都正常，可以回到主路径继续使用。";
+  const statusBannerTitle = !platformReady
+    ? "先确认是不是服务异常，而不是先翻日志"
+    : activeTaskCount > 0
+      ? "平台本身正常，先看任务是否只是还在处理"
+      : "现在不需要继续停留在这里";
+  const statusBannerDescription = !platformReady
+    ? `当前最值得先看的不是全部日志，而是 ${unhealthyServices.join("、")}。确认哪个环节异常后，再展开下面对应的高级维护信息。`
+    : activeTaskCount > 0
+      ? `当前 ${formatActiveTaskNote(runningJobs, queuedJobs, cancelRequestedJobs)}。如果只是任务还在跑，先等待或回报告页刷新，不必立即查看进程和日志。`
+      : "页面、接口、数据库都正常，当前也没有等待处理的任务。直接回到创建回测、报告或数据准备页即可。";
 
   return (
     <div className="page-stack">
@@ -109,15 +143,37 @@ export function PlatformStatusView() {
       />
 
       <div className="summary-grid">
-        <MetricCard label="平台可用性" value={platformReady ? "可以继续使用" : "需要排查"} note="API、前端、数据库都正常时即可继续回测" />
-        <MetricCard label="API 服务" value={<StatusTag value={status.api.status} />} note={serviceOk(status.api.status) ? "接口正常响应" : "先刷新或查看下方日志"} />
-        <MetricCard label="页面访问" value={<StatusTag value={status.frontend.status} />} note={serviceOk(status.frontend.status) ? "前端可访问" : "页面可能无法正常打开"} />
+        <MetricCard label="现在需不需要处理" value={attentionLabel} note={attentionNote} />
+        <MetricCard label="当前待处理任务" value={activeTaskCount} note={formatActiveTaskNote(runningJobs, queuedJobs, cancelRequestedJobs)} />
         <MetricCard
-          label="后台任务"
-          value={queueTotal}
-          note={runningJobs > 0 || queuedJobs > 0 ? `排队 ${queuedJobs} / 运行中 ${runningJobs}` : "当前没有排队任务"}
+          label="服务异常数"
+          value={unhealthyServices.length}
+          note={unhealthyServices.length > 0 ? `重点先看：${unhealthyServices.join("、")}` : "API、前端页面和数据库都正常"}
+        />
+        <MetricCard
+          label="历史失败任务"
+          value={failedJobs}
+          note={failedJobs > 0 ? "只表示历史上有失败，不代表当前还在卡住" : "当前没有记录到失败任务"}
         />
       </div>
+
+      <Card size="small" className="section-card maintenance-status-card">
+        <div className="maintenance-status-main">
+          <strong>{statusBannerTitle}</strong>
+          <p>{statusBannerDescription}</p>
+        </div>
+        <div className="maintenance-status-actions">
+          <Button type="primary">
+            <Link href="/backtests">回到创建回测</Link>
+          </Button>
+          <Button>
+            <Link href="/reports">去看报告列表</Link>
+          </Button>
+          <Button>
+            <Link href="/market-data">去检查数据</Link>
+          </Button>
+        </div>
+      </Card>
 
       <Card size="small" className="section-card maintenance-guide-card">
         <Typography.Title level={4}>先判断你是不是需要看这页</Typography.Title>
@@ -155,7 +211,7 @@ export function PlatformStatusView() {
         items={[
           {
             key: "runtime",
-            label: "高级维护信息：心跳与同步调度",
+            label: "如果页面打不开，再看心跳与同步调度",
             children: (
               <Row gutter={[16, 16]}>
                 <Col xs={24} xl={12}>
@@ -206,7 +262,7 @@ export function PlatformStatusView() {
           },
           {
             key: "processes",
-            label: "高级维护信息：本机进程",
+            label: "如果怀疑后台没跑，再看本机进程",
             children: (
               <Card
                 title="本机进程"
@@ -242,7 +298,7 @@ export function PlatformStatusView() {
           },
           {
             key: "logs",
-            label: "高级维护信息：最近日志",
+            label: "如果需要贴错误信息，再看最近日志",
             children: (
               <Card
                 title="最近日志"

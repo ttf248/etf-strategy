@@ -686,6 +686,37 @@ a {
   background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
 }
 
+.maintenance-status-card .ant-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, max-content);
+  gap: 18px;
+  align-items: center;
+}
+
+.maintenance-status-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.maintenance-status-main strong {
+  color: #0f172a;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.maintenance-status-main p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 22px;
+}
+
+.maintenance-status-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
 .maintenance-guide-card h4 {
   margin: 0 0 8px !important;
 }
@@ -2169,6 +2200,10 @@ a {
 
   .report-desktop-table {
     display: none;
+  }
+
+  .maintenance-status-card .ant-card-body {
+    grid-template-columns: 1fr;
   }
 
   .coverage-mobile-list {
