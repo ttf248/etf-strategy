@@ -31,17 +31,17 @@ const baseParameterLabels: Record<string, string> = {
   EntryDate: "入场时间",
   EntryPrice: "入场价格",
   execution_profile: "成交假设",
-  force_exit_loss_pct: "强制离场亏损线",
+  force_exit_loss_pct: "达到多大亏损时强制离场",
   GridCount: "网格层数",
   GridMode: "网格模式",
   jobs: "同时尝试的参数组数",
-  left_side_policy: "左侧行情处理",
+  left_side_policy: "左侧行情时怎么处理",
   lookback_days: "回看天数",
   LotSize: "每手数量",
   Market: "市场",
   max_position_ratio: "最大仓位",
   NetPnl: "样本外盈亏",
-  parameter_space: "寻参范围",
+  parameter_space: "可尝试的参数范围",
   PeakDate: "阶段高点时间",
   PeakPrice: "阶段高点价格",
   ReturnPct: "样本外收益",
@@ -53,8 +53,8 @@ const baseParameterLabels: Record<string, string> = {
   Symbol: "标的代码",
   template_id: "模板编号",
   total_capital: "初始资金",
-  validation_ratio: "样本外比例",
-  validation_start: "样本外起点",
+  validation_ratio: "留给样本外验证的比例",
+  validation_start: "从哪一天开始算样本外",
 };
 
 const eventTypeLabels: Record<string, string> = {
@@ -98,14 +98,14 @@ const valueLabels: Record<string, Record<string, string>> = {
   execution_profile: {
     conservative: "保守成交",
     realistic: "实盘口径",
-    research: "研究默认",
+    research: "研究口径",
   },
   frequency: {
     monthly: "每月",
     weekly: "每周",
   },
   left_side_policy: {
-    both: "同时对比",
+    both: "两种都保留",
     force_exit: "触发阈值后强制离场",
     hold: "继续持有",
   },
