@@ -3,16 +3,18 @@
 import { ArrowRightOutlined, CheckCircleOutlined, DatabaseOutlined, FileSearchOutlined, PlayCircleOutlined } from "@ant-design/icons";
 import { Button, Card, Col, Collapse, Empty, Row, Skeleton, Space, Table, Tag, Typography } from "antd";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type BacktestJob, type MarketDataStats, type ReportSummary } from "@/lib/api";
 import { FormatPercent, MetricCard, PageHeader, StatusTag } from "@/components/platform-ui";
 import { strategyLabel } from "@/lib/strategy-template-config";
+import { buildBacktestPresetHref, buildBeginnerPresets } from "@/lib/beginner-presets";
 
 export function DashboardView() {
   const [stats, setStats] = useState<MarketDataStats | null>(null);
   const [jobs, setJobs] = useState<BacktestJob[]>([]);
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const beginnerPresets = useMemo(() => (stats ? buildBeginnerPresets(stats.coverages) : []), [stats]);
 
   useEffect(() => {
     async function load() {
@@ -104,6 +106,36 @@ export function DashboardView() {
           </Card>
         </Col>
       </Row>
+
+      <Card title="现成示例标的" size="small" className="section-card">
+        {beginnerPresets.length === 0 ? (
+          <Typography.Text type="secondary">当前还没有适合直接试跑的示例标的，先到数据准备页补 15m 或 1d 数据。</Typography.Text>
+        ) : (
+          <div className="beginner-preset-grid">
+            {beginnerPresets.map((preset) => (
+              <article key={`${preset.symbol}-${preset.interval}`} className="beginner-preset-card">
+                <div className="beginner-preset-head">
+                  <div>
+                    <strong>{preset.symbol}</strong>
+                    <span>{preset.name || "未命名标的"}</span>
+                  </div>
+                  <Tag color={preset.interval === "1d" ? "blue" : "cyan"}>{preset.interval}</Tag>
+                </div>
+                <p>{preset.reason}</p>
+                <div className="beginner-preset-tags">
+                  {preset.availableIntervals.map((item) => (
+                    <Tag key={item}>{item}</Tag>
+                  ))}
+                  <Tag color="gold">{strategyLabel(preset.strategyKind)}</Tag>
+                </div>
+                <Button type="primary">
+                  <Link href={buildBacktestPresetHref(preset)}>用这个示例开始</Link>
+                </Button>
+              </article>
+            ))}
+          </div>
+        )}
+      </Card>
 
       <div className="summary-grid">
         <MetricCard label="可回测标的" value={stats.instrument_count} note="已准备好的标的" />

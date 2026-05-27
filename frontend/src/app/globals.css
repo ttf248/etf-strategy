@@ -330,6 +330,73 @@ a {
   font-size: 20px;
 }
 
+.beginner-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.beginner-preset-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.beginner-preset-button {
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.beginner-preset-button:hover,
+.beginner-preset-button.is-active {
+  border-color: #2563eb;
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.12);
+  transform: translateY(-1px);
+}
+
+.beginner-preset-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.beginner-preset-head div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.beginner-preset-head strong {
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.beginner-preset-head span,
+.beginner-preset-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.beginner-preset-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .home-report-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -523,6 +590,35 @@ a {
 .wizard-step-panel p {
   color: var(--muted);
   line-height: 22px;
+}
+
+.wizard-preset-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 2px;
+  padding: 12px 14px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 12px;
+  background: rgba(29, 78, 216, 0.06);
+}
+
+.wizard-preset-banner strong {
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.wizard-preset-banner span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.wizard-preset-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
 }
 
 .wizard-action-row {

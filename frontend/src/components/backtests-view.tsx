@@ -1,11 +1,13 @@
 "use client";
 
-import { Button, Card, Collapse, Descriptions, Form, Input, InputNumber, message, Select, Space, Steps, Table, Typography } from "antd";
-import { useEffect, useMemo, useState, type Key } from "react";
+import { useSearchParams } from "next/navigation";
+import { Button, Card, Collapse, Descriptions, Form, Input, InputNumber, message, Select, Space, Steps, Table, Tag, Typography } from "antd";
+import { useEffect, useMemo, useRef, useState, type Key } from "react";
 import Link from "next/link";
-import { apiFetch, type BacktestJob, type StrategyTemplate } from "@/lib/api";
+import { apiFetch, type BacktestJob, type MarketDataStats, type StrategyTemplate } from "@/lib/api";
 import { intervalOptions, strategyLabel, strategyOptions } from "@/lib/strategy-template-config";
 import { PageHeader, StatusTag } from "@/components/platform-ui";
+import { buildBeginnerPresets } from "@/lib/beginner-presets";
 
 const strategyGuide: Record<string, { scene: string; beginnerHint: string; risk: string }> = {
   grid: { scene: "震荡行情里低买高卖", beginnerHint: "第一次回测优先选这个", risk: "单边下跌时回撤可能变大" },
@@ -19,11 +21,14 @@ const strategyGuide: Record<string, { scene: string; beginnerHint: string; risk:
 export function BacktestsView() {
   const [form] = Form.useForm();
   const [jobs, setJobs] = useState<BacktestJob[]>([]);
+  const [stats, setStats] = useState<MarketDataStats | null>(null);
   const [templates, setTemplates] = useState<StrategyTemplate[]>([]);
   const [selectedJobIds, setSelectedJobIds] = useState<Key[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   const [messageApi, contextHolder] = message.useMessage();
+  const searchParams = useSearchParams();
+  const presetAppliedRef = useRef(false);
   const selectedStrategy = Form.useWatch("strategy_kind", form) ?? "grid";
   const selectedInterval = Form.useWatch("interval", form) ?? "15m";
   const selectedTemplateId = Form.useWatch("template_id", form) as number | undefined;
@@ -34,6 +39,22 @@ export function BacktestsView() {
   );
   const selectedTemplate = filteredTemplates.find((item) => item.id === selectedTemplateId) ?? null;
   const recommendedTemplate = filteredTemplates.find((item) => item.is_default) ?? filteredTemplates[0] ?? null;
+  const beginnerPresets = useMemo(() => (stats ? buildBeginnerPresets(stats.coverages) : []), [stats]);
+  const queryPreset = useMemo(() => {
+    const symbol = searchParams.get("symbol")?.trim().toUpperCase();
+    const interval = searchParams.get("interval");
+    const strategyKind = searchParams.get("strategy_kind");
+    const validIntervals = new Set(intervalOptions.map((item) => item.value));
+    const validStrategies = new Set(strategyOptions.map((item) => item.value));
+    if (!symbol) {
+      return null;
+    }
+    return {
+      symbol,
+      interval: interval && validIntervals.has(interval) ? interval : "15m",
+      strategy_kind: strategyKind && validStrategies.has(strategyKind) ? strategyKind : "grid",
+    };
+  }, [searchParams]);
 
   async function loadJobs() {
     const payload = await apiFetch<BacktestJob[]>("/api/backtests?limit=100");
@@ -45,13 +66,31 @@ export function BacktestsView() {
     setTemplates(payload);
   }
 
+  async function loadStats() {
+    const payload = await apiFetch<MarketDataStats>("/api/market-data/stats");
+    setStats(payload);
+  }
+
   useEffect(() => {
     async function loadInitialJobs() {
-      await Promise.all([loadJobs(), loadTemplates()]);
+      await Promise.all([loadJobs(), loadTemplates(), loadStats()]);
     }
 
     void loadInitialJobs();
   }, []);
+
+  useEffect(() => {
+    if (presetAppliedRef.current || !queryPreset) {
+      return;
+    }
+    form.setFieldsValue({
+      symbol: queryPreset.symbol,
+      interval: queryPreset.interval,
+      strategy_kind: queryPreset.strategy_kind,
+      template_id: undefined,
+    });
+    presetAppliedRef.current = true;
+  }, [form, queryPreset]);
 
   function applyTemplate(template: StrategyTemplate | null) {
     if (!template) {
@@ -85,6 +124,9 @@ export function BacktestsView() {
     }
     if (activeStep === 1) {
       await form.validateFields(["strategy_kind"]);
+      if (!form.getFieldValue("template_id") && recommendedTemplate) {
+        applyTemplate(recommendedTemplate);
+      }
     }
     setActiveStep((current) => Math.min(current + 1, 2));
   }
@@ -196,6 +238,12 @@ export function BacktestsView() {
             <div className="wizard-step-panel">
               <Typography.Title level={4}>先告诉平台要测哪个标的</Typography.Title>
               <Typography.Paragraph>第一次建议使用已经准备好数据的标的，例如 1810.HK。周期不确定时先用 15m。</Typography.Paragraph>
+              {queryPreset ? (
+                <div className="wizard-preset-banner">
+                  <strong>已带入首页示例</strong>
+                  <span>{queryPreset.symbol} / {queryPreset.interval} / {strategyLabel(queryPreset.strategy_kind)}，确认后直接点下一步即可。</span>
+                </div>
+              ) : null}
               <div className="template-form-grid">
                 <Form.Item name="symbol" label="回测标的" rules={[{ required: true, message: "请输入回测标的" }]} extra="使用 Yahoo 代码，例如 1810.HK、0700.HK、513050.SS。">
                   <Input placeholder="例如 1810.HK" />
@@ -204,6 +252,43 @@ export function BacktestsView() {
                   <Select options={intervalOptions} />
                 </Form.Item>
               </div>
+              {beginnerPresets.length > 0 ? (
+                <div className="wizard-preset-section">
+                  <Typography.Text strong>可直接试跑的示例</Typography.Text>
+                  <div className="beginner-preset-grid">
+                    {beginnerPresets.map((preset) => (
+                      <button
+                        key={`${preset.symbol}-${preset.interval}`}
+                        type="button"
+                        className={`beginner-preset-card beginner-preset-button${form.getFieldValue("symbol") === preset.symbol && form.getFieldValue("interval") === preset.interval ? " is-active" : ""}`}
+                        onClick={() => {
+                          form.setFieldsValue({
+                            symbol: preset.symbol,
+                            interval: preset.interval,
+                            strategy_kind: preset.strategyKind,
+                            template_id: undefined,
+                          });
+                        }}
+                      >
+                        <div className="beginner-preset-head">
+                          <div>
+                            <strong>{preset.symbol}</strong>
+                            <span>{preset.name || "未命名标的"}</span>
+                          </div>
+                          <Tag color={preset.interval === "1d" ? "blue" : "cyan"}>{preset.interval}</Tag>
+                        </div>
+                        <p>{preset.reason}</p>
+                        <div className="beginner-preset-tags">
+                          {preset.availableIntervals.map((item) => (
+                            <Tag key={item}>{item}</Tag>
+                          ))}
+                          <Tag color="gold">{strategyLabel(preset.strategyKind)}</Tag>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -254,7 +339,10 @@ export function BacktestsView() {
                 </Form.Item>
               </div>
               {recommendedTemplate ? (
-                <Button onClick={() => applyTemplate(recommendedTemplate)}>使用推荐模板：{recommendedTemplate.template_name}</Button>
+                <Space direction="vertical" size={8}>
+                  <Typography.Text type="secondary">如果你不想手动挑参数，下一步会自动带入推荐模板。</Typography.Text>
+                  <Button onClick={() => applyTemplate(recommendedTemplate)}>使用推荐模板：{recommendedTemplate.template_name}</Button>
+                </Space>
               ) : (
                 <Typography.Text type="secondary">当前策略和周期没有可用模板，建议换一个周期或先到策略模板页启用模板。</Typography.Text>
               )}
