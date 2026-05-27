@@ -9,6 +9,13 @@ export type BeginnerPreset = {
   availableIntervals: string[];
 };
 
+export type BacktestLaunchPreset = {
+  symbol: string;
+  interval: string;
+  strategyKind: string;
+  templateId?: number;
+};
+
 type GroupedCoverage = {
   symbol: string;
   name: string;
@@ -98,10 +105,21 @@ export function buildBeginnerPresets(coverages: MarketCoverage[]): BeginnerPrese
 }
 
 export function buildBacktestPresetHref(preset: BeginnerPreset): string {
+  return buildBacktestLaunchHref({
+    symbol: preset.symbol,
+    interval: preset.interval,
+    strategyKind: preset.strategyKind,
+  });
+}
+
+export function buildBacktestLaunchHref(preset: BacktestLaunchPreset): string {
   const searchParams = new URLSearchParams({
     symbol: preset.symbol,
     interval: preset.interval,
     strategy_kind: preset.strategyKind,
   });
+  if (preset.templateId !== undefined) {
+    searchParams.set("template_id", String(preset.templateId));
+  }
   return `/backtests?${searchParams.toString()}`;
 }

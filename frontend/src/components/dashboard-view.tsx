@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type BacktestJob, type MarketDataStats, type ReportSummary } from "@/lib/api";
 import { FormatPercent, MetricCard, PageHeader, StatusTag } from "@/components/platform-ui";
 import { strategyLabel } from "@/lib/strategy-template-config";
-import { buildBacktestPresetHref, buildBeginnerPresets } from "@/lib/beginner-presets";
+import { buildBacktestLaunchHref, buildBacktestPresetHref, buildBeginnerPresets } from "@/lib/beginner-presets";
 
 export function DashboardView() {
   const [stats, setStats] = useState<MarketDataStats | null>(null);
@@ -48,6 +48,15 @@ export function DashboardView() {
   const succeededJobs = jobs.filter((item) => item.status === "succeeded").length;
   const failedJobs = jobs.filter((item) => item.status === "failed").length;
   const latestSyncStatus = latestSync?.status === "completed" ? "已完成" : latestSync?.status === "failed" ? "失败" : latestSync?.status ?? "暂无";
+  const latestSucceededJob = jobs.find((item) => item.status === "succeeded") ?? null;
+  const latestSucceededReportId = latestSucceededJob?.reports?.[0]?.id ?? reports.find((item) => item.job_id === latestSucceededJob?.id)?.id ?? null;
+  const latestSucceededPayload = latestSucceededJob?.request_payload ?? null;
+  const latestSucceededTemplateId =
+    typeof latestSucceededPayload?.template_id === "number"
+      ? latestSucceededPayload.template_id
+      : typeof (latestSucceededPayload?.template_snapshot as { id?: unknown } | undefined)?.id === "number"
+        ? ((latestSucceededPayload?.template_snapshot as { id?: number }).id ?? undefined)
+        : undefined;
 
   return (
     <div className="page-stack">
@@ -133,6 +142,52 @@ export function DashboardView() {
                 </Button>
               </article>
             ))}
+          </div>
+        )}
+      </Card>
+
+      <Card title="最近一次成功路径" size="small" className="section-card">
+        {!latestSucceededJob || !latestSucceededPayload ? (
+          <Typography.Text type="secondary">还没有成功跑通的回测任务。先用上面的示例标的完成第一次回测，之后这里会保留可复用入口。</Typography.Text>
+        ) : (
+          <div className="recent-success-card">
+            <div className="recent-success-head">
+              <div>
+                <strong>任务 #{latestSucceededJob.id} 已成功完成</strong>
+                <span>
+                  {String(latestSucceededPayload.symbol ?? "-")} / {String(latestSucceededPayload.interval ?? "-")} / {strategyLabel(String(latestSucceededPayload.strategy_kind ?? "-"))}
+                </span>
+              </div>
+              <StatusTag value={latestSucceededJob.status} />
+            </div>
+            <div className="recent-success-metrics">
+              <span>完成时间 {latestSucceededJob.completed_at || latestSucceededJob.submitted_at || "-"}</span>
+              <span>模板 {String((latestSucceededPayload.template_snapshot as { template_name?: string } | undefined)?.template_name ?? "未记录模板")}</span>
+            </div>
+            <p>如果这次结果值得继续看，先打开报告；如果只是想再换参数或重跑同一路径，可以直接按原标的和周期重新带入创建页。</p>
+            <div className="recent-success-actions">
+              {latestSucceededReportId ? (
+                <Button type="primary">
+                  <Link href={`/reports/${latestSucceededReportId}`}>打开这份报告</Link>
+                </Button>
+              ) : (
+                <Button type="primary">
+                  <Link href="/reports">去报告列表查找</Link>
+                </Button>
+              )}
+              <Button>
+                <Link
+                  href={buildBacktestLaunchHref({
+                    symbol: String(latestSucceededPayload.symbol ?? ""),
+                    interval: String(latestSucceededPayload.interval ?? "15m"),
+                    strategyKind: String(latestSucceededPayload.strategy_kind ?? "grid"),
+                    templateId: latestSucceededTemplateId,
+                  })}
+                >
+                  按相同配置再跑一次
+                </Link>
+              </Button>
+            </div>
           </div>
         )}
       </Card>

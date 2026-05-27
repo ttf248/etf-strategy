@@ -18,6 +18,28 @@ const strategyGuide: Record<string, { scene: string; beginnerHint: string; risk:
   minute_index_grid_retrace: { scene: "指数回落后的网格", beginnerHint: "偏专项策略", risk: "需要匹配指数和标的数据" },
 };
 
+function buildTemplateFieldValues(template: StrategyTemplate) {
+  const execution = template.execution_overrides_json ?? {};
+  return {
+    template_id: template.id,
+    strategy_kind: template.strategy_kind,
+    interval: template.interval,
+    execution_profile: template.execution_profile,
+    validation_start: template.validation_start || undefined,
+    lookback_days: template.lookback_days ?? undefined,
+    validation_ratio: template.validation_ratio ?? undefined,
+    jobs: template.jobs,
+    commission_bps: execution.commission_bps,
+    slippage_bps: execution.slippage_bps,
+    max_position_ratio: execution.max_position_ratio,
+    stop_loss_pct: execution.stop_loss_pct,
+    cooldown_bars: execution.cooldown_bars,
+    benchmark: execution.benchmark,
+    left_side_policy: execution.left_side_policy,
+    force_exit_loss_pct: execution.force_exit_loss_pct,
+  };
+}
+
 export function BacktestsView() {
   const [form] = Form.useForm();
   const [jobs, setJobs] = useState<BacktestJob[]>([]);
@@ -28,7 +50,8 @@ export function BacktestsView() {
   const [activeStep, setActiveStep] = useState(0);
   const [messageApi, contextHolder] = message.useMessage();
   const searchParams = useSearchParams();
-  const presetAppliedRef = useRef(false);
+  const basePresetAppliedRef = useRef(false);
+  const templatePresetAppliedRef = useRef(false);
   const selectedStrategy = Form.useWatch("strategy_kind", form) ?? "grid";
   const selectedInterval = Form.useWatch("interval", form) ?? "15m";
   const selectedTemplateId = Form.useWatch("template_id", form) as number | undefined;
@@ -44,6 +67,8 @@ export function BacktestsView() {
     const symbol = searchParams.get("symbol")?.trim().toUpperCase();
     const interval = searchParams.get("interval");
     const strategyKind = searchParams.get("strategy_kind");
+    const templateIdRaw = searchParams.get("template_id");
+    const templateId = templateIdRaw ? Number(templateIdRaw) : undefined;
     const validIntervals = new Set(intervalOptions.map((item) => item.value));
     const validStrategies = new Set(strategyOptions.map((item) => item.value));
     if (!symbol) {
@@ -53,6 +78,7 @@ export function BacktestsView() {
       symbol,
       interval: interval && validIntervals.has(interval) ? interval : "15m",
       strategy_kind: strategyKind && validStrategies.has(strategyKind) ? strategyKind : "grid",
+      template_id: templateId !== undefined && Number.isFinite(templateId) ? templateId : undefined,
     };
   }, [searchParams]);
 
@@ -80,42 +106,35 @@ export function BacktestsView() {
   }, []);
 
   useEffect(() => {
-    if (presetAppliedRef.current || !queryPreset) {
+    if (basePresetAppliedRef.current || !queryPreset) {
       return;
     }
     form.setFieldsValue({
       symbol: queryPreset.symbol,
       interval: queryPreset.interval,
       strategy_kind: queryPreset.strategy_kind,
-      template_id: undefined,
+      template_id: queryPreset.template_id,
     });
-    presetAppliedRef.current = true;
+    basePresetAppliedRef.current = true;
   }, [form, queryPreset]);
+
+  useEffect(() => {
+    if (!queryPreset?.template_id || templatePresetAppliedRef.current || templates.length === 0) {
+      return;
+    }
+    const matchedTemplate = templates.find((item) => item.id === queryPreset.template_id) ?? null;
+    if (matchedTemplate) {
+      form.setFieldsValue(buildTemplateFieldValues(matchedTemplate));
+    }
+    templatePresetAppliedRef.current = true;
+  }, [form, queryPreset, templates]);
 
   function applyTemplate(template: StrategyTemplate | null) {
     if (!template) {
       form.setFieldValue("template_id", undefined);
       return;
     }
-    const execution = template.execution_overrides_json ?? {};
-    form.setFieldsValue({
-      template_id: template.id,
-      strategy_kind: template.strategy_kind,
-      interval: template.interval,
-      execution_profile: template.execution_profile,
-      validation_start: template.validation_start || undefined,
-      lookback_days: template.lookback_days ?? undefined,
-      validation_ratio: template.validation_ratio ?? undefined,
-      jobs: template.jobs,
-      commission_bps: execution.commission_bps,
-      slippage_bps: execution.slippage_bps,
-      max_position_ratio: execution.max_position_ratio,
-      stop_loss_pct: execution.stop_loss_pct,
-      cooldown_bars: execution.cooldown_bars,
-      benchmark: execution.benchmark,
-      left_side_policy: execution.left_side_policy,
-      force_exit_loss_pct: execution.force_exit_loss_pct,
-    });
+    form.setFieldsValue(buildTemplateFieldValues(template));
   }
 
   async function goNextStep() {
