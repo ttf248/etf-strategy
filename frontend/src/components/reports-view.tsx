@@ -1,7 +1,7 @@
 "use client";
 
 import { StarFilled, StarOutlined } from "@ant-design/icons";
-import { Button, Card, Empty, Input, Select, Space, Table, Tag, Typography } from "antd";
+import { Button, Card, Collapse, Empty, Input, Select, Space, Table, Tag, Typography } from "antd";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -45,6 +45,20 @@ function buildRerunHref(report: ReportSummary) {
     interval: report.interval,
     strategyKind: report.strategy_kind,
   });
+}
+
+function buildCardHint(report: ReportSummary) {
+  const { netReturn, maxDrawdown, closedTrades } = getValidationMetrics(report);
+  if (closedTrades === 0) {
+    return "这份结果更适合先判断为什么没成交，再决定换标的还是换周期。";
+  }
+  if (netReturn > 0 && maxDrawdown <= 8) {
+    return "这份结果适合优先细看，再和同标的其他报告做稳健性对比。";
+  }
+  if (netReturn > 0) {
+    return "这份结果有收益，但要先看回撤和净值曲线是否在你的承受范围内。";
+  }
+  return "这份结果更适合当作反面对照，重跑时优先换模板、参数或周期。";
 }
 
 function parseCompareIds(values: string[]): number[] {
@@ -200,6 +214,24 @@ export function ReportsView() {
     () => reports.filter((item) => queryPreset?.compareIds.includes(item.id) && selectedReportIds.includes(item.id)),
     [queryPreset, reports, selectedReportIds],
   );
+  const sortedCardReports = useMemo(() => {
+    return [...filteredReports].sort((left, right) => {
+      const leftFavorite = validFavoriteReportIds.includes(left.id) ? 1 : 0;
+      const rightFavorite = validFavoriteReportIds.includes(right.id) ? 1 : 0;
+      if (leftFavorite !== rightFavorite) {
+        return rightFavorite - leftFavorite;
+      }
+      const leftMetrics = getValidationMetrics(left);
+      const rightMetrics = getValidationMetrics(right);
+      if (leftMetrics.netReturn !== rightMetrics.netReturn) {
+        return rightMetrics.netReturn - leftMetrics.netReturn;
+      }
+      if (leftMetrics.maxDrawdown !== rightMetrics.maxDrawdown) {
+        return leftMetrics.maxDrawdown - rightMetrics.maxDrawdown;
+      }
+      return right.id - left.id;
+    });
+  }, [filteredReports, validFavoriteReportIds]);
 
   function toggleCompare(reportId: number) {
     setSelectedReportIds((current) => {
@@ -255,7 +287,22 @@ export function ReportsView() {
           </div>
         ) : null}
         {comparedReports.length === 0 ? (
-          <Typography.Text type="secondary">从报告列表中选择 2 到 4 份报告，对比样本外收益、最大回撤和交易次数。</Typography.Text>
+          <div className="report-compare-empty">
+            <strong>先从下面的报告卡片挑 2 到 4 份</strong>
+            <p>先别急着看表格。先挑你最想比较的几份结果，再一起看收益、回撤和交易次数，更符合第一次复盘的阅读顺序。</p>
+            <div className="report-compare-empty-actions">
+              {bestReport ? (
+                <Button type="primary">
+                  <Link href={`/reports/${bestReport.id}`}>先打开收益最高报告</Link>
+                </Button>
+              ) : null}
+              {latestReport ? (
+                <Button>
+                  <Link href={`/reports/${latestReport.id}`}>打开最近生成报告</Link>
+                </Button>
+              ) : null}
+            </div>
+          </div>
         ) : (
           <div className="report-compare-stack">
             <div className="report-compare-grid">
@@ -339,8 +386,12 @@ export function ReportsView() {
           <Empty description={showFavoritesOnly ? "暂无收藏报告" : "暂无报告"} />
         ) : (
           <>
+            <div className="report-library-banner">
+              <strong>先用卡片挑出想看的报告，再决定是否展开高级表格</strong>
+              <p>卡片已经把结论、收益、回撤和下一步动作放在一起。只有当你需要批量勾选或细看全部字段时，再展开下面的高级表格视图。</p>
+            </div>
             <div className="report-mobile-list">
-              {filteredReports.map((report) => {
+              {sortedCardReports.map((report) => {
                 const { netReturn, maxDrawdown, closedTrades } = getValidationMetrics(report);
                 const verdict = buildVerdict(netReturn, maxDrawdown);
                 const isFavorite = validFavoriteReportIds.includes(report.id);
@@ -357,7 +408,7 @@ export function ReportsView() {
                         <Tag color={verdict.color}>{verdict.label}</Tag>
                       </div>
                     </div>
-                    <p>{verdict.description}</p>
+                    <p>{buildCardHint(report)}</p>
                     <div className="report-mobile-metrics">
                       <span>收益 <FormatPercent value={netReturn} /></span>
                       <span>回撤 {maxDrawdown.toFixed(2)}%</span>
@@ -381,79 +432,87 @@ export function ReportsView() {
                 );
               })}
             </div>
-            <Table
-              className="report-desktop-table"
-              rowKey="id"
-              size="small"
-              dataSource={filteredReports}
-              rowSelection={{
-                selectedRowKeys: selectedReportIds,
-                onChange: (keys) => setSelectedReportIds(keys.map(Number).slice(-4)),
-              }}
-              pagination={{ pageSize: 12, showSizeChanger: false }}
-              scroll={{ x: 980 }}
-              columns={[
-                { title: "报告", dataIndex: "id", width: 88, fixed: "left", render: (value: number) => `#${value}` },
-                { title: "标的", dataIndex: "symbol", width: 120 },
-                { title: "名称", dataIndex: "name", ellipsis: true },
-                { title: "周期", dataIndex: "interval", width: 90 },
-                { title: "策略", dataIndex: "strategy_kind", width: 180, ellipsis: true, render: (value: string) => strategyLabel(value) },
+            <Collapse
+              className="advanced-table-panel"
+              ghost
+              items={[
                 {
-                  title: "结论",
-                  width: 150,
-                  render: (_, row) => {
-                    const { netReturn, maxDrawdown } = getValidationMetrics(row);
-                    const verdict = buildVerdict(netReturn, maxDrawdown);
-                    return <Tag color={verdict.color}>{verdict.label}</Tag>;
-                  },
-                },
-                {
-                  title: "样本外收益",
-                  width: 120,
-                  render: (_, row) => <FormatPercent value={getValidationMetrics(row).netReturn} />,
-                },
-                {
-                  title: "最大回撤",
-                  width: 120,
-                  render: (_, row) => `${getValidationMetrics(row).maxDrawdown.toFixed(2)}%`,
-                },
-                {
-                  title: "怎么理解",
-                  width: 260,
-                  render: (_, row) => {
-                    const { netReturn, maxDrawdown } = getValidationMetrics(row);
-                    const verdict = buildVerdict(netReturn, maxDrawdown);
-                    return <Typography.Text type="secondary">{verdict.description}</Typography.Text>;
-                  },
-                },
-                { title: "生成时间", dataIndex: "created_at", width: 180, ellipsis: true },
-                {
-                  title: "收藏",
-                  width: 110,
-                      render: (_, row) => (
-                        <Button
-                          size="small"
-                          type={validFavoriteReportIds.includes(row.id) ? "primary" : "default"}
-                          icon={validFavoriteReportIds.includes(row.id) ? <StarFilled /> : <StarOutlined />}
-                          onClick={() => toggleFavorite(row.id)}
-                        >
-                          {validFavoriteReportIds.includes(row.id) ? "已收藏" : "收藏"}
-                        </Button>
-                      ),
-                    },
-                {
-                  title: "操作",
-                  width: 180,
-                  fixed: "right",
-                  render: (_, row) => (
-                    <Space size="small">
-                      <Button size="small" type="link">
-                        <Link href={`/reports/${row.id}`}>打开</Link>
-                      </Button>
-                      <Button size="small">
-                        <Link href={buildRerunHref(row)}>重跑</Link>
-                      </Button>
-                    </Space>
+                  key: "desktop-table",
+                  label: "高级表格视图：批量勾选与精细筛选",
+                  children: (
+                    <Table
+                      className="report-desktop-table"
+                      rowKey="id"
+                      size="small"
+                      dataSource={filteredReports}
+                      rowSelection={{
+                        selectedRowKeys: selectedReportIds,
+                        onChange: (keys) => setSelectedReportIds(keys.map(Number).slice(-4)),
+                      }}
+                      pagination={{ pageSize: 12, showSizeChanger: false }}
+                      scroll={{ x: 980 }}
+                      columns={[
+                        { title: "报告", dataIndex: "id", width: 88, fixed: "left", render: (value: number) => `#${value}` },
+                        { title: "标的", dataIndex: "symbol", width: 120 },
+                        { title: "名称", dataIndex: "name", ellipsis: true },
+                        { title: "周期", dataIndex: "interval", width: 90 },
+                        { title: "策略", dataIndex: "strategy_kind", width: 180, ellipsis: true, render: (value: string) => strategyLabel(value) },
+                        {
+                          title: "结论",
+                          width: 150,
+                          render: (_, row) => {
+                            const { netReturn, maxDrawdown } = getValidationMetrics(row);
+                            const verdict = buildVerdict(netReturn, maxDrawdown);
+                            return <Tag color={verdict.color}>{verdict.label}</Tag>;
+                          },
+                        },
+                        {
+                          title: "样本外收益",
+                          width: 120,
+                          render: (_, row) => <FormatPercent value={getValidationMetrics(row).netReturn} />,
+                        },
+                        {
+                          title: "最大回撤",
+                          width: 120,
+                          render: (_, row) => `${getValidationMetrics(row).maxDrawdown.toFixed(2)}%`,
+                        },
+                        {
+                          title: "怎么理解",
+                          width: 260,
+                          render: (_, row) => <Typography.Text type="secondary">{buildCardHint(row)}</Typography.Text>,
+                        },
+                        { title: "生成时间", dataIndex: "created_at", width: 180, ellipsis: true },
+                        {
+                          title: "收藏",
+                          width: 110,
+                          render: (_, row) => (
+                            <Button
+                              size="small"
+                              type={validFavoriteReportIds.includes(row.id) ? "primary" : "default"}
+                              icon={validFavoriteReportIds.includes(row.id) ? <StarFilled /> : <StarOutlined />}
+                              onClick={() => toggleFavorite(row.id)}
+                            >
+                              {validFavoriteReportIds.includes(row.id) ? "已收藏" : "收藏"}
+                            </Button>
+                          ),
+                        },
+                        {
+                          title: "操作",
+                          width: 180,
+                          fixed: "right",
+                          render: (_, row) => (
+                            <Space size="small">
+                              <Button size="small" type="link">
+                                <Link href={`/reports/${row.id}`}>打开</Link>
+                              </Button>
+                              <Button size="small">
+                                <Link href={buildRerunHref(row)}>重跑</Link>
+                              </Button>
+                            </Space>
+                          ),
+                        },
+                      ]}
+                    />
                   ),
                 },
               ]}
