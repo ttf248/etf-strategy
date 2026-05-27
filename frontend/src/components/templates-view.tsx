@@ -152,7 +152,7 @@ function buildTemplateRecommendationSpotlight(template: StrategyTemplate): Templ
     return {
       label: "默认推荐，优先先试",
       color: "gold",
-      reason: "这类模板默认排在最前，适合先把回测流程和报告阅读跑通，再决定要不要改高级参数。",
+      reason: "这类模板默认排在最前，适合先把回测流程和报告阅读跑通，再决定要不要改详细设置。",
     };
   }
   if (guide.starterRank <= 1) {
@@ -490,7 +490,7 @@ export function TemplatesView() {
           <>
             <div className="template-order-banner">
               <strong>这些模板默认已经按更适合先试的顺序排好</strong>
-              <p>排序顺序固定为：先看默认模板，再看更容易上手的长期或基础模板，最后再看分钟进阶和专项模板。这样能避免你一上来就掉进高级参数和复杂节奏里。</p>
+              <p>排序顺序固定为：先看默认模板，再看更容易上手的长期或基础模板，最后再看分钟进阶和专项模板。这样能避免你一上来就掉进详细设置和复杂节奏里。</p>
               <div className="template-order-tags">
                 <span>1. 默认模板</span>
                 <span>2. 更易上手</span>
@@ -621,7 +621,7 @@ export function TemplatesView() {
 
       <Card size="small" title="高级模板管理" className="section-card">
         <div className="template-management-banner">
-          <strong>只有在你需要维护模板时，再展开完整列表和高级参数编辑</strong>
+          <strong>只有在你需要维护模板时，再展开完整列表并调整详细设置</strong>
           <p>日常使用优先在上面的推荐模板和对比区做选择。启用模板、新建模板、查看完整列表和调整详细设置都保留在这里，但不再作为首屏主路径。</p>
         </div>
         <div className="template-management-grid">
@@ -633,7 +633,7 @@ export function TemplatesView() {
           <article className="template-management-card">
             <span>什么时候值得编辑</span>
             <strong>默认模板不适合你的实际条件</strong>
-            <p>例如手续费、滑点、仓位或参数范围明显不符合你的标的和交易方式，这时再改高级参数更有意义。</p>
+            <p>例如手续费、滑点、仓位或参数范围明显不符合你的标的和交易方式，这时再改详细设置更有意义。</p>
           </article>
           <article className="template-management-card">
             <span>什么时候不用碰</span>
