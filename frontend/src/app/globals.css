@@ -267,6 +267,37 @@ a {
   margin-top: 4px;
 }
 
+.start-path-card .ant-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, max-content);
+  gap: 18px;
+  align-items: center;
+}
+
+.start-path-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.start-path-main strong {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.start-path-main p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 22px;
+}
+
+.start-path-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
 .readiness-card {
   display: flex;
   flex-direction: column;
@@ -456,6 +487,41 @@ a {
   gap: 8px;
 }
 
+.recent-success-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.recent-success-guide-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.recent-success-guide-card span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.recent-success-guide-card strong {
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.recent-success-guide-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .home-report-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -511,6 +577,13 @@ a {
   color: var(--muted-strong);
   font-size: 12px;
   font-weight: 650;
+}
+
+.home-report-brief {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .summary-grid {
@@ -1905,6 +1978,10 @@ a {
   .report-mobile-list {
     display: grid;
     gap: 12px;
+  }
+
+  .start-path-card .ant-card-body {
+    grid-template-columns: 1fr;
   }
 
   .report-desktop-table {

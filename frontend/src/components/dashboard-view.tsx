@@ -9,6 +9,93 @@ import { FormatPercent, MetricCard, PageHeader, StatusTag } from "@/components/p
 import { strategyLabel } from "@/lib/strategy-template-config";
 import { buildBacktestLaunchHref, buildBacktestPresetHref, buildBeginnerPresets } from "@/lib/beginner-presets";
 
+function getValidationMetrics(report: ReportSummary) {
+  const validation = report.summary_metrics.validation ?? {};
+  const netReturn = Number(validation.NetReturnPct ?? validation.ReturnPct ?? 0);
+  const maxDrawdown = Number(validation.MaxDrawdownPct ?? 0);
+  const closedTrades = Number(validation.ClosedTrades ?? 0);
+  return { netReturn, maxDrawdown, closedTrades };
+}
+
+function latestSuccessGuides(report: ReportSummary) {
+  const { netReturn, maxDrawdown, closedTrades } = getValidationMetrics(report);
+  return [
+    {
+      title: "这次结果值不值得继续看",
+      value: netReturn > 0 ? "先继续看" : "先别急着采用",
+      description:
+        netReturn > 0
+          ? `样本外收益 ${netReturn.toFixed(2)}%，说明这套组合至少在这段测试区间里跑出了正收益。`
+          : `样本外收益 ${netReturn.toFixed(2)}%，先不要直接采用，优先对比别的模板或周期。`,
+    },
+    {
+      title: "中途波动大不大",
+      value: maxDrawdown <= 8 ? "回撤较可控" : maxDrawdown <= 15 ? "回撤中等" : "回撤偏大",
+      description:
+        maxDrawdown <= 8
+          ? `最大回撤 ${maxDrawdown.toFixed(2)}%，对第一次复盘来说更容易接受。`
+          : `最大回撤 ${maxDrawdown.toFixed(2)}%，继续使用前要重点看自己是否接受这种波动。`,
+    },
+    {
+      title: "接下来怎么做",
+      value: closedTrades === 0 ? "换标的或周期" : netReturn > 0 ? "拿去做对比" : "换参数重跑",
+      description:
+        closedTrades === 0
+          ? "这次没有形成有效成交，优先换一个更活跃的标的或周期。"
+          : netReturn > 0
+            ? "先打开报告详情，再去对比区和同标的其他结果放在一起看。"
+            : "先保留这份结果，再用同一路径换模板或换周期重跑一轮。",
+    },
+  ];
+}
+
+function buildStartRecommendation(params: {
+  instrumentCount: number;
+  reportCount: number;
+  presetCount: number;
+  latestSucceededReportId: number | null;
+  rerunHref: string | null;
+}) {
+  if (params.latestSucceededReportId && params.rerunHref) {
+    return {
+      title: "你已经跑通过一次了，先沿着成功路径继续",
+      description: "最省力的做法不是重新填一遍，而是先打开上次成功报告，确认结果含义后，再按同一路径重跑一轮做对比。",
+      primaryLabel: "打开最近成功报告",
+      primaryHref: `/reports/${params.latestSucceededReportId}`,
+      secondaryLabel: "按相同配置再跑一次",
+      secondaryHref: params.rerunHref,
+    };
+  }
+  if (params.presetCount > 0) {
+    return {
+      title: "先用现成示例跑通第一轮",
+      description: "你已经有适合首跑的标的和周期，不需要先研究全部功能。直接用示例进入创建回测页最省时间。",
+      primaryLabel: "看示例标的",
+      primaryHref: "#beginner-presets",
+      secondaryLabel: "直接去创建回测",
+      secondaryHref: "/backtests",
+    };
+  }
+  if (params.instrumentCount > 0) {
+    return {
+      title: "先检查一个你熟悉的标的",
+      description: "库里已经有数据，但还没形成现成示例。先去数据准备页检查 1d 或 15m 是否齐全，再决定回测。",
+      primaryLabel: "去检查数据",
+      primaryHref: "/market-data",
+      secondaryLabel: "直接去创建回测",
+      secondaryHref: "/backtests",
+    };
+  }
+  return {
+    title: "先准备一个可以回测的标的",
+    description: "当前还没有可直接首跑的数据。先去数据准备页补一个熟悉标的的 1d 或 15m，再回到首页开始。",
+    primaryLabel: "去准备数据",
+    primaryHref: "/market-data",
+    secondaryLabel: "查看模板",
+    secondaryHref: "/templates",
+  };
+}
+
 export function DashboardView() {
   const [stats, setStats] = useState<MarketDataStats | null>(null);
   const [jobs, setJobs] = useState<BacktestJob[]>([]);
@@ -49,7 +136,8 @@ export function DashboardView() {
   const failedJobs = jobs.filter((item) => item.status === "failed").length;
   const latestSyncStatus = latestSync?.status === "completed" ? "已完成" : latestSync?.status === "failed" ? "失败" : latestSync?.status ?? "暂无";
   const latestSucceededJob = jobs.find((item) => item.status === "succeeded") ?? null;
-  const latestSucceededReportId = latestSucceededJob?.reports?.[0]?.id ?? reports.find((item) => item.job_id === latestSucceededJob?.id)?.id ?? null;
+  const latestSucceededReportSummary = reports.find((item) => item.job_id === latestSucceededJob?.id) ?? null;
+  const latestSucceededReportId = latestSucceededJob?.reports?.[0]?.id ?? latestSucceededReportSummary?.id ?? null;
   const latestSucceededPayload = latestSucceededJob?.request_payload ?? null;
   const latestSucceededTemplateId =
     typeof latestSucceededPayload?.template_id === "number"
@@ -57,6 +145,21 @@ export function DashboardView() {
       : typeof (latestSucceededPayload?.template_snapshot as { id?: unknown } | undefined)?.id === "number"
         ? ((latestSucceededPayload?.template_snapshot as { id?: number }).id ?? undefined)
         : undefined;
+  const latestSucceededRerunHref = latestSucceededPayload
+    ? buildBacktestLaunchHref({
+        symbol: String(latestSucceededPayload.symbol ?? ""),
+        interval: String(latestSucceededPayload.interval ?? "15m"),
+        strategyKind: String(latestSucceededPayload.strategy_kind ?? "grid"),
+        templateId: latestSucceededTemplateId,
+      })
+    : null;
+  const startRecommendation = buildStartRecommendation({
+    instrumentCount: stats.instrument_count,
+    reportCount: reports.length,
+    presetCount: beginnerPresets.length,
+    latestSucceededReportId,
+    rerunHref: latestSucceededRerunHref,
+  });
 
   return (
     <div className="page-stack">
@@ -82,6 +185,21 @@ export function DashboardView() {
           <span>{stats.instrument_count.toLocaleString()} 个标的，{stats.total_bars.toLocaleString()} 条 K 线</span>
         </div>
       </section>
+
+      <Card size="small" className="section-card start-path-card">
+        <div className="start-path-main">
+          <strong>{startRecommendation.title}</strong>
+          <p>{startRecommendation.description}</p>
+        </div>
+        <div className="start-path-actions">
+          <Button type="primary">
+            <Link href={startRecommendation.primaryHref}>{startRecommendation.primaryLabel}</Link>
+          </Button>
+          <Button>
+            <Link href={startRecommendation.secondaryHref}>{startRecommendation.secondaryLabel}</Link>
+          </Button>
+        </div>
+      </Card>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} md={8}>
@@ -116,7 +234,7 @@ export function DashboardView() {
         </Col>
       </Row>
 
-      <Card title="现成示例标的" size="small" className="section-card">
+      <Card id="beginner-presets" title="现成示例标的" size="small" className="section-card">
         {beginnerPresets.length === 0 ? (
           <Typography.Text type="secondary">当前还没有适合直接试跑的示例标的，先到数据准备页补 15m 或 1d 数据。</Typography.Text>
         ) : (
@@ -164,6 +282,17 @@ export function DashboardView() {
               <span>完成时间 {latestSucceededJob.completed_at || latestSucceededJob.submitted_at || "-"}</span>
               <span>模板 {String((latestSucceededPayload.template_snapshot as { template_name?: string } | undefined)?.template_name ?? "未记录模板")}</span>
             </div>
+            {latestSucceededReportSummary ? (
+              <div className="recent-success-guide-grid">
+                {latestSuccessGuides(latestSucceededReportSummary).map((item) => (
+                  <article key={item.title} className="recent-success-guide-card">
+                    <span>{item.title}</span>
+                    <strong>{item.value}</strong>
+                    <p>{item.description}</p>
+                  </article>
+                ))}
+              </div>
+            ) : null}
             <p>如果这次结果值得继续看，先打开报告；如果只是想再换参数或重跑同一路径，可以直接按原标的和周期重新带入创建页。</p>
             <div className="recent-success-actions">
               {latestSucceededReportId ? (
@@ -176,14 +305,7 @@ export function DashboardView() {
                 </Button>
               )}
               <Button>
-                <Link
-                  href={buildBacktestLaunchHref({
-                    symbol: String(latestSucceededPayload.symbol ?? ""),
-                    interval: String(latestSucceededPayload.interval ?? "15m"),
-                    strategyKind: String(latestSucceededPayload.strategy_kind ?? "grid"),
-                    templateId: latestSucceededTemplateId,
-                  })}
-                >
+                <Link href={latestSucceededRerunHref ?? "/backtests"}>
                   按相同配置再跑一次
                 </Link>
               </Button>
@@ -206,6 +328,13 @@ export function DashboardView() {
           <div className="home-report-list">
             {reports.slice(0, 4).map((report) => {
               const validation = report.summary_metrics.validation ?? {};
+              const { netReturn, maxDrawdown } = getValidationMetrics(report);
+              const brief =
+                netReturn > 0 && maxDrawdown <= 8
+                  ? "这份结果更稳，适合先打开看看为什么能赚钱。"
+                  : netReturn > 0
+                    ? "这份结果虽然赚钱，但要先看回撤自己是否能接受。"
+                    : "这份结果不理想，适合拿来和别的模板或周期做反面对比。";
               return (
                 <article key={report.id} className="home-report-card">
                   <div className="home-report-card-head">
@@ -219,6 +348,7 @@ export function DashboardView() {
                     <span>样本外收益 <FormatPercent value={validation.NetReturnPct ?? validation.ReturnPct ?? 0} /></span>
                     <span>最大回撤 {Number(validation.MaxDrawdownPct ?? 0).toFixed(2)}%</span>
                   </div>
+                  <p className="home-report-brief">{brief}</p>
                   <Button type="primary">
                     <Link href={`/reports/${report.id}`}>打开报告</Link>
                   </Button>
