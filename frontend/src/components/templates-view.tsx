@@ -799,7 +799,7 @@ export function TemplatesView() {
       </Card>
 
       <Drawer
-        title={editingTemplate ? `编辑高级模板 #${editingTemplate.id}` : "新建高级模板"}
+        title={editingTemplate ? `编辑高级模板，编号 ${editingTemplate.id}` : "新建高级模板"}
         size="large"
         open={drawerOpen}
         destroyOnHidden
