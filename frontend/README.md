@@ -43,6 +43,24 @@ npm run build
 npm run start
 ```
 
+## 冒烟验证
+
+先确保本地 API 已启动，并且已经执行过 `init-db` 与 `import-csv` 导入样例行情。
+
+首次执行需要安装浏览器：
+
+```powershell
+npx playwright install chromium
+```
+
+然后执行：
+
+```powershell
+npm run test:smoke
+```
+
+该命令默认优先复用本地 `3000` 端口上已经运行的前端；如果本地没有运行实例，则会自动拉起一个测试专用前端服务，并使用真实 FastAPI 接口验证“首页 -> 创建回测 -> 提交任务”的主路径。测试结束后会对新建任务补发取消请求，避免队列持续堆积。
+
 ## 与后端协作
 
 前端依赖以下 API 分组：

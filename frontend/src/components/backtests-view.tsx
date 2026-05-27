@@ -158,13 +158,14 @@ export function BacktestsView() {
     setActiveStep((current) => Math.min(current + 1, 2));
   }
 
-  async function onFinish(values: Record<string, unknown>) {
+  async function onFinish() {
     setSubmitting(true);
     try {
+      const submittedValues = form.getFieldsValue(true);
       const result = await apiFetch<{ job_id: number }>("/api/backtests", {
         method: "POST",
         body: JSON.stringify({
-          ...values,
+          ...submittedValues,
           parameter_space: selectedTemplate?.parameter_space_json,
         }),
       });

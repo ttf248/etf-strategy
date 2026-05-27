@@ -188,6 +188,8 @@ git diff --check
 cd frontend
 npm run lint
 npm run build
+npx playwright install chromium
+npm run test:smoke
 ```
 
 ## 贡献

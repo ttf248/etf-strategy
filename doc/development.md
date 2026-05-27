@@ -98,6 +98,8 @@ git diff --check
 cd frontend
 npm run lint
 npm run build
+npx playwright install chromium
+npm run test:smoke
 ```
 
 如果改动只涉及文档，至少运行 `tests.test_repo_contracts` 和 `git diff --check`。
