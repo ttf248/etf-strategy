@@ -55,6 +55,12 @@ type TemplateQuickPick = {
   interval: string;
 };
 
+type TemplateRecommendationSpotlight = {
+  label: string;
+  color: string;
+  reason: string;
+};
+
 const executionProfiles = [
   { label: "实盘口径", value: "realistic" },
   { label: "研究口径", value: "research" },
@@ -129,6 +135,41 @@ function compareTemplateSort(left: StrategyTemplate, right: StrategyTemplate): n
     }
   }
   return 0;
+}
+
+function buildTemplateRecommendationSpotlight(template: StrategyTemplate): TemplateRecommendationSpotlight {
+  const guide = strategyGuide[template.strategy_kind] ?? {
+    scene: "自定义策略",
+    level: "自定义",
+    audience: "自定义",
+    starterRank: 99,
+  };
+  if (template.is_default) {
+    return {
+      label: "默认推荐，优先先试",
+      color: "gold",
+      reason: "这类模板默认排在最前，适合先把回测流程和报告阅读跑通，再决定要不要改高级参数。",
+    };
+  }
+  if (guide.starterRank <= 1) {
+    return {
+      label: "适合先上手",
+      color: "green",
+      reason: `这类模板更容易理解，适合 ${guide.audience}，通常比分钟进阶模板更适合作为第一批候选。`,
+    };
+  }
+  if (template.interval === "1d") {
+    return {
+      label: "适合先看长期节奏",
+      color: "blue",
+      reason: "这类模板更适合先理解长期持有或日线节奏，再决定要不要进一步尝试分钟级策略。",
+    };
+  }
+  return {
+    label: "更适合进阶再试",
+    color: "purple",
+    reason: "这类模板通常需要你已经接受更高波动、更多参数或更频繁的交易节奏，所以默认排在后面。",
+  };
 }
 
 export function TemplatesView() {
@@ -387,6 +428,23 @@ export function TemplatesView() {
               ? "新手更需要先把回测流程和报告阅读跑通，而不是先改参数。只有当默认模板明显不适合你的标的、周期或手续费假设时，再去编辑或新建模板。"
               : "如果当前没有启用模板，先在下方高级管理区启用默认模板，或者在确实需要时新建高级模板。"}
           </p>
+          <div className="start-path-guide-grid">
+            <article className="start-path-guide-card">
+              <span>现在最该做</span>
+              <strong>{defaultRecommendedTemplate ? "先用默认模板去回测" : "先启用一个默认模板"}</strong>
+              <p>{defaultRecommendedTemplate ? "先把主路径跑通，再回来比较别的模板。" : "当前还没有可直接使用的模板，先保证至少有一个启用模板可选。"}</p>
+            </article>
+            <article className="start-path-guide-card">
+              <span>为什么不先新建</span>
+              <strong>先确认默认模板哪里不够用</strong>
+              <p>只有当默认模板明显不适合你的标的、周期或手续费假设时，新建或编辑高级模板才有明确价值。</p>
+            </article>
+            <article className="start-path-guide-card">
+              <span>什么时候进高级管理</span>
+              <strong>需要维护时再进去</strong>
+              <p>例如当前没有启用模板、默认模板不适合当前场景，或者你确实要新增自己的参数空间。</p>
+            </article>
+          </div>
         </div>
         <div className="start-path-actions">
           {defaultRecommendedTemplate ? (
@@ -425,35 +483,55 @@ export function TemplatesView() {
         {recommendedTemplates.length === 0 ? (
           <Typography.Text type="secondary">当前没有启用的模板。先展开下方高级管理，启用一个默认模板或新建高级模板，再回到这里选择。</Typography.Text>
         ) : (
-          <div className="template-recommend-grid">
-            {recommendedTemplates.map((template) => {
-              const guide = strategyGuide[template.strategy_kind] ?? { scene: "自定义策略", level: "自定义" };
-              return (
-                <article key={template.id} className="template-recommend-card">
-                  <div className="template-recommend-head">
-                    <div>
-                      <strong>{template.template_name}</strong>
-                      <span>{strategyLabel(template.strategy_kind)} / {template.interval} / {template.execution_profile}</span>
+          <>
+            <div className="template-order-banner">
+              <strong>这些模板默认已经按更适合先试的顺序排好</strong>
+              <p>排序顺序固定为：先看默认模板，再看更容易上手的长期或基础模板，最后再看分钟进阶和专项模板。这样能避免你一上来就掉进高级参数和复杂节奏里。</p>
+              <div className="template-order-tags">
+                <span>1. 默认模板</span>
+                <span>2. 更易上手</span>
+                <span>3. 长期或基础节奏</span>
+                <span>4. 分钟进阶与专项</span>
+              </div>
+            </div>
+            <div className="template-recommend-grid">
+              {recommendedTemplates.map((template) => {
+                const guide = strategyGuide[template.strategy_kind] ?? { scene: "自定义策略", level: "自定义" };
+                const spotlight = buildTemplateRecommendationSpotlight(template);
+                return (
+                  <article key={template.id} className="template-recommend-card">
+                    <div className="template-recommend-head">
+                      <div>
+                        <strong>{template.template_name}</strong>
+                        <span>{strategyLabel(template.strategy_kind)} / {template.interval} / {template.execution_profile}</span>
+                      </div>
+                      <Tag color={template.is_default ? "gold" : "green"}>{template.is_default ? "默认推荐" : "可直接使用"}</Tag>
                     </div>
-                    <Tag color={template.is_default ? "gold" : "green"}>{template.is_default ? "默认推荐" : "可直接使用"}</Tag>
-                  </div>
-                  <p>{template.description || guide.scene}</p>
-                  <div className="template-recommend-meta">
-                    <span>适合谁：{guide.audience}</span>
-                    <span>适合：{guide.scene}</span>
-                    <span>难度：{guide.level}</span>
-                  </div>
-                  <div className="template-recommend-actions">
-                    <Button type="primary">
-                      <Link href={buildBacktestLaunchHref({ interval: template.interval, strategyKind: template.strategy_kind, templateId: template.id })}>用这个模板去回测</Link>
-                    </Button>
-                    <Button onClick={() => toggleCompare(template.id)}>{selectedTemplateIds.includes(template.id) ? "已加入对比" : "加入对比"}</Button>
-                    <Button onClick={() => openEditDrawer(template)}>查看高级参数</Button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+                    <div className="template-spotlight">
+                      <div className="template-spotlight-head">
+                        <Tag color={spotlight.color}>{spotlight.label}</Tag>
+                        <span>{strategyLabel(template.strategy_kind)} / {template.interval}</span>
+                      </div>
+                      <p>{spotlight.reason}</p>
+                    </div>
+                    <p>{template.description || guide.scene}</p>
+                    <div className="template-recommend-meta">
+                      <span>适合谁：{guide.audience}</span>
+                      <span>适合：{guide.scene}</span>
+                      <span>难度：{guide.level}</span>
+                    </div>
+                    <div className="template-recommend-actions">
+                      <Button type="primary">
+                        <Link href={buildBacktestLaunchHref({ interval: template.interval, strategyKind: template.strategy_kind, templateId: template.id })}>用这个模板去回测</Link>
+                      </Button>
+                      <Button onClick={() => toggleCompare(template.id)}>{selectedTemplateIds.includes(template.id) ? "已加入对比" : "加入对比"}</Button>
+                      <Button onClick={() => openEditDrawer(template)}>查看高级参数</Button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </>
         )}
       </Card>
 
@@ -541,6 +619,23 @@ export function TemplatesView() {
         <div className="template-management-banner">
           <strong>只有在你需要维护模板时，再展开完整模板库和高级参数编辑</strong>
           <p>日常使用优先在上面的推荐模板和对比区做选择。启用停用、新建模板、完整筛选表和参数编辑都保留在这里，但不再作为首屏主路径。</p>
+        </div>
+        <div className="template-management-grid">
+          <article className="template-management-card">
+            <span>什么时候要进这里</span>
+            <strong>当前没有可直接用的模板</strong>
+            <p>如果推荐区为空，或者你要跑的策略/周期没有启用模板，才需要先来这里启用或新建。</p>
+          </article>
+          <article className="template-management-card">
+            <span>什么时候值得编辑</span>
+            <strong>默认模板不适合你的实际条件</strong>
+            <p>例如手续费、滑点、仓位或参数空间明显不符合你的标的和交易方式，这时再改高级参数更有意义。</p>
+          </article>
+          <article className="template-management-card">
+            <span>什么时候不用碰</span>
+            <strong>只想先跑通和读懂报告时</strong>
+            <p>如果你当前只是第一次试跑，优先回到上面的推荐模板和对比区，不需要先维护完整模板库。</p>
+          </article>
         </div>
         <Collapse
           className="advanced-table-panel"

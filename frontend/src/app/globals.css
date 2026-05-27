@@ -1325,6 +1325,45 @@ a {
   gap: 12px;
 }
 
+.template-order-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid rgba(29, 78, 216, 0.14);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(29, 78, 216, 0.06), rgba(15, 118, 110, 0.03));
+}
+
+.template-order-banner strong {
+  color: #0f172a;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.template-order-banner p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.template-order-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.template-order-tags span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .template-recommend-card {
   display: flex;
   flex-direction: column;
@@ -1364,6 +1403,36 @@ a {
   line-height: 20px;
 }
 
+.template-spotlight {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.template-spotlight-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.template-spotlight-head span {
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.template-spotlight p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .template-recommend-meta {
   display: grid;
   grid-template-columns: 1fr;
@@ -1394,6 +1463,42 @@ a {
 }
 
 .template-management-banner p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.template-management-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.template-management-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.template-management-card span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.template-management-card strong {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.template-management-card p {
   margin: 0;
   color: var(--muted);
   font-size: 13px;

@@ -15,6 +15,8 @@ test("模板页可以按目标筛选并加入对比", async ({ page, request }) 
 
   await page.goto("/templates");
   await expect(page.getByRole("heading", { name: "策略模板" })).toBeVisible();
+  await expect(page.getByText("这些模板默认已经按更适合先试的顺序排好")).toBeVisible();
+  await expect(page.getByText("什么时候要进这里")).toBeVisible();
   await expect(page.getByText("高级管理：启用停用、新建模板和完整模板库")).toBeVisible();
 
   await page.locator(".template-persona-card").first().getByRole("button", { name: "只看这类模板" }).click();
