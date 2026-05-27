@@ -65,3 +65,7 @@ class SyncRequestModel(BaseModel):
     interval: str = Field(default="1d")
     proxy: str | None = None
     period: str | None = None
+
+
+class BacktestBulkActionModel(BaseModel):
+    job_ids: list[int] = Field(default_factory=list)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from etf_strategy.db.models import (
@@ -30,6 +30,11 @@ def create_backtest_job(session: Session, payload: dict[str, object]) -> Backtes
 
 def list_backtest_jobs(session: Session, limit: int = 100) -> list[BacktestJob]:
     return session.scalars(select(BacktestJob).order_by(BacktestJob.submitted_at.desc()).limit(limit)).all()
+
+
+def count_backtest_jobs_by_status(session: Session) -> dict[str, int]:
+    rows = session.execute(select(BacktestJob.status, func.count()).group_by(BacktestJob.status)).all()
+    return {str(status): int(count) for status, count in rows}
 
 
 def get_backtest_job(session: Session, job_id: int) -> BacktestJob | None:
@@ -58,6 +63,20 @@ def mark_job_failed(session: Session, job: BacktestJob, error_message: str) -> N
     job.progress_pct = 100.0
     job.error_message = error_message
     job.completed_at = utc_now()
+
+
+def mark_job_cancel_requested(session: Session, job: BacktestJob) -> None:
+    job.status = "cancel_requested"
+    job.error_message = "用户请求取消任务。"
+    session.flush()
+
+
+def mark_job_cancelled(session: Session, job: BacktestJob, message: str = "任务已取消。") -> None:
+    job.status = "cancelled"
+    job.progress_pct = 100.0
+    job.error_message = message
+    job.completed_at = utc_now()
+    session.flush()
 
 
 def mark_job_completed(session: Session, job: BacktestJob) -> None:
@@ -163,4 +182,3 @@ def list_reports(session: Session, limit: int = 100) -> list[BacktestReport]:
 
 def get_report(session: Session, report_id: int) -> BacktestReport | None:
     return session.get(BacktestReport, report_id)
-

@@ -84,6 +84,18 @@ class DataSyncRunItem(Base):
     run: Mapped[DataSyncRun] = relationship(back_populates="items")
 
 
+class PlatformHeartbeat(Base):
+    __tablename__ = "platform_heartbeats"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    service_name: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="running")
+    pid: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+    details_json: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+
+
 class BacktestJob(Base):
     __tablename__ = "backtest_jobs"
 

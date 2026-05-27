@@ -51,6 +51,59 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(stats_response.status_code, 200)
         self.assertEqual(stats_response.json()["instrument_count"], 2)
 
+    def test_web_api_platform_control_routes(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+        status_payload = {
+            "api": {"status": "ok", "host": "127.0.0.1", "port": 8000, "base_url": "http://127.0.0.1:8000"},
+            "frontend": {"status": "ok", "host": "127.0.0.1", "port": 3000, "base_url": "http://127.0.0.1:3000"},
+            "database": {"status": "ok", "url": "postgresql+psycopg://postgres:***@localhost:5432/etf_strategy"},
+            "heartbeats": [],
+            "queue": {"queued": 0, "running": 0, "succeeded": 1, "failed": 0},
+            "process_control_enabled": False,
+            "sync_schedule": [],
+        }
+
+        with (
+            patch("etf_strategy.web.app.fetch_platform_status", return_value=status_payload) as mock_status,
+            patch("etf_strategy.web.app.fetch_platform_processes", return_value=[{"pid": 1, "service_name": "api"}]) as mock_processes,
+            patch("etf_strategy.web.app.fetch_platform_logs", return_value={"service": "api", "lines": ["api started"]}) as mock_logs,
+        ):
+            status_response = client.get("/api/platform/status")
+            processes_response = client.get("/api/platform/processes")
+            logs_response = client.get("/api/platform/logs?service=api&limit=10")
+
+        self.assertEqual(status_response.status_code, 200)
+        self.assertEqual(processes_response.status_code, 200)
+        self.assertEqual(logs_response.status_code, 200)
+        self.assertEqual(status_response.json()["api"]["status"], "ok")
+        self.assertEqual(processes_response.json()[0]["service_name"], "api")
+        self.assertEqual(logs_response.json()["lines"], ["api started"])
+        mock_status.assert_called_once()
+        mock_processes.assert_called_once()
+        mock_logs.assert_called_once_with(service="api", limit=10)
+
+    def test_web_api_backtest_cancel_and_bulk_routes(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with (
+            patch("etf_strategy.web.app.cancel_backtest", return_value={"job_id": 7, "status": "cancel_requested", "changed": True}) as mock_cancel,
+            patch("etf_strategy.web.app.bulk_cancel_backtests", return_value={"results": []}) as mock_bulk_cancel,
+            patch("etf_strategy.web.app.bulk_retry_backtests", return_value={"results": []}) as mock_bulk_retry,
+        ):
+            cancel_response = client.post("/api/backtests/7/cancel")
+            bulk_cancel_response = client.post("/api/backtests/bulk-cancel", json={"job_ids": [1, 2]})
+            bulk_retry_response = client.post("/api/backtests/bulk-retry", json={"job_ids": [3]})
+
+        self.assertEqual(cancel_response.status_code, 200)
+        self.assertEqual(bulk_cancel_response.status_code, 200)
+        self.assertEqual(bulk_retry_response.status_code, 200)
+        self.assertEqual(cancel_response.json()["status"], "cancel_requested")
+        mock_cancel.assert_called_once_with(7)
+        mock_bulk_cancel.assert_called_once_with([1, 2])
+        mock_bulk_retry.assert_called_once_with([3])
+
     def test_web_api_templates_routes(self) -> None:
         app = create_app()
         client = TestClient(app)

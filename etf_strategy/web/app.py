@@ -7,6 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from etf_strategy.services.backtests import (
     BacktestRequest,
+    bulk_cancel_backtests,
+    bulk_retry_backtests,
+    cancel_backtest,
     fetch_job,
     fetch_jobs,
     fetch_report_detail,
@@ -21,6 +24,12 @@ from etf_strategy.services.market_data import (
     fetch_price_bars,
     fetch_sync_runs,
 )
+from etf_strategy.services.platform import (
+    fetch_platform_logs,
+    fetch_platform_processes,
+    fetch_platform_status,
+    restart_platform_process,
+)
 from etf_strategy.services.sync import sync_market_data
 from etf_strategy.services.templates import (
     create_strategy_template_entry,
@@ -29,6 +38,7 @@ from etf_strategy.services.templates import (
     update_strategy_template_entry,
 )
 from etf_strategy.web.schemas import (
+    BacktestBulkActionModel,
     BacktestRequestModel,
     StrategyTemplateCreateModel,
     StrategyTemplateUpdateModel,
@@ -49,6 +59,27 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/api/platform/status")
+    def get_platform_status() -> dict[str, object]:
+        return fetch_platform_status()
+
+    @app.get("/api/platform/processes")
+    def get_platform_processes() -> list[dict[str, object]]:
+        return fetch_platform_processes()
+
+    @app.get("/api/platform/logs")
+    def get_platform_logs(service: str = "api", limit: int = 200) -> dict[str, object]:
+        return fetch_platform_logs(service=service, limit=limit)
+
+    @app.post("/api/platform/processes/{service_name}/restart")
+    def post_platform_process_restart(service_name: str) -> dict[str, object]:
+        try:
+            return restart_platform_process(service_name)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except NotImplementedError as exc:
+            raise HTTPException(status_code=501, detail=str(exc)) from exc
 
     @app.get("/api/market-data/instruments")
     def get_instruments() -> list[dict[str, object]]:
@@ -90,6 +121,14 @@ def create_app() -> FastAPI:
     def get_backtests(limit: int = 100) -> list[dict[str, object]]:
         return fetch_jobs(limit=limit)
 
+    @app.post("/api/backtests/bulk-retry")
+    def post_backtest_bulk_retry(request: BacktestBulkActionModel) -> dict[str, object]:
+        return bulk_retry_backtests(request.job_ids)
+
+    @app.post("/api/backtests/bulk-cancel")
+    def post_backtest_bulk_cancel(request: BacktestBulkActionModel) -> dict[str, object]:
+        return bulk_cancel_backtests(request.job_ids)
+
     @app.get("/api/backtests/{job_id}")
     def get_backtest(job_id: int) -> dict[str, object]:
         payload = fetch_job(job_id)
@@ -100,6 +139,13 @@ def create_app() -> FastAPI:
     @app.post("/api/backtests/{job_id}/retry")
     def post_backtest_retry(job_id: int) -> dict[str, object]:
         return retry_backtest(job_id)
+
+    @app.post("/api/backtests/{job_id}/cancel")
+    def post_backtest_cancel(job_id: int) -> dict[str, object]:
+        result = cancel_backtest(job_id)
+        if result["status"] == "not_found":
+            raise HTTPException(status_code=404, detail="任务不存在。")
+        return result
 
     @app.get("/api/reports")
     def get_reports(limit: int = 100) -> list[dict[str, object]]:

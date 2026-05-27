@@ -7,12 +7,22 @@ from time import sleep
 from loguru import logger
 
 from etf_strategy.services.backtests import execute_next_job
+from etf_strategy.services.platform import record_platform_heartbeat
+
+
+def _safe_heartbeat(poll_interval_seconds: int) -> None:
+    try:
+        record_platform_heartbeat("worker", {"poll_interval_seconds": poll_interval_seconds})
+    except Exception as exc:
+        logger.warning("回测 worker 心跳写入失败: {}", exc)
 
 
 def run_worker_loop(poll_interval_seconds: int = 5) -> None:
     """持续轮询并执行排队回测任务。"""
     logger.info("回测 worker 已启动，轮询间隔 {} 秒。", poll_interval_seconds)
+    _safe_heartbeat(poll_interval_seconds)
     while True:
+        _safe_heartbeat(poll_interval_seconds)
         try:
             job_id = execute_next_job()
         except Exception as exc:

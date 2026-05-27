@@ -17,6 +17,8 @@ from etf_strategy.repositories.backtests import (
     create_backtest_report,
     get_backtest_job,
     get_report,
+    mark_job_cancel_requested,
+    mark_job_cancelled,
     list_backtest_jobs,
     list_reports,
     mark_job_completed,
@@ -200,6 +202,15 @@ def _requeue_failed_job(job_id: int) -> int | None:
     return job_id
 
 
+def _cancel_if_requested(session, job) -> bool:
+    session.refresh(job)
+    if job.status != "cancel_requested":
+        return False
+    mark_job_cancelled(session, job)
+    session.commit()
+    return True
+
+
 def execute_next_job(preferred_job_id: int | None = None) -> int | None:
     settings = load_platform_settings()
     with open_session() as session:
@@ -226,6 +237,8 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
             return None
         payload = BacktestRequest(**job.request_payload_json)
         try:
+            if _cancel_if_requested(session, job):
+                return job.id
             mark_job_progress(session, job, 20.0)
             session.commit()
 
@@ -248,6 +261,8 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
             report_dir = settings.report_dir / payload.symbol.lower().replace(".", "_") / payload.interval
             pseudo_data_path = _pseudo_data_path(payload.symbol, payload.interval)
 
+            if _cancel_if_requested(session, job):
+                return job.id
             mark_job_progress(session, job, 45.0)
             session.commit()
             workflow_result = (
@@ -277,6 +292,8 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                     data=price_frame,
                 )
             )
+            if _cancel_if_requested(session, job):
+                return job.id
             mark_job_progress(session, job, 75.0)
             session.commit()
 
@@ -330,6 +347,32 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
 def retry_backtest(job_id: int) -> dict[str, object]:
     queued_job_id = _requeue_failed_job(job_id)
     return {"job_id": job_id, "queued_job_id": queued_job_id}
+
+
+def cancel_backtest(job_id: int) -> dict[str, object]:
+    with open_session() as session:
+        job = get_backtest_job(session, job_id)
+        if job is None:
+            return {"job_id": job_id, "status": "not_found", "changed": False}
+        if job.status == "queued":
+            mark_job_cancelled(session, job)
+            session.commit()
+            return {"job_id": job_id, "status": "cancelled", "changed": True}
+        if job.status == "running":
+            mark_job_cancel_requested(session, job)
+            session.commit()
+            return {"job_id": job_id, "status": "cancel_requested", "changed": True}
+        return {"job_id": job_id, "status": job.status, "changed": False}
+
+
+def bulk_retry_backtests(job_ids: list[int]) -> dict[str, object]:
+    results = [retry_backtest(job_id) for job_id in job_ids]
+    return {"results": results}
+
+
+def bulk_cancel_backtests(job_ids: list[int]) -> dict[str, object]:
+    results = [cancel_backtest(job_id) for job_id in job_ids]
+    return {"results": results}
 
 
 def fetch_jobs(limit: int = 100) -> list[dict[str, object]]:
