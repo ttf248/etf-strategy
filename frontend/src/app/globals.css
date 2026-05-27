@@ -483,6 +483,77 @@ a {
   font-weight: 650;
 }
 
+.job-mobile-list {
+  display: none;
+}
+
+.job-mobile-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.job-mobile-card-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.job-mobile-card-head div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.job-mobile-card-head strong {
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.job-mobile-card-head span,
+.job-mobile-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.job-mobile-metrics {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.job-mobile-metrics span {
+  padding: 8px;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.job-mobile-error {
+  padding: 10px;
+  border-radius: 8px;
+  background: #fff1f2;
+  color: var(--danger) !important;
+}
+
+.job-mobile-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 72px;
+  gap: 8px;
+}
+
 .template-guide-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -881,6 +952,15 @@ a {
 
   .template-guide-grid {
     grid-template-columns: 1fr;
+  }
+
+  .job-mobile-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .job-desktop-table {
+    display: none;
   }
 
   .template-mobile-list {

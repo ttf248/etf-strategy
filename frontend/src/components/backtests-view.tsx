@@ -2,6 +2,7 @@
 
 import { Button, Card, Collapse, Descriptions, Form, Input, InputNumber, message, Select, Space, Table, Typography } from "antd";
 import { useEffect, useMemo, useState, type Key } from "react";
+import Link from "next/link";
 import { apiFetch, type BacktestJob, type StrategyTemplate } from "@/lib/api";
 import { intervalOptions, strategyLabel, strategyOptions } from "@/lib/strategy-template-config";
 import { PageHeader, StatusTag } from "@/components/platform-ui";
@@ -316,7 +317,50 @@ export function BacktestsView() {
           </Space>
         }
       >
+        <div className="job-mobile-list">
+          {jobs.map((job) => {
+            const payload = job.request_payload;
+            const reportId = job.reports?.[0]?.id;
+            const templateName = (payload.template_snapshot as { template_name?: string } | undefined)?.template_name;
+            return (
+              <article key={job.id} className="job-mobile-card">
+                <div className="job-mobile-card-head">
+                  <div>
+                    <strong>任务 #{job.id}</strong>
+                    <span>{String(payload.symbol ?? "-")} / {String(payload.interval ?? "-")} / {strategyLabel(String(payload.strategy_kind ?? "-"))}</span>
+                  </div>
+                  <StatusTag value={job.status} />
+                </div>
+                <div className="job-mobile-metrics">
+                  <span>进度 {job.progress_pct.toFixed(0)}%</span>
+                  <span>模板 {templateName ?? "未选择"}</span>
+                </div>
+                {job.error_message ? <p className="job-mobile-error">{job.error_message}</p> : null}
+                <div className="job-mobile-actions">
+                  {reportId ? (
+                    <Button type="primary">
+                      <Link href={`/reports/${reportId}`}>查看报告</Link>
+                    </Button>
+                  ) : job.status === "succeeded" ? (
+                    <Button type="primary">
+                      <Link href="/reports">查看报告列表</Link>
+                    </Button>
+                  ) : (
+                    <Button disabled>等待报告</Button>
+                  )}
+                  <Button disabled={!["queued", "running"].includes(job.status)} onClick={() => void cancelJob(job.id)}>
+                    取消
+                  </Button>
+                  <Button disabled={job.status !== "failed"} onClick={() => void retryJob(job.id)}>
+                    重试
+                  </Button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
         <Table
+          className="job-desktop-table"
           rowKey="id"
           size="small"
           dataSource={jobs}
