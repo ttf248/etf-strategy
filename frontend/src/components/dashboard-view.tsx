@@ -1,6 +1,8 @@
 "use client";
 
-import { Card, Col, Empty, Row, Skeleton, Table } from "antd";
+import { ArrowRightOutlined, CheckCircleOutlined, DatabaseOutlined, FileSearchOutlined, PlayCircleOutlined } from "@ant-design/icons";
+import { Button, Card, Col, Empty, Row, Skeleton, Space, Table, Typography } from "antd";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetch, type BacktestJob, type MarketDataStats, type ReportSummary } from "@/lib/api";
 import { FormatPercent, MetricCard, PageHeader, StatusTag } from "@/components/platform-ui";
@@ -39,29 +41,78 @@ export function DashboardView() {
     return <Empty description="暂时无法读取平台数据" />;
   }
 
-  const latestSync = stats.recent_sync_runs[0] as { status?: string; interval?: string } | undefined;
+  const latestSync = stats.recent_sync_runs[0] as { status?: string; interval?: string; completed_at?: string } | undefined;
   const succeededJobs = jobs.filter((item) => item.status === "succeeded").length;
   const failedJobs = jobs.filter((item) => item.status === "failed").length;
 
   return (
     <div className="page-stack">
-      <section className="hero-panel">
-        <PageHeader
-          eyebrow="Platform Overview"
-          title="ETF 策略研究控制台"
-          description="集中管理行情入库、策略参数模板、异步回测任务和结构化报告，适合持续复盘与批量研究。"
-        />
-        <div className="summary-grid" style={{ marginTop: 20 }}>
-          <MetricCard label="已存标的" value={stats.instrument_count} note="PostgreSQL instruments" />
-          <MetricCard label="K 线总量" value={stats.total_bars.toLocaleString()} note="price_bars" />
-          <MetricCard label="已存周期" value={stats.by_interval.length} note={stats.by_interval.map((item) => item.interval).join(" / ") || "-"} />
-          <MetricCard label="最近同步" value={latestSync?.status ?? "暂无"} note={latestSync?.interval ?? "等待同步记录"} />
+      <section className="hero-panel beginner-hero">
+        <div className="beginner-hero-copy">
+          <PageHeader
+            eyebrow="Backtest Lab"
+            title="从一个标的开始，跑出第一份回测报告"
+            description="不用先理解数据库、Worker 或调度器。选择标的、套用策略模板、提交回测，然后在报告里看收益、回撤和交易记录。"
+          />
+          <Space wrap className="hero-actions">
+            <Button type="primary" size="large" icon={<PlayCircleOutlined />}>
+              <Link href="/backtests">开始一次回测</Link>
+            </Button>
+            <Button size="large" icon={<FileSearchOutlined />}>
+              <Link href="/reports">查看历史报告</Link>
+            </Button>
+          </Space>
+        </div>
+        <div className="readiness-card">
+          <span className="readiness-label">当前准备情况</span>
+          <strong>{stats.instrument_count > 0 ? "可以开始" : "需要先准备数据"}</strong>
+          <span>{stats.instrument_count.toLocaleString()} 个标的，{stats.total_bars.toLocaleString()} 条 K 线</span>
         </div>
       </section>
 
       <Row gutter={[16, 16]}>
+        <Col xs={24} md={8}>
+          <Card className="action-card" size="small">
+            <div className="action-card-icon"><PlayCircleOutlined /></div>
+            <Typography.Title level={4}>1. 创建回测</Typography.Title>
+            <p>输入 Yahoo 标的代码，选择一个默认策略模板，先跑通完整流程。</p>
+            <Button type="link">
+              <Link href="/backtests">去创建 <ArrowRightOutlined /></Link>
+            </Button>
+          </Card>
+        </Col>
+        <Col xs={24} md={8}>
+          <Card className="action-card" size="small">
+            <div className="action-card-icon"><FileSearchOutlined /></div>
+            <Typography.Title level={4}>2. 阅读结果</Typography.Title>
+            <p>优先看样本外收益、最大回撤、净值曲线和交易记录。</p>
+            <Button type="link">
+              <Link href="/reports">看报告 <ArrowRightOutlined /></Link>
+            </Button>
+          </Card>
+        </Col>
+        <Col xs={24} md={8}>
+          <Card className="action-card" size="small">
+            <div className="action-card-icon"><DatabaseOutlined /></div>
+            <Typography.Title level={4}>3. 准备数据</Typography.Title>
+            <p>如果标的不存在或数据不够，再进入数据准备页同步行情。</p>
+            <Button type="link">
+              <Link href="/market-data">检查数据 <ArrowRightOutlined /></Link>
+            </Button>
+          </Card>
+        </Col>
+      </Row>
+
+      <div className="summary-grid">
+        <MetricCard label="可回测标的" value={stats.instrument_count} note="已入库 instruments" />
+        <MetricCard label="行情记录" value={stats.total_bars.toLocaleString()} note="用于回测的 K 线" />
+        <MetricCard label="可用周期" value={stats.by_interval.map((item) => item.interval).join(" / ") || "-"} note={`${stats.by_interval.length} 类周期`} />
+        <MetricCard label="最近数据同步" value={latestSync?.status ?? "暂无"} note={latestSync?.completed_at ?? latestSync?.interval ?? "等待同步记录"} />
+      </div>
+
+      <Row gutter={[16, 16]}>
         <Col xs={24} xl={10}>
-          <Card title="周期分布" size="small" className="section-card">
+          <Card title="数据是否够用" size="small" className="section-card">
             <Table
               size="small"
               pagination={false}
@@ -75,7 +126,7 @@ export function DashboardView() {
           </Card>
         </Col>
         <Col xs={24} xl={14}>
-          <Card title="最近同步" size="small" className="section-card">
+          <Card title="最近数据更新" size="small" className="section-card">
             <Table
               size="small"
               pagination={false}
@@ -97,10 +148,10 @@ export function DashboardView() {
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={12}>
           <Card
-            title="最近回测任务"
+            title="最近运行的回测"
             size="small"
             className="section-card"
-            extra={<span className="toolbar-count">成功 {succeededJobs} / 失败 {failedJobs}</span>}
+            extra={<span className="toolbar-count"><CheckCircleOutlined /> 成功 {succeededJobs} / 失败 {failedJobs}</span>}
           >
             <Table
               size="small"
@@ -118,7 +169,7 @@ export function DashboardView() {
           </Card>
         </Col>
         <Col xs={24} xl={12}>
-          <Card title="最近报告" size="small" className="section-card">
+          <Card title="最近生成的报告" size="small" className="section-card">
             <Table
               size="small"
               pagination={false}

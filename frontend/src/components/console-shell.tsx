@@ -1,16 +1,16 @@
 "use client";
 
 import {
-  BarChartOutlined,
   ClockCircleOutlined,
   DatabaseOutlined,
   FileSearchOutlined,
   FundOutlined,
+  FormOutlined,
   MenuOutlined,
   MonitorOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
-import { Button, Drawer, Layout, Menu } from "antd";
+import { Button, Drawer, Layout, Menu, Typography } from "antd";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
@@ -21,22 +21,25 @@ type ConsoleShellProps = {
   children: ReactNode;
 };
 
-const items = [
-  { key: "/", icon: <FundOutlined />, label: <Link href="/">平台概览</Link> },
-  { key: "/platform", icon: <MonitorOutlined />, label: <Link href="/platform">平台总控</Link> },
-  { key: "/market-data", icon: <DatabaseOutlined />, label: <Link href="/market-data">行情数据</Link> },
-  { key: "/templates", icon: <SettingOutlined />, label: <Link href="/templates">参数模板</Link> },
-  { key: "/backtests", icon: <BarChartOutlined />, label: <Link href="/backtests">回测任务</Link> },
-  { key: "/reports", icon: <FileSearchOutlined />, label: <Link href="/reports">历史报告</Link> },
+const primaryItems = [
+  { key: "/", icon: <FundOutlined />, label: <Link href="/">新手首页</Link> },
+  { key: "/backtests", icon: <FormOutlined />, label: <Link href="/backtests">创建回测</Link> },
+  { key: "/reports", icon: <FileSearchOutlined />, label: <Link href="/reports">查看报告</Link> },
+  { key: "/market-data", icon: <DatabaseOutlined />, label: <Link href="/market-data">数据准备</Link> },
+  { key: "/templates", icon: <SettingOutlined />, label: <Link href="/templates">策略模板</Link> },
+];
+
+const supportItems = [
+  { key: "/platform", icon: <MonitorOutlined />, label: <Link href="/platform">系统状态</Link> },
 ];
 
 const routeTitles: Record<string, { title: string; kicker: string }> = {
-  "/": { title: "平台概览", kicker: "Research Console" },
-  "/platform": { title: "平台总控", kicker: "Platform Control" },
-  "/market-data": { title: "行情数据", kicker: "Market Data" },
-  "/templates": { title: "参数模板", kicker: "Strategy Templates" },
-  "/backtests": { title: "回测任务", kicker: "Backtest Jobs" },
-  "/reports": { title: "历史报告", kicker: "Reports" },
+  "/": { title: "新手首页", kicker: "Start Here" },
+  "/platform": { title: "系统状态", kicker: "System Status" },
+  "/market-data": { title: "数据准备", kicker: "Data Setup" },
+  "/templates": { title: "策略模板", kicker: "Strategy Presets" },
+  "/backtests": { title: "创建回测", kicker: "Run Backtest" },
+  "/reports": { title: "查看报告", kicker: "Results" },
 };
 
 export function ConsoleShell({ children }: ConsoleShellProps) {
@@ -45,7 +48,12 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
   const selectedKey = pathname.startsWith("/reports/") ? "/reports" : pathname;
   const current = routeTitles[selectedKey] ?? routeTitles["/"];
   const renderMenu = () => (
-    <Menu mode="inline" selectedKeys={[selectedKey]} items={items} className="platform-nav" onClick={() => setMobileMenuOpen(false)} />
+    <div className="nav-sections">
+      <Typography.Text className="nav-section-title">常用流程</Typography.Text>
+      <Menu mode="inline" selectedKeys={[selectedKey]} items={primaryItems} className="platform-nav" onClick={() => setMobileMenuOpen(false)} />
+      <Typography.Text className="nav-section-title">维护</Typography.Text>
+      <Menu mode="inline" selectedKeys={[selectedKey]} items={supportItems} className="platform-nav" onClick={() => setMobileMenuOpen(false)} />
+    </div>
   );
 
   return (
@@ -55,7 +63,7 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
           <div className="platform-logo-mark">ES</div>
           <div className="platform-logo-text">
             <span className="platform-logo-title">ETF Strategy</span>
-            <span className="platform-logo-subtitle">Quant Research Platform</span>
+            <span className="platform-logo-subtitle">Backtest Lab</span>
           </div>
         </div>
         {renderMenu()}
@@ -76,7 +84,7 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
               <ClockCircleOutlined />
               Asia/Shanghai
             </span>
-            <span className="platform-pill compact">API 127.0.0.1:8000</span>
+            <span className="platform-pill compact">本地运行</span>
           </div>
         </Header>
         <Content className="platform-content">

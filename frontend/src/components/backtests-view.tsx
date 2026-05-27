@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Card, Descriptions, Form, Input, InputNumber, message, Select, Space, Table } from "antd";
+import { Button, Card, Collapse, Descriptions, Form, Input, InputNumber, message, Select, Space, Table, Typography } from "antd";
 import { useEffect, useMemo, useState, type Key } from "react";
 import { apiFetch, type BacktestJob, type StrategyTemplate } from "@/lib/api";
 import { intervalOptions, strategyLabel, strategyOptions } from "@/lib/strategy-template-config";
@@ -138,13 +138,28 @@ export function BacktestsView() {
     <div className="page-stack">
       {contextHolder}
       <PageHeader
-        eyebrow="Backtest Jobs"
-        title="回测任务"
-        description="通过参数模板或手工参数提交回测任务，由 Worker 异步执行并写入结构化报告。"
-        actions={<Button onClick={() => void loadJobs()}>刷新任务</Button>}
+        eyebrow="Run Backtest"
+        title="创建一次回测"
+        description="先输入标的，再选择策略模板。高级参数可以保持默认，适合第一次使用时快速跑通。"
+        actions={<Button onClick={() => void loadJobs()}>刷新结果</Button>}
       />
 
-      <Card title="发起回测" size="small" className="section-card">
+      <div className="beginner-steps">
+        <Card size="small">
+          <strong>1. 输入标的</strong>
+          <span>例如港股小米是 1810.HK。</span>
+        </Card>
+        <Card size="small">
+          <strong>2. 选择模板</strong>
+          <span>默认模板已经包含常用参数。</span>
+        </Card>
+        <Card size="small">
+          <strong>3. 提交后看报告</strong>
+          <span>任务完成后到“查看报告”阅读结果。</span>
+        </Card>
+      </div>
+
+      <Card title="基础设置" size="small" className="section-card">
         <Form
           form={form}
           layout="vertical"
@@ -161,16 +176,16 @@ export function BacktestsView() {
           }}
         >
           <div className="template-form-grid">
-            <Form.Item name="symbol" label="标的" rules={[{ required: true }]}>
+            <Form.Item name="symbol" label="回测标的" rules={[{ required: true }]} extra="使用 Yahoo 代码，例如 1810.HK、0700.HK、513050.SS。">
               <Input placeholder="例如 1810.HK" />
             </Form.Item>
-            <Form.Item name="interval" label="周期">
+            <Form.Item name="interval" label="数据周期" extra="第一次建议选择 15m 或 1d。">
               <Select options={intervalOptions} />
             </Form.Item>
-            <Form.Item name="strategy_kind" label="策略">
+            <Form.Item name="strategy_kind" label="策略类型" extra="不确定时先用网格策略。">
               <Select options={strategyOptions} />
             </Form.Item>
-            <Form.Item name="template_id" label="参数模板">
+            <Form.Item name="template_id" label="参数模板" extra="推荐选择带“默认”的模板。">
               <Select
                 allowClear
                 placeholder="按当前策略/周期筛选"
@@ -181,41 +196,54 @@ export function BacktestsView() {
                 }}
               />
             </Form.Item>
-            <Form.Item name="execution_profile" label="执行口径">
-              <Select options={[{ label: "实盘口径", value: "realistic" }, { label: "研究口径", value: "research" }]} />
-            </Form.Item>
-            <Form.Item name="lookback_days" label="日线样本内天数">
-              <InputNumber min={1} style={{ width: "100%" }} />
-            </Form.Item>
-            <Form.Item name="validation_ratio" label="分钟线样本外比例">
-              <InputNumber min={0.05} max={0.95} step={0.05} style={{ width: "100%" }} />
-            </Form.Item>
-            <Form.Item name="jobs" label="并行数">
-              <InputNumber min={1} max={16} style={{ width: "100%" }} />
-            </Form.Item>
-            <Form.Item name="commission_bps" label="手续费 bps">
-              <InputNumber min={0} step={0.5} style={{ width: "100%" }} />
-            </Form.Item>
-            <Form.Item name="slippage_bps" label="滑点 bps">
-              <InputNumber min={0} step={0.5} style={{ width: "100%" }} />
-            </Form.Item>
-            <Form.Item name="max_position_ratio" label="最大仓位">
-              <InputNumber min={0} max={1} step={0.05} style={{ width: "100%" }} />
-            </Form.Item>
-            <Form.Item name="left_side_policy" label="左侧处理">
-              <Select
-                allowClear
-                options={[
-                  { label: "持有", value: "hold" },
-                  { label: "强平", value: "force_exit" },
-                  { label: "双口径", value: "both" },
-                ]}
-              />
-            </Form.Item>
           </div>
+          <Collapse
+            className="advanced-collapse"
+            items={[
+              {
+                key: "advanced",
+                label: "高级参数，可保持默认",
+                children: (
+                  <div className="template-form-grid">
+                    <Form.Item name="execution_profile" label="执行口径">
+                      <Select options={[{ label: "实盘口径", value: "realistic" }, { label: "研究口径", value: "research" }]} />
+                    </Form.Item>
+                    <Form.Item name="lookback_days" label="日线样本内天数">
+                      <InputNumber min={1} style={{ width: "100%" }} />
+                    </Form.Item>
+                    <Form.Item name="validation_ratio" label="分钟线样本外比例">
+                      <InputNumber min={0.05} max={0.95} step={0.05} style={{ width: "100%" }} />
+                    </Form.Item>
+                    <Form.Item name="jobs" label="并行数">
+                      <InputNumber min={1} max={16} style={{ width: "100%" }} />
+                    </Form.Item>
+                    <Form.Item name="commission_bps" label="手续费 bps">
+                      <InputNumber min={0} step={0.5} style={{ width: "100%" }} />
+                    </Form.Item>
+                    <Form.Item name="slippage_bps" label="滑点 bps">
+                      <InputNumber min={0} step={0.5} style={{ width: "100%" }} />
+                    </Form.Item>
+                    <Form.Item name="max_position_ratio" label="最大仓位">
+                      <InputNumber min={0} max={1} step={0.05} style={{ width: "100%" }} />
+                    </Form.Item>
+                    <Form.Item name="left_side_policy" label="左侧处理">
+                      <Select
+                        allowClear
+                        options={[
+                          { label: "持有", value: "hold" },
+                          { label: "强平", value: "force_exit" },
+                          { label: "双口径", value: "both" },
+                        ]}
+                      />
+                    </Form.Item>
+                  </div>
+                ),
+              },
+            ]}
+          />
           <div className="form-action-row">
             <Button type="primary" htmlType="submit" loading={submitting}>
-              提交任务
+              开始回测
             </Button>
           </div>
         </Form>
@@ -237,7 +265,7 @@ export function BacktestsView() {
       ) : null}
 
       <Card
-        title="任务中心"
+        title="回测运行记录"
         size="small"
         className="section-card"
         extra={
@@ -287,6 +315,9 @@ export function BacktestsView() {
             },
           ]}
         />
+        <Typography.Paragraph className="table-help">
+          任务成功后会自动生成报告，可到“查看报告”页面打开。失败任务通常是标的数据不足、代码写错或参数组合不适用。
+        </Typography.Paragraph>
       </Card>
     </div>
   );

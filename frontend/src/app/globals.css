@@ -108,6 +108,21 @@ a {
   background: transparent !important;
 }
 
+.nav-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nav-section-title {
+  padding: 8px 20px 0;
+  color: var(--muted) !important;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .platform-header {
   height: 64px;
   padding: 0 28px;
@@ -234,6 +249,87 @@ a {
   box-shadow: var(--shadow-sm);
 }
 
+.beginner-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 24px;
+  align-items: stretch;
+}
+
+.beginner-hero-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 22px;
+}
+
+.hero-actions {
+  margin-top: 4px;
+}
+
+.readiness-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  min-height: 168px;
+  padding: 20px;
+  border: 1px solid rgba(29, 78, 216, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: var(--shadow-sm);
+}
+
+.readiness-card strong {
+  color: #0f172a;
+  font-size: 30px;
+  line-height: 36px;
+}
+
+.readiness-card span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.readiness-label {
+  color: var(--brand) !important;
+  font-weight: 700;
+}
+
+.action-card {
+  height: 100%;
+  border-radius: 12px;
+}
+
+.action-card .ant-card-body {
+  display: flex;
+  min-height: 184px;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.action-card h4 {
+  margin: 0 !important;
+}
+
+.action-card p {
+  flex: 1;
+  color: var(--muted);
+  line-height: 22px;
+}
+
+.action-card-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--brand);
+  background: rgba(29, 78, 216, 0.09);
+  font-size: 20px;
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -305,6 +401,39 @@ a {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.advanced-collapse {
+  margin-top: 10px;
+  background: var(--surface-soft);
+}
+
+.beginner-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.beginner-steps .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.beginner-steps strong {
+  color: #0f172a;
+}
+
+.beginner-steps span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.table-help {
+  margin: 12px 0 0 !important;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .detail-grid {
@@ -422,6 +551,14 @@ a {
 
   .platform-content {
     padding: 18px 16px 28px;
+  }
+
+  .beginner-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .beginner-steps {
+    grid-template-columns: 1fr;
   }
 
   .page-heading {
