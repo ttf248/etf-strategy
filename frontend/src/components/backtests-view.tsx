@@ -6,6 +6,15 @@ import { apiFetch, type BacktestJob, type StrategyTemplate } from "@/lib/api";
 import { intervalOptions, strategyLabel, strategyOptions } from "@/lib/strategy-template-config";
 import { PageHeader, StatusTag } from "@/components/platform-ui";
 
+const strategyGuide: Record<string, { scene: string; beginnerHint: string; risk: string }> = {
+  grid: { scene: "震荡行情里低买高卖", beginnerHint: "第一次回测优先选这个", risk: "单边下跌时回撤可能变大" },
+  dca: { scene: "长期分批买入", beginnerHint: "最容易理解，适合日线", risk: "短期不一定跑赢买入持有" },
+  daily_rebound: { scene: "日线超跌反弹", beginnerHint: "适合想验证反弹机会", risk: "需要重点看止损和持仓天数" },
+  minute_rebound: { scene: "分钟级急跌反抽", beginnerHint: "适合有分钟数据后再试", risk: "对手续费和滑点更敏感" },
+  minute_rebound_with_fade_filter: { scene: "带过滤的分钟反抽", beginnerHint: "偏进阶，先理解普通反抽", risk: "参数更多，不适合第一轮" },
+  minute_index_grid_retrace: { scene: "指数回落后的网格", beginnerHint: "偏专项策略", risk: "需要匹配指数和标的数据" },
+};
+
 export function BacktestsView() {
   const [form] = Form.useForm();
   const [jobs, setJobs] = useState<BacktestJob[]>([]);
@@ -175,6 +184,33 @@ export function BacktestsView() {
             }
           }}
         >
+          <div className="strategy-choice-grid">
+            {strategyOptions.map((item) => {
+              const guide = strategyGuide[item.value] ?? { scene: "策略实验", beginnerHint: "按模板说明选择", risk: "先小样本验证" };
+              const hasTemplate = templates.some(
+                (template) => template.is_active && template.strategy_kind === item.value && template.interval === selectedInterval,
+              );
+              const active = selectedStrategy === item.value;
+              return (
+                <button
+                  key={item.value}
+                  type="button"
+                  className={`strategy-choice-card${active ? " is-active" : ""}`}
+                  onClick={() => {
+                    form.setFieldValue("strategy_kind", item.value);
+                    form.setFieldValue("template_id", undefined);
+                  }}
+                >
+                  <strong>{item.label}</strong>
+                  <span>{guide.scene}</span>
+                  <small>{guide.beginnerHint}</small>
+                  <span>主要风险：{guide.risk}</span>
+                  <em>{hasTemplate ? "当前周期有可用模板" : "当前周期暂无模板，建议换周期"}</em>
+                </button>
+              );
+            })}
+          </div>
+
           <div className="template-form-grid">
             <Form.Item name="symbol" label="回测标的" rules={[{ required: true }]} extra="使用 Yahoo 代码，例如 1810.HK、0700.HK、513050.SS。">
               <Input placeholder="例如 1810.HK" />
@@ -256,8 +292,8 @@ export function BacktestsView() {
             <Descriptions.Item label="策略">{strategyLabel(selectedTemplate.strategy_kind)}</Descriptions.Item>
             <Descriptions.Item label="周期">{selectedTemplate.interval}</Descriptions.Item>
             <Descriptions.Item label="执行口径">{selectedTemplate.execution_profile}</Descriptions.Item>
-            <Descriptions.Item label="模板键">{selectedTemplate.template_key}</Descriptions.Item>
-            <Descriptions.Item label="并行数">{selectedTemplate.jobs}</Descriptions.Item>
+            <Descriptions.Item label="说明">{selectedTemplate.description || "使用模板默认参数"}</Descriptions.Item>
+            <Descriptions.Item label="寻参任务数">{selectedTemplate.jobs}</Descriptions.Item>
             <Descriptions.Item label="默认模板">{selectedTemplate.is_default ? "是" : "否"}</Descriptions.Item>
             <Descriptions.Item label="状态">{selectedTemplate.is_active ? "启用" : "停用"}</Descriptions.Item>
           </Descriptions>
@@ -291,7 +327,7 @@ export function BacktestsView() {
             { title: "任务ID", dataIndex: "id", width: 88, fixed: "left" },
             { title: "标的", render: (_, row) => String(row.request_payload.symbol ?? "-"), width: 120 },
             { title: "周期", render: (_, row) => String(row.request_payload.interval ?? "-"), width: 90 },
-            { title: "策略", render: (_, row) => String(row.request_payload.strategy_kind ?? "-"), width: 160, ellipsis: true },
+            { title: "策略", render: (_, row) => strategyLabel(String(row.request_payload.strategy_kind ?? "-")), width: 160, ellipsis: true },
             { title: "模板", render: (_, row) => String((row.request_payload.template_snapshot as { template_name?: string } | undefined)?.template_name ?? "-"), ellipsis: true },
             { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <StatusTag value={value} /> },
             { title: "进度", dataIndex: "progress_pct", width: 90, render: (value: number) => `${value.toFixed(0)}%` },
