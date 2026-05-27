@@ -598,6 +598,21 @@ a {
   overflow-wrap: anywhere;
 }
 
+.advanced-trace-panel {
+  margin-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.advanced-trace-panel .ant-collapse-header {
+  padding-inline: 0 !important;
+  color: var(--muted) !important;
+  font-size: 13px;
+}
+
+.advanced-trace-panel .ant-collapse-content-box {
+  padding-inline: 0 !important;
+}
+
 .log-viewer {
   max-height: 360px;
   overflow: auto;

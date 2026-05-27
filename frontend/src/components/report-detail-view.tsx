@@ -1,13 +1,85 @@
 "use client";
 
-import { Card, Descriptions, Empty, Skeleton, Table, Tag, Typography } from "antd";
+import { Card, Collapse, Descriptions, Empty, Skeleton, Space, Table, Tag, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { apiFetch, type ReportDetail } from "@/lib/api";
 import { EquityChart } from "@/components/equity-chart";
 import { DetailItem, FormatPercent, PageHeader } from "@/components/platform-ui";
+import { parameterFieldSpecsByStrategy, strategyLabel } from "@/lib/strategy-template-config";
 
 type ReportDetailViewProps = {
   reportId: string;
+};
+
+const baseParameterLabels: Record<string, string> = {
+  benchmark: "对照基准",
+  commission_bps: "交易佣金",
+  cooldown_bars: "停手冷却 K 线数",
+  execution_profile: "成交假设",
+  force_exit_loss_pct: "强制离场亏损线",
+  jobs: "并行寻参任务数",
+  left_side_policy: "左侧行情处理",
+  lookback_days: "回看天数",
+  max_position_ratio: "最大仓位",
+  parameter_space: "寻参范围",
+  slippage_bps: "滑点假设",
+  stop_loss_pct: "停手跌幅",
+  template_id: "模板 ID",
+  total_capital: "初始资金",
+  validation_ratio: "样本外比例",
+  validation_start: "样本外起点",
+};
+
+const eventTypeLabels: Record<string, string> = {
+  dca_buy: "定投买入",
+  dca_skip: "定投跳过",
+  force_exit_sell: "强制离场卖出",
+  grid_sell: "网格止盈卖出",
+  risk_cooldown: "冷却期跳过",
+  risk_position_limit: "仓位上限拦截",
+  risk_stop_loss: "触发停手线",
+};
+
+const payloadFieldLabels: Record<string, string> = {
+  CashFlow: "成交金额",
+  EventType: "事件类型",
+  ExecutionPrice: "估算成交价",
+  Level: "网格层",
+  Note: "说明",
+  Price: "触发价",
+  SlippageCost: "滑点成本",
+  TransactionCost: "交易费用",
+  Units: "数量",
+};
+
+const tradeSideLabels: Record<string, string> = {
+  buy: "买入",
+  sell: "卖出",
+};
+
+const tradeTypeLabels: Record<string, string> = {
+  dca_buy: "定投买入",
+  force_exit_sell: "强制离场",
+  grid: "网格交易",
+  grid_sell: "网格止盈",
+};
+
+const valueLabels: Record<string, Record<string, string>> = {
+  day_rule: {
+    first_trading_day: "每期第一个交易日",
+  },
+  execution_profile: {
+    conservative: "保守成交",
+    research: "研究默认",
+  },
+  frequency: {
+    monthly: "每月",
+    weekly: "每周",
+  },
+  left_side_policy: {
+    force_exit: "触发阈值后强制离场",
+    hold: "继续持有",
+  },
 };
 
 function buildVerdict(netReturn: number, maxDrawdown: number, closedTrades: number) {
@@ -39,6 +111,69 @@ function buildVerdict(netReturn: number, maxDrawdown: number, closedTrades: numb
   };
 }
 
+function parameterLabel(strategyKind: string, key: string): string {
+  const strategyField = parameterFieldSpecsByStrategy[strategyKind]?.find((item) => item.key === key);
+  return strategyField?.label ?? baseParameterLabels[key] ?? key;
+}
+
+function formatScalar(key: string, value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+  if (typeof value === "number") {
+    if (key.endsWith("_bps")) {
+      return `${value} bps`;
+    }
+    if ((key.includes("ratio") || key.includes("spacing") || key.includes("profit")) && Math.abs(value) <= 1) {
+      return `${(value * 100).toFixed(2)}%`;
+    }
+    if (key.endsWith("_pct")) {
+      return `${value.toFixed(2)}%`;
+    }
+    return Number.isInteger(value) ? String(value) : value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+  }
+  if (typeof value === "boolean") {
+    return value ? "是" : "否";
+  }
+  if (typeof value === "string") {
+    return valueLabels[key]?.[value] ?? (key === "EventType" ? eventTypeLabels[value] : value);
+  }
+  return JSON.stringify(value);
+}
+
+function formatParameterValue(strategyKind: string, key: string, value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.map((item) => formatScalar(key, item)).join("、");
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.entries(value)
+      .map(([itemKey, itemValue]) => `${parameterLabel(strategyKind, itemKey)}：${formatParameterValue(strategyKind, itemKey, itemValue)}`)
+      .join("；");
+  }
+  return formatScalar(key, value);
+}
+
+function formatEventDetails(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return <Typography.Text type="secondary">无补充说明</Typography.Text>;
+  }
+  const payloadEntries = Object.entries(payload as Record<string, unknown>)
+    .filter(([key]) => key !== "Date")
+    .filter(([, value]) => value !== null && value !== undefined && value !== "");
+  if (payloadEntries.length === 0) {
+    return <Typography.Text type="secondary">无补充说明</Typography.Text>;
+  }
+  return (
+    <Space size={[6, 6]} wrap>
+      {payloadEntries.map(([key, value]) => (
+        <Tag key={key} bordered={false}>
+          {payloadFieldLabels[key] ?? key}：{formatScalar(key, value)}
+        </Tag>
+      ))}
+    </Space>
+  );
+}
+
 export function ReportDetailView({ reportId }: ReportDetailViewProps) {
   const [report, setReport] = useState<ReportDetail | null>(null);
 
@@ -63,7 +198,7 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
       <PageHeader
         eyebrow="Result Detail"
         title={`回测报告 #${report.id}`}
-        description={`${report.symbol} / ${report.interval} / ${report.strategy_kind}`}
+        description={`${report.symbol} / ${report.interval} / ${strategyLabel(report.strategy_kind)}`}
       />
 
       <Card size="small" className="section-card result-verdict-card">
@@ -82,7 +217,7 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
       <Card size="small" title="先看这几项" className="section-card">
         <div className="detail-grid">
           <DetailItem label="标的" value={`${report.symbol} ${report.name}`} />
-          <DetailItem label="策略" value={report.strategy_kind} />
+          <DetailItem label="策略" value={strategyLabel(report.strategy_kind)} />
           <DetailItem label="周期" value={report.interval} />
           <DetailItem label="样本区间" value={`${report.dataset_start} 至 ${report.dataset_end}`} />
           <DetailItem label="报告生成时间" value={report.created_at} />
@@ -99,8 +234,8 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
           {Object.entries(report.parameters)
             .slice(0, 18)
             .map(([key, value]) => (
-              <Descriptions.Item key={key} label={key}>
-                {String(value)}
+              <Descriptions.Item key={key} label={parameterLabel(report.strategy_kind, key)}>
+                {formatParameterValue(report.strategy_kind, key, value)}
               </Descriptions.Item>
             ))}
         </Descriptions>
@@ -109,13 +244,27 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
       {templateSnapshot ? (
         <Card size="small" title="策略模板来源" className="section-card">
           <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
-            <Descriptions.Item label="模板">{String(templateSnapshot.template_name ?? "-")}</Descriptions.Item>
-            <Descriptions.Item label="模板键">{String(templateSnapshot.template_key ?? "-")}</Descriptions.Item>
-            <Descriptions.Item label="模板ID">{String(templateSnapshot.id ?? "-")}</Descriptions.Item>
-            <Descriptions.Item label="策略">{String(templateSnapshot.strategy_kind ?? "-")}</Descriptions.Item>
+            <Descriptions.Item label="使用模板">{String(templateSnapshot.template_name ?? "-")}</Descriptions.Item>
+            <Descriptions.Item label="策略">{strategyLabel(String(templateSnapshot.strategy_kind ?? report.strategy_kind))}</Descriptions.Item>
             <Descriptions.Item label="周期">{String(templateSnapshot.interval ?? "-")}</Descriptions.Item>
             <Descriptions.Item label="默认模板">{Boolean(templateSnapshot.is_default) ? "是" : "否"}</Descriptions.Item>
           </Descriptions>
+          <Collapse
+            className="advanced-trace-panel"
+            ghost
+            items={[
+              {
+                key: "trace",
+                label: "查看高级追踪信息",
+                children: (
+                  <Descriptions size="small" column={{ xs: 1, sm: 2 }}>
+                    <Descriptions.Item label="模板键">{String(templateSnapshot.template_key ?? "-")}</Descriptions.Item>
+                    <Descriptions.Item label="模板 ID">{String(templateSnapshot.id ?? "-")}</Descriptions.Item>
+                  </Descriptions>
+                ),
+              },
+            ]}
+          />
         </Card>
       ) : null}
 
@@ -128,12 +277,12 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
           scroll={{ x: 980 }}
           columns={[
             { title: "时间", dataIndex: "trade_time", width: 180, fixed: "left" },
-            { title: "方向", dataIndex: "side", width: 90 },
+            { title: "方向", dataIndex: "side", width: 90, render: (value: string) => tradeSideLabels[value] ?? value },
             { title: "价格", dataIndex: "price", width: 110 },
             { title: "数量", dataIndex: "quantity", width: 100 },
             { title: "金额", dataIndex: "amount", width: 120 },
             { title: "费用", dataIndex: "fee", width: 100 },
-            { title: "类型", dataIndex: "trade_type", width: 160 },
+            { title: "类型", dataIndex: "trade_type", width: 160, render: (value: string) => tradeTypeLabels[value] ?? value },
             { title: "备注", dataIndex: "note", ellipsis: true },
           ]}
         />
@@ -148,11 +297,11 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
           scroll={{ x: 860 }}
           columns={[
             { title: "时间", dataIndex: "event_time", width: 180, fixed: "left" },
-            { title: "事件", dataIndex: "event_type", width: 160 },
+            { title: "事件", dataIndex: "event_type", width: 160, render: (value: string) => eventTypeLabels[value] ?? value },
             { title: "价格", dataIndex: "price", width: 120 },
             {
-              title: "明细",
-              render: (_, row) => <span>{JSON.stringify(row.payload)}</span>,
+              title: "明细说明",
+              render: (_, row) => formatEventDetails(row.payload),
             },
           ]}
         />
