@@ -18,6 +18,21 @@ const strategyGuide: Record<string, { scene: string; beginnerHint: string; risk:
   minute_index_grid_retrace: { scene: "指数回落后的网格", beginnerHint: "偏专项策略", risk: "需要匹配指数和标的数据" },
 };
 
+function buildTemplatePickHint(template: StrategyTemplate | null, strategyKind: string, interval: string) {
+  if (!template) {
+    return {
+      title: "当前还没有可直接套用的模板",
+      description: `现在选的是 ${strategyLabel(strategyKind)} / ${interval}。如果这组组合没有启用模板，优先换一个周期，或者先去策略模板页启用默认模板。`,
+    };
+  }
+  return {
+    title: `推荐先用 ${template.template_name}`,
+    description:
+      template.description?.trim() ||
+      `${strategyLabel(strategyKind)} / ${interval} 已经有可用模板。第一次先直接套用它，先验证能不能跑出报告，再决定要不要改高级参数。`,
+  };
+}
+
 function buildTemplateFieldValues(template: StrategyTemplate) {
   const execution = template.execution_overrides_json ?? {};
   return {
@@ -88,6 +103,10 @@ export function BacktestsView() {
   const succeededJobs = useMemo(() => jobs.filter((item) => item.status === "succeeded"), [jobs]);
   const recentJobs = useMemo(() => jobs.slice(0, 6), [jobs]);
   const latestSucceededJob = useMemo(() => succeededJobs.find((item) => item.reports?.length), [succeededJobs]);
+  const templatePickHint = useMemo(
+    () => buildTemplatePickHint(recommendedTemplate, selectedStrategy, selectedInterval),
+    [recommendedTemplate, selectedInterval, selectedStrategy],
+  );
   const queryPreset = useMemo(() => {
     const symbol = searchParams.get("symbol")?.trim().toUpperCase();
     const interval = searchParams.get("interval");
@@ -277,6 +296,16 @@ export function BacktestsView() {
             }
           }}
         >
+          <div className="wizard-first-run-banner">
+            <strong>如果你只是想先跑通第一轮</strong>
+            <p>直接用现成示例标的，周期优先选 15m 或 1d，策略先试网格或定投，模板保持推荐项即可。第一次先跑出一份能读懂的报告，比一开始就改很多高级参数更重要。</p>
+            <div className="wizard-first-run-tags">
+              <span>1. 选示例标的</span>
+              <span>2. 用推荐模板</span>
+              <span>3. 提交后看最近任务第一条</span>
+            </div>
+          </div>
+
           <Steps
             className="backtest-wizard-steps"
             current={activeStep}
@@ -354,6 +383,10 @@ export function BacktestsView() {
             <div className="wizard-step-panel">
               <Typography.Title level={4}>选择一个容易理解的策略模板</Typography.Title>
               <Typography.Paragraph>不确定时选“网格”并使用推荐模板。模板已经包含常用参数，后续可以再调整。</Typography.Paragraph>
+              <div className="wizard-template-banner">
+                <strong>{templatePickHint.title}</strong>
+                <p>{templatePickHint.description}</p>
+              </div>
               <div className="strategy-choice-grid">
                 {strategyOptions.map((item) => {
                   const guide = strategyGuide[item.value] ?? { scene: "策略实验", beginnerHint: "按模板说明选择", risk: "先小样本验证" };
@@ -416,6 +449,23 @@ export function BacktestsView() {
                 <div className="detail-item"><span className="detail-label">周期</span><span className="detail-value">{selectedInterval}</span></div>
                 <div className="detail-item"><span className="detail-label">策略</span><span className="detail-value">{strategyLabel(selectedStrategy)}</span></div>
                 <div className="detail-item"><span className="detail-label">模板</span><span className="detail-value">{selectedTemplate?.template_name ?? "未选择模板"}</span></div>
+              </div>
+              <div className="submit-reading-grid">
+                <article className="submit-reading-card">
+                  <span>提交后会发生什么</span>
+                  <strong>任务会先排队或开始运行</strong>
+                  <p>正常情况下，提交成功后几秒内就会在下面的“最近回测任务”出现，不需要重复点提交。</p>
+                </article>
+                <article className="submit-reading-card">
+                  <span>什么时候看任务区</span>
+                  <strong>刚提交时，只看第一条就够了</strong>
+                  <p>如果第一条已经成功并生成报告，直接点进去看结果；没有生成前，不用急着翻完整历史。</p>
+                </article>
+                <article className="submit-reading-card">
+                  <span>什么时候不用停留</span>
+                  <strong>没有卡住就不用盯着这页</strong>
+                  <p>只有任务长时间不动、连续失败或页面提示异常时，再去系统状态页排查；平时直接回报告页看结果更有价值。</p>
+                </article>
               </div>
               <Collapse
                 className="advanced-collapse"
@@ -508,7 +558,7 @@ export function BacktestsView() {
             <div className="job-summary-banner">
               <div className="job-summary-main">
                 <strong>先看最近几次任务，再决定要不要展开完整历史</strong>
-                <p>新手更需要先确认“有没有成功生成报告、失败是不是同一个原因、现在还有没有任务在跑”，而不是直接翻完整任务表。</p>
+                <p>新手更需要先确认“有没有成功生成报告、失败是不是同一个原因、现在还有没有任务在跑”，而不是直接翻完整任务表。刚提交成功时，只看最近任务里的第一条就够了。</p>
               </div>
               <div className="job-summary-metrics">
                 <span>运行中 {runningJobs.length}</span>

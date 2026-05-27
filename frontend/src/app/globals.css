@@ -934,6 +934,47 @@ a {
   gap: 18px;
 }
 
+.wizard-first-run-banner,
+.wizard-template-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid rgba(29, 78, 216, 0.14);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(29, 78, 216, 0.06), rgba(15, 118, 110, 0.03));
+}
+
+.wizard-first-run-banner strong,
+.wizard-template-banner strong {
+  color: #0f172a;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.wizard-first-run-banner p,
+.wizard-template-banner p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.wizard-first-run-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wizard-first-run-tags span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .backtest-wizard-steps {
   padding: 4px 0 8px;
 }
@@ -989,6 +1030,41 @@ a {
 
 .wizard-action-row {
   margin-top: 0;
+}
+
+.submit-reading-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.submit-reading-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.submit-reading-card span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.submit-reading-card strong {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.submit-reading-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .beginner-steps {

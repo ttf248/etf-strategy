@@ -80,6 +80,7 @@ test("首页到回测提交主路径可用", async ({ page, request }) => {
   await page.goto(`/backtests?${launchParams.toString()}`);
 
   await expect(page.getByText("已带入首页示例")).toBeVisible();
+  await expect(page.getByText("如果你只是想先跑通第一轮")).toBeVisible();
   await expect(page.getByText("先看最近几次任务，再决定要不要展开完整历史")).toBeVisible();
   await expect(page.locator('input[placeholder="例如 1810.HK"]')).toHaveValue(preset.symbol);
 
@@ -89,6 +90,8 @@ test("首页到回测提交主路径可用", async ({ page, request }) => {
 
   await page.getByRole("button", { name: "下一步" }).click();
   await expect(page.getByText("确认后提交任务")).toBeVisible();
+  await expect(page.getByText("提交后会发生什么")).toBeVisible();
+  await expect(page.getByText("刚提交时，只看第一条就够了")).toBeVisible();
   await expect(page.getByText(preset.symbol).first()).toBeVisible();
 
   const submitResponsePromise = page.waitForResponse((response) => {
