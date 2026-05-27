@@ -43,6 +43,15 @@ const executionProfiles = [
   { label: "研究口径", value: "research" },
 ];
 
+const strategyGuide: Record<string, { scene: string; level: string }> = {
+  grid: { scene: "震荡行情，低买高卖", level: "新手可先用" },
+  dca: { scene: "长期分批买入", level: "最容易理解" },
+  daily_rebound: { scene: "日线超跌反弹", level: "需要看回撤" },
+  minute_rebound: { scene: "分钟级急跌反抽", level: "偏进阶" },
+  minute_rebound_with_fade_filter: { scene: "带过滤的分钟反抽", level: "偏进阶" },
+  minute_index_grid_retrace: { scene: "指数回落后的网格", level: "偏进阶" },
+};
+
 export function TemplatesView() {
   const [form] = Form.useForm<TemplateFormValues>();
   const [templates, setTemplates] = useState<StrategyTemplate[]>([]);
@@ -220,20 +229,35 @@ export function TemplatesView() {
     <div className="page-stack">
       {contextHolder}
       <PageHeader
-        eyebrow="Strategy Templates"
-        title="参数模板"
-        description="集中管理策略参数空间、执行口径和默认模板，回测提交时会保存模板快照。"
+        eyebrow="Strategy Presets"
+        title="策略模板"
+        description="模板是预设好的回测参数。第一次使用建议直接选默认模板，不需要先理解每一个参数。"
         actions={
           <Space>
             <Button onClick={() => void loadTemplates()}>刷新</Button>
             <Button type="primary" onClick={openCreateDrawer}>
-              新建模板
+              新建高级模板
             </Button>
           </Space>
         }
       />
 
-      <Card size="small" title="模板中心" className="section-card">
+      <div className="template-guide-grid">
+        <Card size="small">
+          <strong>新手怎么选</strong>
+          <span>先选择名称里带“默认模板”的项目，跑通后再对比其他策略。</span>
+        </Card>
+        <Card size="small">
+          <strong>什么时候需要改模板</strong>
+          <span>只有当默认参数不适合你的标的、周期或手续费假设时，才需要编辑。</span>
+        </Card>
+        <Card size="small">
+          <strong>模板会被保存快照</strong>
+          <span>提交回测时会记录当时参数，后续改模板不会影响历史报告。</span>
+        </Card>
+      </div>
+
+      <Card size="small" title="策略模板库" className="section-card">
         <div className="table-toolbar">
           <Space wrap>
             <Select
@@ -272,14 +296,24 @@ export function TemplatesView() {
           scroll={{ x: 1240 }}
           columns={[
             { title: "名称", dataIndex: "template_name", width: 240, fixed: "left" },
-            { title: "模板键", dataIndex: "template_key", width: 220, ellipsis: true },
             { title: "策略", dataIndex: "strategy_kind", render: (value: string) => strategyLabel(value), width: 220 },
+            {
+              title: "适合什么",
+              dataIndex: "strategy_kind",
+              width: 220,
+              render: (value: string) => strategyGuide[value]?.scene ?? "自定义策略",
+            },
+            {
+              title: "难度",
+              dataIndex: "strategy_kind",
+              width: 120,
+              render: (value: string) => strategyGuide[value]?.level ?? "自定义",
+            },
             { title: "周期", dataIndex: "interval", width: 90 },
             { title: "口径", dataIndex: "execution_profile", width: 100 },
-            { title: "并行数", dataIndex: "jobs", width: 90 },
             { title: "默认", dataIndex: "is_default", width: 90, render: (value: boolean) => <Tag color={value ? "gold" : "default"}>{value ? "默认" : "-"}</Tag> },
             { title: "状态", dataIndex: "is_active", width: 90, render: (value: boolean) => <Tag color={value ? "green" : "default"}>{value ? "启用" : "停用"}</Tag> },
-            { title: "更新时间", dataIndex: "updated_at", width: 180 },
+            { title: "说明", dataIndex: "description", ellipsis: true },
             {
               title: "操作",
               width: 170,
@@ -300,12 +334,15 @@ export function TemplatesView() {
       </Card>
 
       <Drawer
-        title={editingTemplate ? `编辑模板 #${editingTemplate.id}` : "新建模板"}
+        title={editingTemplate ? `编辑高级模板 #${editingTemplate.id}` : "新建高级模板"}
         width={860}
         open={drawerOpen}
         destroyOnHidden
         onClose={() => setDrawerOpen(false)}
       >
+        <Card size="small" className="advanced-editor-note">
+          这里是高级编辑区。新手用户通常不需要修改模板，直接在“创建回测”页选择默认模板即可。
+        </Card>
         <Form
           form={form}
           layout="vertical"

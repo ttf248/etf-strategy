@@ -430,6 +430,34 @@ a {
   line-height: 20px;
 }
 
+.template-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.template-guide-grid .ant-card-body {
+  display: flex;
+  min-height: 96px;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.template-guide-grid strong {
+  color: #0f172a;
+}
+
+.template-guide-grid span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.advanced-editor-note {
+  margin-bottom: 14px;
+  background: var(--surface-soft);
+}
+
 .table-help {
   margin: 12px 0 0 !important;
   color: var(--muted);
@@ -662,6 +690,10 @@ a {
   }
 
   .beginner-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .template-guide-grid {
     grid-template-columns: 1fr;
   }
 
