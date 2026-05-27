@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Button, Card, Empty, Input, Select, Skeleton, Space, Table, Tag, Typography, message } from "antd";
+import { Button, Card, Collapse, Empty, Input, Select, Skeleton, Space, Table, Tag, Typography, message } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type MarketCoverage, type MarketDataStats } from "@/lib/api";
 import { MetricCard, PageHeader, ToolbarCount } from "@/components/platform-ui";
 import { intervalOptions } from "@/lib/strategy-template-config";
-import { buildBacktestPresetHref, buildBeginnerPresets } from "@/lib/beginner-presets";
+import { buildBacktestLaunchHref, buildBacktestPresetHref, buildBeginnerPresets } from "@/lib/beginner-presets";
 
 type IntervalRecommendation = {
   interval: string;
@@ -25,7 +25,33 @@ type CoverageInsight = {
   value: string;
   title: string;
   description: string;
+  recommendation: string;
+  examples: CoverageProfile[];
 };
+
+function coverageStage(profile: CoverageProfile) {
+  const hasDaily = profile.intervals.has("1d");
+  const has15m = profile.intervals.has("15m");
+  if (hasDaily && has15m) {
+    return 0;
+  }
+  if (hasDaily) {
+    return 1;
+  }
+  return 2;
+}
+
+function compareCoverageProfile(left: CoverageProfile, right: CoverageProfile) {
+  const stageDiff = coverageStage(left) - coverageStage(right);
+  if (stageDiff !== 0) {
+    return stageDiff;
+  }
+  const intervalDiff = right.intervals.size - left.intervals.size;
+  if (intervalDiff !== 0) {
+    return intervalDiff;
+  }
+  return left.symbol.localeCompare(right.symbol);
+}
 
 export function MarketDataView() {
   const [stats, setStats] = useState<MarketDataStats | null>(null);
@@ -130,41 +156,35 @@ export function MarketDataView() {
   }, [stats]);
 
   const coverageInsights = useMemo<CoverageInsight[]>(() => {
-    let readyCount = 0;
-    let dailyOnlyCount = 0;
-    let partialCount = 0;
-
-    for (const item of coverageProfiles) {
-      const hasDaily = item.intervals.has("1d");
-      const has15m = item.intervals.has("15m");
-      const has1m = item.intervals.has("1m");
-      if (hasDaily && has15m) {
-        readyCount += 1;
-      } else if (hasDaily) {
-        dailyOnlyCount += 1;
-      } else if (has15m || has1m) {
-        partialCount += 1;
-      }
-    }
+    const sortedProfiles = [...coverageProfiles].sort(compareCoverageProfile);
+    const readyProfiles = sortedProfiles.filter((item) => item.intervals.has("1d") && item.intervals.has("15m"));
+    const dailyOnlyProfiles = sortedProfiles.filter((item) => item.intervals.has("1d") && !item.intervals.has("15m"));
+    const partialProfiles = sortedProfiles.filter((item) => !item.intervals.has("1d"));
 
     return [
       {
         key: "ready",
-        value: `${readyCount} 个`,
+        value: `${readyProfiles.length} 个`,
         title: "可直接首跑",
         description: "同时具备 1d 和 15m，最适合第一次完整试跑。",
+        recommendation: "优先从这类里挑一个开始，不需要先做额外补数。",
+        examples: readyProfiles.slice(0, 3),
       },
       {
         key: "daily-only",
-        value: `${dailyOnlyCount} 个`,
+        value: `${dailyOnlyProfiles.length} 个`,
         title: "只适合长周期",
         description: "目前只有日线，适合先做定投或日线策略验证。",
+        recommendation: "可以先跑日线或定投，再决定要不要继续补 15m。",
+        examples: dailyOnlyProfiles.slice(0, 3),
       },
       {
         key: "partial",
-        value: `${partialCount} 个`,
+        value: `${partialProfiles.length} 个`,
         title: "还需补关键周期",
         description: "只有分钟线或缺少 1d / 15m，建议先补齐再开始。",
+        recommendation: "先补 1d 或 15m，再回到创建回测页。",
+        examples: partialProfiles.slice(0, 3),
       },
     ];
   }, [coverageProfiles]);
@@ -237,6 +257,23 @@ export function MarketDataView() {
     }
     return recommendations;
   }, [checkedSymbol, symbolRows, symbolIntervals]);
+
+  const checkedSymbolLaunchHref = useMemo(() => {
+    const normalizedSymbol = checkedSymbol.trim().toUpperCase();
+    if (!normalizedSymbol || symbolRows.length === 0) {
+      return null;
+    }
+    if (symbolIntervals.has("15m")) {
+      return buildBacktestLaunchHref({ symbol: normalizedSymbol, interval: "15m", strategyKind: "grid" });
+    }
+    if (symbolIntervals.has("1d")) {
+      return buildBacktestLaunchHref({ symbol: normalizedSymbol, interval: "1d", strategyKind: "dca" });
+    }
+    if (symbolIntervals.has("1m")) {
+      return buildBacktestLaunchHref({ symbol: normalizedSymbol, interval: "1m", strategyKind: "grid" });
+    }
+    return null;
+  }, [checkedSymbol, symbolIntervals, symbolRows.length]);
 
   function applyCheckedSymbol(targetSymbol: string) {
     const normalizedSymbol = targetSymbol.trim().toUpperCase();
@@ -315,6 +352,42 @@ export function MarketDataView() {
         </div>
       </Card>
 
+      <Card size="small" className="section-card start-path-card">
+        <div className="start-path-main">
+          <strong>
+            {symbolRows.length === 0
+              ? "先补一个能用的标的，再决定要不要同步全部数据"
+              : intervalRecommendations.length === 0
+                ? "当前这个标的已经够开始，不需要继续翻完整覆盖表"
+                : "这个标的可以先开始，但补齐常用周期会更稳妥"}
+          </strong>
+          <p>
+            {symbolRows.length === 0
+              ? "你现在更需要先把一个标的补到可用，而不是先看完整覆盖表。第一次通常先补 1d，再按需要补 15m。"
+              : intervalRecommendations.length === 0
+                ? "这个标的已经具备当前常用周期，可以直接去创建回测；只有想核对更多标的时，再展开下面的高级明细。"
+                : "当前标的已经有部分数据，可以先开始回测；如果你准备长期复盘或默认分钟策略，再把缺的推荐周期补齐。"}
+          </p>
+        </div>
+        <div className="start-path-actions">
+          {checkedSymbolLaunchHref ? (
+            <Button type="primary">
+              <Link href={checkedSymbolLaunchHref}>用当前标的开始回测</Link>
+            </Button>
+          ) : null}
+          {beginnerPresets[0] ? (
+            <Button>
+              <Link href={buildBacktestPresetHref(beginnerPresets[0])}>先用现成示例标的开始</Link>
+            </Button>
+          ) : null}
+          {intervalRecommendations[0] ? (
+            <Button loading={syncingSymbol && syncInterval === intervalRecommendations[0].interval} onClick={() => void syncSymbolForInterval(intervalRecommendations[0].interval)}>
+              先补 {intervalRecommendations[0].interval}
+            </Button>
+          ) : null}
+        </div>
+      </Card>
+
       <Card size="small" title="新手建议先用这些标的" className="section-card">
         {beginnerPresets.length === 0 ? (
           <Typography.Text type="secondary">当前还没有同时适合首跑的示例标的。可以先在上方输入一个标的检查，再补 1d 或 15m。</Typography.Text>
@@ -347,18 +420,30 @@ export function MarketDataView() {
         )}
       </Card>
 
-      <Card size="small" title="当前数据准备提示" className="section-card">
+      <Card size="small" title="先按准备程度选一个标的，不需要先翻完整覆盖表" className="section-card">
         <div className="quality-hint-grid">
           {coverageInsights.map((item) => (
             <article key={item.key} className="quality-hint-card">
               <strong>{item.value}</strong>
               <b>{item.title}</b>
               <span>{item.description}</span>
+              <small>{item.recommendation}</small>
+              <div className="quality-hint-examples">
+                {item.examples.length > 0 ? (
+                  item.examples.map((profile) => (
+                    <Button key={`${item.key}-${profile.symbol}`} size="small" onClick={() => applyCheckedSymbol(profile.symbol)}>
+                      先检查 {profile.symbol}
+                    </Button>
+                  ))
+                ) : (
+                  <Typography.Text type="secondary">当前还没有这一类标的。</Typography.Text>
+                )}
+              </div>
             </article>
           ))}
         </div>
         <Typography.Paragraph className="quality-hint-note">
-          第一次试跑不需要先把全部标的都同步完。优先选一个同时有 1d 和 15m 的标的，跑通回测流程后，再逐步补更多周期和更多标的。
+          第一次试跑不需要先把全部标的都同步完。优先选一个同时有 1d 和 15m 的标的，跑通回测流程后，再逐步补更多周期和更多标的。只有当你需要核对全部覆盖细节时，再展开下面的高级明细。
         </Typography.Paragraph>
       </Card>
 
@@ -384,70 +469,88 @@ export function MarketDataView() {
         ))}
       </div>
 
-      <Card size="small" title="全部数据覆盖" className="section-card">
-        <div className="table-toolbar">
-          <Space wrap>
-            <Input
-              placeholder="筛选标的或名称"
-              value={tableKeyword}
-              onChange={(event) => setTableKeyword(event.target.value)}
-              style={{ width: 240 }}
-            />
-            <Select
-              allowClear
-              placeholder="按周期筛选"
-              value={interval}
-              onChange={setInterval}
-              options={intervalOptions}
-              style={{ width: 150 }}
-            />
-          </Space>
-          <ToolbarCount>共 {filteredRows.length} 条覆盖记录</ToolbarCount>
+      <Card size="small" title="数据覆盖高级明细" className="section-card">
+        <div className="data-library-banner">
+          <strong>只有在你需要核对全部覆盖细节时，再展开完整明细</strong>
+          <p>大多数时候，上面的检查结果、准备程度分层和推荐周期已经足够决定下一步。只有当你要筛多个标的、核对更新时间或排查覆盖异常时，再看完整表格。</p>
         </div>
+        <Collapse
+          className="advanced-table-panel"
+          ghost
+          items={[
+            {
+              key: "coverage-table",
+              label: "高级明细：全部标的覆盖、筛选和更新时间",
+              children: (
+                <>
+                  <div className="table-toolbar">
+                    <Space wrap>
+                      <Input
+                        placeholder="筛选标的或名称"
+                        value={tableKeyword}
+                        onChange={(event) => setTableKeyword(event.target.value)}
+                        style={{ width: 240 }}
+                      />
+                      <Select
+                        allowClear
+                        placeholder="按周期筛选"
+                        value={interval}
+                        onChange={setInterval}
+                        options={intervalOptions}
+                        style={{ width: 150 }}
+                      />
+                    </Space>
+                    <ToolbarCount>共 {filteredRows.length} 条覆盖记录</ToolbarCount>
+                  </div>
 
-        {filteredRows.length === 0 ? (
-          <Empty description="没有匹配的数据" />
-        ) : (
-          <>
-            <div className="coverage-mobile-list">
-              {filteredRows.slice(0, 20).map((row) => (
-                <article key={`${row.symbol}-${row.interval}`} className="coverage-mobile-card">
-                  <div className="coverage-mobile-card-head">
-                    <div>
-                      <strong>{row.symbol}</strong>
-                      <span>{row.name || "未命名标的"} / {row.exchange}</span>
-                    </div>
-                    <Tag color={row.interval === "1d" ? "blue" : "cyan"}>{row.interval}</Tag>
-                  </div>
-                  <div className="coverage-mobile-metrics">
-                    <span>{row.bar_count.toLocaleString()} 条 K 线</span>
-                    <span>{row.start_time} 至 {row.end_time}</span>
-                  </div>
-                  <small>最近更新：{row.last_ingested_at || "-"}</small>
-                </article>
-              ))}
-              {filteredRows.length > 20 ? <Typography.Text type="secondary">移动端先显示前 20 条，可用筛选缩小范围。</Typography.Text> : null}
-            </div>
-            <Table<MarketCoverage>
-              className="coverage-desktop-table"
-              rowKey={(row) => `${row.symbol}-${row.interval}`}
-              size="small"
-              dataSource={filteredRows}
-              pagination={{ pageSize: 20, showSizeChanger: false }}
-              scroll={{ x: 1160 }}
-              columns={[
-                { title: "标的", dataIndex: "symbol", width: 120, fixed: "left" },
-                { title: "名称", dataIndex: "name", ellipsis: true },
-                { title: "交易所", dataIndex: "exchange", width: 90 },
-                { title: "周期", dataIndex: "interval", width: 90 },
-                { title: "K 线数量", dataIndex: "bar_count", width: 120, render: (value: number) => value.toLocaleString() },
-                { title: "开始日期", dataIndex: "start_time", width: 180 },
-                { title: "结束日期", dataIndex: "end_time", width: 180 },
-                { title: "最近更新", dataIndex: "last_ingested_at", width: 220 },
-              ]}
-            />
-          </>
-        )}
+                  {filteredRows.length === 0 ? (
+                    <Empty description="没有匹配的数据" />
+                  ) : (
+                    <>
+                      <div className="coverage-mobile-list">
+                        {filteredRows.slice(0, 20).map((row) => (
+                          <article key={`${row.symbol}-${row.interval}`} className="coverage-mobile-card">
+                            <div className="coverage-mobile-card-head">
+                              <div>
+                                <strong>{row.symbol}</strong>
+                                <span>{row.name || "未命名标的"} / {row.exchange}</span>
+                              </div>
+                              <Tag color={row.interval === "1d" ? "blue" : "cyan"}>{row.interval}</Tag>
+                            </div>
+                            <div className="coverage-mobile-metrics">
+                              <span>{row.bar_count.toLocaleString()} 条 K 线</span>
+                              <span>{row.start_time} 至 {row.end_time}</span>
+                            </div>
+                            <small>最近更新：{row.last_ingested_at || "-"}</small>
+                          </article>
+                        ))}
+                        {filteredRows.length > 20 ? <Typography.Text type="secondary">移动端先显示前 20 条，可用筛选缩小范围。</Typography.Text> : null}
+                      </div>
+                      <Table<MarketCoverage>
+                        className="coverage-desktop-table"
+                        rowKey={(row) => `${row.symbol}-${row.interval}`}
+                        size="small"
+                        dataSource={filteredRows}
+                        pagination={{ pageSize: 20, showSizeChanger: false }}
+                        scroll={{ x: 1160 }}
+                        columns={[
+                          { title: "标的", dataIndex: "symbol", width: 120, fixed: "left" },
+                          { title: "名称", dataIndex: "name", ellipsis: true },
+                          { title: "交易所", dataIndex: "exchange", width: 90 },
+                          { title: "周期", dataIndex: "interval", width: 90 },
+                          { title: "K 线数量", dataIndex: "bar_count", width: 120, render: (value: number) => value.toLocaleString() },
+                          { title: "开始日期", dataIndex: "start_time", width: 180 },
+                          { title: "结束日期", dataIndex: "end_time", width: 180 },
+                          { title: "最近更新", dataIndex: "last_ingested_at", width: 220 },
+                        ]}
+                      />
+                    </>
+                  )}
+                </>
+              ),
+            },
+          ]}
+        />
       </Card>
     </div>
   );
