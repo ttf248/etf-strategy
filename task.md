@@ -2195,3 +2195,46 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `py -3.13 -m unittest tests.test_platform_features`
 - 已执行 `git diff --check`
+
+## 前端控制台现代化重设计
+
+### 状态
+
+已完成，全局视觉系统、平台壳层、概览、行情、模板、回测、报告列表和报告详情页均已重构并通过验证。
+
+### 修改方案
+
+围绕“浅色专业、简约、大气、专业密集”的方向重做前端界面，不改变现有路由、API、数据库和业务流程。改造重点：
+
+- 用统一设计变量和 Ant Design 主题替代默认后台样式
+- 重做侧边导航、顶部状态栏和页面标题层级
+- 保留表格为核心工作界面，但提升筛选、KPI、状态和报告复盘阅读体验
+- 抽取共享 UI 组件，避免每个页面各自维护视觉样式
+
+### 修改内容
+
+- `frontend/src/app/globals.css`
+  - 重建设计变量、壳层、卡片、表格、工具栏、KPI 和详情区样式
+- `frontend/src/app/layout.tsx`
+  - 增加 Ant Design `ConfigProvider`，统一主题 token 和组件密度
+- `frontend/src/components/console-shell.tsx`
+  - 重做品牌区、导航、顶部状态栏和内容容器
+- `frontend/src/components/platform-ui.tsx`
+  - 新增页面标题、KPI 卡片、详情项、状态标签和百分比展示组件
+- 页面组件
+  - 重构概览、行情、参数模板、回测任务、历史报告、报告详情
+  - 优化 ECharts 权益曲线配色、网格和 tooltip
+
+### 设计取舍
+
+- 不引入新的 UI 库，继续使用现有 `antd`、`@ant-design/icons`、`echarts`
+- 不做暗色主题或主题切换，先保持单一浅色专业风格
+- 不减少核心表格信息密度，优先服务研究和运维场景的高频筛选
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `cd frontend && npm run build`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts tests.test_platform_features`
+- 已执行 `git diff --check`
+- 已检查本地前端首页 `http://127.0.0.1:3000` 响应 200
