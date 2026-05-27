@@ -330,7 +330,7 @@ export function ReportsView() {
           <div className="compare-prefill-banner">
             <strong>已从详情页带入报告</strong>
             <span>
-              {queryComparedReports.map((item) => `#${item.id} ${item.symbol}`).join("、")} 已经加入对比区。
+              {queryComparedReports.map((item) => `编号 ${item.id} ${item.symbol}`).join("、")} 已经加入对比区。
               {selectedReportIds.length < 2 ? " 再勾选 1 到 3 份报告，就能直接比较收益、回撤和交易次数。" : " 现在已经可以直接查看对比结果。"}
             </span>
           </div>
@@ -361,7 +361,7 @@ export function ReportsView() {
                   <article key={report.id} className="report-compare-item">
                     <div className="report-compare-head">
                       <strong>
-                        #{report.id} {report.symbol}
+                        编号 {report.id} {report.symbol}
                         {validFavoriteReportIds.includes(report.id) ? " · 已收藏" : ""}
                       </strong>
                       <Button size="small" type="link" onClick={() => toggleCompare(report.id)}>移除</Button>
@@ -388,12 +388,12 @@ export function ReportsView() {
               <strong>对比后下一步</strong>
               <p>
                 {comparedReports.length === 1
-                  ? `当前只带入了 #${comparedReports[0].id} ${comparedReports[0].symbol}，先再选 1 到 3 份报告，才能真正比较哪套策略更稳或更赚钱。`
+                  ? `当前只带入了编号 ${comparedReports[0].id} ${comparedReports[0].symbol}，先再选 1 到 3 份报告，才能真正比较哪套策略更稳或更赚钱。`
                   : bestComparedReport
-                  ? `收益最高的是 #${bestComparedReport.id} ${bestComparedReport.symbol}。`
+                  ? `收益最高的是编号 ${bestComparedReport.id} ${bestComparedReport.symbol}。`
                   : "先选出你最关心的那份报告。"}
                 {comparedReports.length > 1 && safestComparedReport
-                  ? ` 回撤最小的是 #${safestComparedReport.id} ${safestComparedReport.symbol}。`
+                  ? ` 回撤最小的是编号 ${safestComparedReport.id} ${safestComparedReport.symbol}。`
                   : ""}
                 {comparedReports.length > 1
                   ? " 如果你更看重赚钱效率，先打开收益最高那份；如果你更看重稳健，先看回撤最小那份，再决定要不要重跑。"
@@ -457,7 +457,7 @@ export function ReportsView() {
                   <article key={report.id} className="report-mobile-card">
                     <div className="report-mobile-card-head">
                       <div>
-                        <strong>#{report.id} {report.symbol}</strong>
+                        <strong>编号 {report.id} {report.symbol}</strong>
                         <span>{report.name || "未命名标的"} / {report.interval}</span>
                       </div>
                       <div className="report-mobile-card-tags">
@@ -516,7 +516,7 @@ export function ReportsView() {
                       pagination={{ pageSize: 12, showSizeChanger: false }}
                       scroll={{ x: 980 }}
                       columns={[
-                        { title: "报告", dataIndex: "id", width: 88, fixed: "left", render: (value: number) => `#${value}` },
+                        { title: "报告编号", dataIndex: "id", width: 88, fixed: "left", render: (value: number) => String(value) },
                         { title: "标的", dataIndex: "symbol", width: 120 },
                         { title: "名称", dataIndex: "name", ellipsis: true },
                         { title: "周期", dataIndex: "interval", width: 90 },
