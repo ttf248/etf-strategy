@@ -94,7 +94,7 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
       <Drawer
         title="ETF Strategy"
         placement="left"
-        width={280}
+        size="default"
         open={mobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
         className="mobile-nav-drawer"

@@ -13,6 +13,7 @@
 - 第五轮调整已完成：创建回测页增加策略选择卡片，用场景、风险和模板可用性替代单纯策略代码选择。
 - 第六轮调整已完成：运行时逐页检查前端和关键 API，系统状态页在心跳表未初始化时给出 `init-db` 指引，后台进程不再持续刷 SQL 错误。
 - 第七轮调整已完成：数据准备页的标的检查改为点击或回车触发，检查结果和覆盖表筛选同步更新。
+- 第八轮调整已完成：截图检查发现移动端有 Ant Design Drawer 弃用告警导致开发浮层，已改用当前 API。
 
 ## 页面审查
 
@@ -33,6 +34,7 @@
 - 前端路由 `/`、`/backtests`、`/reports`、`/market-data`、`/templates`、`/platform` 均返回 200。
 - 后端接口 `/api/market-data/stats`、`/api/backtests?limit=5`、`/api/reports?limit=5`、`/api/templates?active_only=true`、`/api/platform/status` 均返回 200。
 - 发现本地数据库缺少 `platform_heartbeats` 表时，Worker/Scheduler 会重复输出底层 SQL 错误；已改为一次性初始化提示。
+- 使用 Playwright 对 6 个页面生成桌面和移动端截图，输出到 `outputs/frontend-screenshots/`；截图发现开发浮层 `1 Issue`，来源为 Drawer `width` 弃用告警，已修复。
 
 ## 重构原则
 
