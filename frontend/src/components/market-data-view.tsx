@@ -1,13 +1,28 @@
 "use client";
 
+import Link from "next/link";
 import { Button, Card, Empty, Input, Select, Skeleton, Space, Table, Tag, Typography, message } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type MarketCoverage, type MarketDataStats } from "@/lib/api";
 import { MetricCard, PageHeader, ToolbarCount } from "@/components/platform-ui";
 import { intervalOptions } from "@/lib/strategy-template-config";
+import { buildBacktestPresetHref, buildBeginnerPresets } from "@/lib/beginner-presets";
 
 type IntervalRecommendation = {
   interval: string;
+  title: string;
+  description: string;
+};
+
+type CoverageProfile = {
+  symbol: string;
+  name: string;
+  intervals: Set<string>;
+};
+
+type CoverageInsight = {
+  key: string;
+  value: string;
   title: string;
   description: string;
 };
@@ -92,6 +107,68 @@ export function MarketDataView() {
     });
   }, [stats, tableKeyword, interval]);
 
+  const beginnerPresets = useMemo(() => (stats ? buildBeginnerPresets(stats.coverages) : []), [stats]);
+
+  const coverageProfiles = useMemo<CoverageProfile[]>(() => {
+    if (!stats) {
+      return [];
+    }
+    const grouped = new Map<string, CoverageProfile>();
+    for (const item of stats.coverages) {
+      const current =
+        grouped.get(item.symbol) ??
+        {
+          symbol: item.symbol,
+          name: item.name || item.symbol,
+          intervals: new Set<string>(),
+        };
+      current.name = current.name || item.name || item.symbol;
+      current.intervals.add(item.interval);
+      grouped.set(item.symbol, current);
+    }
+    return Array.from(grouped.values());
+  }, [stats]);
+
+  const coverageInsights = useMemo<CoverageInsight[]>(() => {
+    let readyCount = 0;
+    let dailyOnlyCount = 0;
+    let partialCount = 0;
+
+    for (const item of coverageProfiles) {
+      const hasDaily = item.intervals.has("1d");
+      const has15m = item.intervals.has("15m");
+      const has1m = item.intervals.has("1m");
+      if (hasDaily && has15m) {
+        readyCount += 1;
+      } else if (hasDaily) {
+        dailyOnlyCount += 1;
+      } else if (has15m || has1m) {
+        partialCount += 1;
+      }
+    }
+
+    return [
+      {
+        key: "ready",
+        value: `${readyCount} 个`,
+        title: "可直接首跑",
+        description: "同时具备 1d 和 15m，最适合第一次完整试跑。",
+      },
+      {
+        key: "daily-only",
+        value: `${dailyOnlyCount} 个`,
+        title: "只适合长周期",
+        description: "目前只有日线，适合先做定投或日线策略验证。",
+      },
+      {
+        key: "partial",
+        value: `${partialCount} 个`,
+        title: "还需补关键周期",
+        description: "只有分钟线或缺少 1d / 15m，建议先补齐再开始。",
+      },
+    ];
+  }, [coverageProfiles]);
+
   const symbolRows = useMemo(() => {
     if (!stats || !checkedSymbol.trim()) {
       return [];
@@ -161,10 +238,15 @@ export function MarketDataView() {
     return recommendations;
   }, [checkedSymbol, symbolRows, symbolIntervals]);
 
-  function checkSymbol() {
-    const normalizedSymbol = checkInput.trim().toUpperCase();
+  function applyCheckedSymbol(targetSymbol: string) {
+    const normalizedSymbol = targetSymbol.trim().toUpperCase();
+    setCheckInput(normalizedSymbol);
     setCheckedSymbol(normalizedSymbol);
     setTableKeyword(normalizedSymbol);
+  }
+
+  function checkSymbol() {
+    applyCheckedSymbol(checkInput);
   }
 
   if (!stats) {
@@ -231,6 +313,53 @@ export function MarketDataView() {
             <small>不会补数据时，优先按上面的推荐周期同步；第一次短线研究建议先补 15m。</small>
           </div>
         </div>
+      </Card>
+
+      <Card size="small" title="新手建议先用这些标的" className="section-card">
+        {beginnerPresets.length === 0 ? (
+          <Typography.Text type="secondary">当前还没有同时适合首跑的示例标的。可以先在上方输入一个标的检查，再补 1d 或 15m。</Typography.Text>
+        ) : (
+          <div className="beginner-preset-grid">
+            {beginnerPresets.map((preset) => (
+              <article key={`${preset.symbol}-${preset.interval}`} className="beginner-preset-card">
+                <div className="beginner-preset-head">
+                  <div>
+                    <strong>{preset.symbol}</strong>
+                    <span>{preset.name || "未命名标的"}</span>
+                  </div>
+                  <Tag color={preset.interval === "1d" ? "blue" : "cyan"}>{preset.interval}</Tag>
+                </div>
+                <p>{preset.reason}</p>
+                <div className="beginner-preset-tags">
+                  {preset.availableIntervals.map((item) => (
+                    <Tag key={item}>{item}</Tag>
+                  ))}
+                </div>
+                <div className="beginner-preset-actions">
+                  <Button onClick={() => applyCheckedSymbol(preset.symbol)}>先检查这个标的</Button>
+                  <Button type="primary">
+                    <Link href={buildBacktestPresetHref(preset)}>直接去回测</Link>
+                  </Button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card size="small" title="当前数据准备提示" className="section-card">
+        <div className="quality-hint-grid">
+          {coverageInsights.map((item) => (
+            <article key={item.key} className="quality-hint-card">
+              <strong>{item.value}</strong>
+              <b>{item.title}</b>
+              <span>{item.description}</span>
+            </article>
+          ))}
+        </div>
+        <Typography.Paragraph className="quality-hint-note">
+          第一次试跑不需要先把全部标的都同步完。优先选一个同时有 1d 和 15m 的标的，跑通回测流程后，再逐步补更多周期和更多标的。
+        </Typography.Paragraph>
       </Card>
 
       {symbolRows.length > 0 ? (
