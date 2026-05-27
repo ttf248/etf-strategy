@@ -13,6 +13,8 @@ type ReportDetailViewProps = {
   reportId: string;
 };
 
+type CurvePoint = ReportDetail["equity_curve"][number];
+
 const baseParameterLabels: Record<string, string> = {
   AnchorDate: "锚定日期",
   BaseUnits: "基础份额",
@@ -354,6 +356,75 @@ function buildCompareHref(report: ReportDetail): string {
   return `/reports?${searchParams.toString()}`;
 }
 
+function formatCurveTime(value: string): string {
+  return value.replace("T", " ").slice(0, 16);
+}
+
+function formatSignedPercent(value: number): string {
+  return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
+function buildCurveReading(points: CurvePoint[], netReturn: number, maxDrawdown: number, closedTrades: number) {
+  if (points.length === 0) {
+    return null;
+  }
+
+  const startPoint = points[0];
+  const endPoint = points[points.length - 1];
+  const highestEquityPoint = points.reduce((best, item) => (item.equity > best.equity ? item : best), startPoint);
+  const worstDrawdownPoint = points.reduce((best, item) => (Math.abs(item.drawdown_pct) > Math.abs(best.drawdown_pct) ? item : best), startPoint);
+  const flatCurve =
+    Math.abs(endPoint.return_pct - startPoint.return_pct) < 0.2 &&
+    Math.abs(worstDrawdownPoint.drawdown_pct) < 0.2 &&
+    Math.abs((highestEquityPoint.equity - startPoint.equity) / Math.max(startPoint.equity, 1)) < 0.002;
+
+  let headline = "先看蓝线方向，再看红线深浅";
+  let description = `样本外从 ${formatCurveTime(startPoint.curve_time)} 跑到 ${formatCurveTime(endPoint.curve_time)}，账户最终停在 ${Math.round(endPoint.equity).toLocaleString()}。`;
+
+  if (closedTrades === 0 || flatCurve) {
+    headline = "这张图几乎是一条平线，重点不是读走势，而是弄清为什么没有成交";
+    description = `从 ${formatCurveTime(startPoint.curve_time)} 到 ${formatCurveTime(endPoint.curve_time)}，账户权益几乎停在 ${Math.round(endPoint.equity).toLocaleString()}。这和“没有触发交易”一致，优先回去换标的、周期或参数。`;
+  } else if (netReturn > 0 && maxDrawdown <= 8) {
+    headline = "蓝线整体抬升，而且红线没有长时间深回撤";
+    description = `这类曲线通常说明收益和波动比较平衡。先确认高点后的回落是否还能接受，再拿去和同标的其他策略对比。`;
+  } else if (netReturn > 0) {
+    headline = "蓝线最终向上，但中途回撤不小";
+    description = "这类曲线不是不能用，而是要重点看赚钱主要集中在哪一段，以及红线是否长时间贴着深回撤区域。";
+  } else {
+    headline = "蓝线没有稳住向上趋势，先看亏损集中在哪一段";
+    description = "如果亏损主要集中在少数几段行情，就优先换模板或周期重跑；如果全程都偏弱，说明这套组合本身不适合当前样本。";
+  }
+
+  return {
+    headline,
+    description,
+    guides: [
+      {
+        title: "整体走势",
+        value: flatCurve ? "几乎走平" : netReturn > 0 ? "整体向上" : "整体走弱",
+        description: flatCurve
+          ? `期末收益 ${formatSignedPercent(netReturn)}，蓝线几乎没有离开初始资金线。`
+          : `账户权益从 ${Math.round(startPoint.equity).toLocaleString()} 走到 ${Math.round(endPoint.equity).toLocaleString()}，期末收益 ${formatSignedPercent(netReturn)}。`,
+      },
+      {
+        title: "最该留意的时点",
+        value: flatCurve ? "几乎没有波动" : formatCurveTime(highestEquityPoint.curve_time),
+        description: flatCurve
+          ? "高点和期末几乎重合，说明这轮样本外没有形成可分析的趋势。"
+          : `最高权益出现在 ${formatCurveTime(highestEquityPoint.curve_time)}；最大回撤 ${maxDrawdown.toFixed(2)}%，最深回落出现在 ${formatCurveTime(worstDrawdownPoint.curve_time)}。`,
+      },
+      {
+        title: "读图顺序",
+        value: closedTrades === 0 ? "先确认为什么没开仓" : "先看蓝线，再看红线",
+        description:
+          closedTrades === 0
+            ? "蓝线不动、红线贴近 0%，说明主要问题不在止损，而在入场条件、标的活跃度或周期选择。"
+            : "蓝线代表账户权益，红线代表离阶段高点有多远。先判断收益方向，再看自己是否能接受中途回撤。",
+      },
+    ],
+  };
+}
+
 export function ReportDetailView({ reportId }: ReportDetailViewProps) {
   const [report, setReport] = useState<ReportDetail | null>(null);
 
@@ -380,6 +451,7 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
     templateId,
   });
   const compareHref = buildCompareHref(report);
+  const curveReading = buildCurveReading(report.equity_curve, netReturn, maxDrawdown, closedTrades);
   const readingGuides = [
     {
       title: "收益怎么看",
@@ -468,7 +540,30 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
       </Card>
 
       <Card size="small" title="净值与回撤" className="section-card">
-        {report.equity_curve.length === 0 ? <Empty description="无净值数据" /> : <EquityChart points={report.equity_curve} />}
+        {report.equity_curve.length === 0 || !curveReading ? (
+          <Empty description="无净值数据" />
+        ) : (
+          <div className="curve-reading-stack">
+            <div className="curve-reading-banner">
+              <strong>{curveReading.headline}</strong>
+              <p>{curveReading.description}</p>
+            </div>
+            <div className="curve-reading-grid">
+              {curveReading.guides.map((item) => (
+                <article key={item.title} className="curve-reading-card">
+                  <span>{item.title}</span>
+                  <strong>{item.value}</strong>
+                  <p>{item.description}</p>
+                </article>
+              ))}
+            </div>
+            <div className="curve-legend-note">
+              <strong>图上三条线分别代表什么：</strong>
+              <span>蓝线是账户权益，绿线是累计收益率，红线是从阶段高点回落的幅度。先看蓝线方向，再看红线是否长时间处在深回撤区域。</span>
+            </div>
+            <EquityChart points={report.equity_curve} />
+          </div>
+        )}
       </Card>
 
       <Card size="small" title="本次使用的关键参数" className="section-card">
