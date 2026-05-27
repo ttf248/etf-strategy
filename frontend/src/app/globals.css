@@ -330,6 +330,63 @@ a {
   font-size: 20px;
 }
 
+.home-report-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.home-report-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.home-report-card-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.home-report-card-head div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.home-report-card-head strong {
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.home-report-card-head span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.home-report-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.home-report-metrics span {
+  padding: 8px;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
