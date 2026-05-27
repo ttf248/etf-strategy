@@ -569,6 +569,32 @@ a {
   line-height: 24px;
 }
 
+.maintenance-path-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.maintenance-path-card .ant-card-body {
+  display: flex;
+  min-height: 150px;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.maintenance-path-card strong {
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.maintenance-path-card span {
+  flex: 1;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .maintenance-collapse {
   border: 1px solid var(--line-soft);
   border-radius: 10px;

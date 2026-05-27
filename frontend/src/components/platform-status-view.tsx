@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Button, Card, Col, Collapse, Empty, Row, Select, Skeleton, Space, Table, Typography, message } from "antd";
 import { useEffect, useState } from "react";
 import { apiFetch, type PlatformLogs, type PlatformProcess, type PlatformStatus } from "@/lib/api";
@@ -10,6 +11,10 @@ const logServiceOptions = [
   { label: "Worker", value: "worker" },
   { label: "Scheduler", value: "scheduler" },
 ];
+
+function serviceOk(status: string): boolean {
+  return status === "ok" || status === "completed" || status === "succeeded";
+}
 
 export function PlatformStatusView() {
   const [status, setStatus] = useState<PlatformStatus | null>(null);
@@ -89,6 +94,9 @@ export function PlatformStatusView() {
   }
 
   const queueTotal = Object.values(status.queue).reduce((sum, value) => sum + Number(value || 0), 0);
+  const platformReady = serviceOk(status.api.status) && serviceOk(status.frontend.status) && serviceOk(status.database.status);
+  const queuedJobs = Number(status.queue.queued ?? 0);
+  const runningJobs = Number(status.queue.running ?? 0);
 
   return (
     <div className="page-stack">
@@ -96,23 +104,51 @@ export function PlatformStatusView() {
       <PageHeader
         eyebrow="Maintenance"
         title="系统状态"
-        description="这里用于排查平台是否能正常运行。新手通常只需要确认 API、前端、数据库都是 ok。"
+        description="这里只在平台出问题时才需要查看。正常创建回测、查看报告时，不需要理解进程、日志或数据库。"
         actions={<Button onClick={() => void refreshPlatform()}>刷新状态</Button>}
       />
 
       <div className="summary-grid">
-        <MetricCard label="API" value={<StatusTag value={status.api.status} />} note={status.api.base_url} />
-        <MetricCard label="Frontend" value={<StatusTag value={status.frontend.status} />} note={status.frontend.base_url} />
-        <MetricCard label="Database" value={<StatusTag value={status.database.status} />} note={status.database.url} />
-        <MetricCard label="任务总数" value={queueTotal} note={`queued ${status.queue.queued ?? 0} / running ${status.queue.running ?? 0}`} />
+        <MetricCard label="平台可用性" value={platformReady ? "可以继续使用" : "需要排查"} note="API、前端、数据库都正常时即可继续回测" />
+        <MetricCard label="API 服务" value={<StatusTag value={status.api.status} />} note={serviceOk(status.api.status) ? "接口正常响应" : "先刷新或查看下方日志"} />
+        <MetricCard label="页面访问" value={<StatusTag value={status.frontend.status} />} note={serviceOk(status.frontend.status) ? "前端可访问" : "页面可能无法正常打开"} />
+        <MetricCard
+          label="后台任务"
+          value={queueTotal}
+          note={runningJobs > 0 || queuedJobs > 0 ? `排队 ${queuedJobs} / 运行中 ${runningJobs}` : "当前没有排队任务"}
+        />
       </div>
 
       <Card size="small" className="section-card maintenance-guide-card">
-        <Typography.Title level={4}>怎么判断平台能不能用？</Typography.Title>
+        <Typography.Title level={4}>先判断你是不是需要看这页</Typography.Title>
         <Typography.Paragraph>
-          API、前端和数据库为 ok 时，可以继续创建回测和查看报告。Worker/Scheduler 心跳、进程和日志属于维护信息，只有任务不执行或同步失败时再展开查看。
+          如果你只是想创建回测、看报告或补数据，优先回主路径页面操作。只有当页面打不开、任务长期不动或同步一直失败时，再展开下面的维护信息。
         </Typography.Paragraph>
       </Card>
+
+      <div className="maintenance-path-grid">
+        <Card size="small" className="maintenance-path-card">
+          <strong>正常使用时</strong>
+          <span>平台可用性显示“可以继续使用”时，直接回到主路径，不需要再看日志或进程。</span>
+          <Button type="link">
+            <Link href="/backtests">回到创建回测</Link>
+          </Button>
+        </Card>
+        <Card size="small" className="maintenance-path-card">
+          <strong>数据有问题时</strong>
+          <span>如果回测报数据不足，先去数据准备页检查标的和周期，不必先看系统日志。</span>
+          <Button type="link">
+            <Link href="/market-data">去检查数据</Link>
+          </Button>
+        </Card>
+        <Card size="small" className="maintenance-path-card">
+          <strong>任务没结果时</strong>
+          <span>如果任务一直排队或报告没生成，再回来展开心跳、队列和日志，确认后台进程是否正常。</span>
+          <Button type="link">
+            <Link href="/reports">先看报告列表</Link>
+          </Button>
+        </Card>
+      </div>
 
       <Collapse
         className="maintenance-collapse"
@@ -176,7 +212,7 @@ export function PlatformStatusView() {
                 title="本机进程"
                 size="small"
                 className="section-card"
-                extra={<ToolbarCount>进程控制：{status.process_control_enabled ? "已启用" : "默认关闭"}</ToolbarCount>}
+                extra={<ToolbarCount>进程控制仅供维护使用：{status.process_control_enabled ? "已启用" : "默认关闭"}</ToolbarCount>}
               >
               <Table
                 rowKey={(row) => `${row.pid}-${row.service_name}`}
