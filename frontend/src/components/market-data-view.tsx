@@ -1,13 +1,13 @@
 "use client";
 
-import { Button, Card, Empty, Input, Select, Skeleton, Space, Table, message } from "antd";
+import { Button, Card, Empty, Input, Select, Skeleton, Space, Table, Tag, Typography, message } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type MarketCoverage, type MarketDataStats } from "@/lib/api";
 import { MetricCard, PageHeader, ToolbarCount } from "@/components/platform-ui";
 
 export function MarketDataView() {
   const [stats, setStats] = useState<MarketDataStats | null>(null);
-  const [keyword, setKeyword] = useState("");
+  const [keyword, setKeyword] = useState("1810.HK");
   const [interval, setInterval] = useState<string | undefined>(undefined);
   const [syncInterval, setSyncInterval] = useState("1d");
   const [syncing, setSyncing] = useState(false);
@@ -51,6 +51,29 @@ export function MarketDataView() {
     });
   }, [stats, keyword, interval]);
 
+  const symbolRows = useMemo(() => {
+    if (!stats || !keyword.trim()) {
+      return [];
+    }
+    const normalizedKeyword = keyword.trim().toLowerCase();
+    return stats.coverages.filter((item) => item.symbol.toLowerCase() === normalizedKeyword);
+  }, [stats, keyword]);
+
+  const readiness = useMemo(() => {
+    if (!keyword.trim()) {
+      return { label: "输入标的开始检查", color: "default", description: "例如 1810.HK、0700.HK、513050.SS。" };
+    }
+    if (symbolRows.length === 0) {
+      return { label: "暂未找到数据", color: "red", description: "当前数据库没有这个标的。可以先检查代码格式，再同步行情。" };
+    }
+    const daily = symbolRows.find((item) => item.interval === "1d");
+    const intraday = symbolRows.find((item) => item.interval !== "1d");
+    if (daily && intraday) {
+      return { label: "适合开始回测", color: "green", description: "该标的同时有日线和分钟线数据，可以创建回测。" };
+    }
+    return { label: "可回测但数据有限", color: "gold", description: "该标的已有部分周期数据，建议确认策略所需周期是否存在。" };
+  }, [keyword, symbolRows]);
+
   if (!stats) {
     return <Skeleton active paragraph={{ rows: 10 }} />;
   }
@@ -59,9 +82,9 @@ export function MarketDataView() {
     <div className="page-stack">
       {contextHolder}
       <PageHeader
-        eyebrow="Market Data"
-        title="行情数据"
-        description="查看 PostgreSQL 中已入库的标的、周期、覆盖区间和最近同步状态。"
+        eyebrow="Data Setup"
+        title="数据准备"
+        description="先检查一个标的是否已有可回测行情。缺数据时再同步，不需要先理解数据库表。"
         actions={
           <Space>
             <Select value={syncInterval} options={stats.by_interval.map((item) => ({ label: item.interval, value: item.interval }))} onChange={setSyncInterval} style={{ width: 120 }} />
@@ -72,15 +95,45 @@ export function MarketDataView() {
         }
       />
 
+      <Card size="small" className="section-card data-check-card">
+        <div className="data-check-main">
+          <Typography.Title level={4}>检查标的是否能回测</Typography.Title>
+          <Typography.Paragraph>输入 Yahoo 标的代码，系统会告诉你当前有哪些周期、覆盖到哪一天。</Typography.Paragraph>
+          <Space.Compact className="data-check-input">
+            <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="例如 1810.HK" />
+            <Button type="primary">检查</Button>
+          </Space.Compact>
+        </div>
+        <div className="data-check-result">
+          <Tag color={readiness.color}>{readiness.label}</Tag>
+          <strong>{symbolRows[0]?.name ?? (keyword || "等待输入")}</strong>
+          <span>{readiness.description}</span>
+        </div>
+      </Card>
+
+      {symbolRows.length > 0 ? (
+        <Card size="small" title="这个标的已有数据" className="section-card">
+          <div className="coverage-card-grid">
+            {symbolRows.map((item) => (
+              <div key={`${item.symbol}-${item.interval}`} className="coverage-card">
+                <Tag color={item.interval === "1d" ? "blue" : "cyan"}>{item.interval}</Tag>
+                <strong>{item.bar_count.toLocaleString()} 条 K 线</strong>
+                <span>{item.start_time} 至 {item.end_time}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
       <div className="summary-grid">
-        <MetricCard label="已存标的" value={stats.instrument_count} note="instruments" />
-        <MetricCard label="K 线总量" value={stats.total_bars.toLocaleString()} note="price_bars" />
+        <MetricCard label="已准备标的" value={stats.instrument_count} note="可以在创建回测时选择" />
+        <MetricCard label="行情记录" value={stats.total_bars.toLocaleString()} note="已入库 K 线" />
         {stats.by_interval.map((item) => (
-          <MetricCard key={item.interval} label={`${item.interval} 周期`} value={item.bar_count.toLocaleString()} note="bars" />
+          <MetricCard key={item.interval} label={`${item.interval} 数据`} value={item.bar_count.toLocaleString()} note="该周期可用于对应策略" />
         ))}
       </div>
 
-      <Card size="small" title="存量覆盖" className="section-card">
+      <Card size="small" title="全部数据覆盖" className="section-card">
         <div className="table-toolbar">
           <Space wrap>
             <Input
@@ -113,12 +166,12 @@ export function MarketDataView() {
             columns={[
               { title: "标的", dataIndex: "symbol", width: 120, fixed: "left" },
               { title: "名称", dataIndex: "name", ellipsis: true },
-              { title: "交易所", dataIndex: "exchange", width: 90 },
-              { title: "周期", dataIndex: "interval", width: 90 },
-              { title: "记录数", dataIndex: "bar_count", width: 120, render: (value: number) => value.toLocaleString() },
-              { title: "起始时间", dataIndex: "start_time", width: 180 },
-              { title: "结束时间", dataIndex: "end_time", width: 180 },
-              { title: "最近入库", dataIndex: "last_ingested_at", width: 220 },
+            { title: "交易所", dataIndex: "exchange", width: 90 },
+            { title: "周期", dataIndex: "interval", width: 90 },
+              { title: "K 线数量", dataIndex: "bar_count", width: 120, render: (value: number) => value.toLocaleString() },
+              { title: "开始日期", dataIndex: "start_time", width: 180 },
+              { title: "结束日期", dataIndex: "end_time", width: 180 },
+              { title: "最近更新", dataIndex: "last_ingested_at", width: 220 },
             ]}
           />
         )}
