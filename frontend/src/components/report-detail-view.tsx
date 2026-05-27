@@ -14,6 +14,11 @@ type ReportDetailViewProps = {
 };
 
 type CurvePoint = ReportDetail["equity_curve"][number];
+type ParameterHighlight = {
+  title: string;
+  value: string;
+  description: string;
+};
 
 const baseParameterLabels: Record<string, string> = {
   AnchorDate: "锚定日期",
@@ -155,6 +160,26 @@ function readNumberMetric(metrics: Record<string, unknown>, ...keys: string[]): 
     }
   }
   return null;
+}
+
+function readNumberParameter(parameters: Record<string, unknown>, ...keys: string[]): number | null {
+  for (const key of keys) {
+    const value = parameters[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return null;
+}
+
+function formatMoney(value: number): string {
+  return Math.round(value).toLocaleString();
 }
 
 function benchmarkGuide(validation: Record<string, unknown>) {
@@ -425,6 +450,149 @@ function buildCurveReading(points: CurvePoint[], netReturn: number, maxDrawdown:
   };
 }
 
+function strategyBeginnerSummary(strategyKind: string, interval: string): string {
+  if (strategyKind === "dca") {
+    return "用固定节奏慢慢买入，更适合长期积累和低频复盘。";
+  }
+  if (strategyKind === "daily_rebound") {
+    return "专门找日线级别的超跌反弹，适合慢节奏观察阶段性拐点。";
+  }
+  if (strategyKind === "minute_rebound" || strategyKind === "minute_rebound_with_fade_filter") {
+    return interval === "1m"
+      ? "盯分钟级急跌后的短线反抽，节奏快，通常更适合已经能接受频繁波动的人。"
+      : "盯短线快速回落后的反弹机会，适合想做日内到短波段试验的人。";
+  }
+  if (strategyKind === "minute_index_grid_retrace") {
+    return "围绕指数 ETF 的回落反弹做分层试探，更强调分批进出和节奏控制。";
+  }
+  return "这套配置会按固定规则寻找可重复的进出场机会，重点不在猜消息，而在验证规则是否稳定。";
+}
+
+function rerunFocusGuide(strategyKind: string): string {
+  if (strategyKind === "dca") {
+    return "优先改定投频率、每期金额和最大仓位。";
+  }
+  if (strategyKind === "daily_rebound") {
+    return "优先改入场阈值、止盈止损和最长持有时间。";
+  }
+  if (strategyKind === "minute_rebound" || strategyKind === "minute_rebound_with_fade_filter") {
+    return "优先改入场跌幅、RSI 条件和最大持仓 Bar。";
+  }
+  if (strategyKind === "minute_index_grid_retrace" || strategyKind === "grid") {
+    return "优先改网格间距、层数和止盈节奏。";
+  }
+  return "优先改入场条件和风险控制参数。";
+}
+
+function buildParameterHighlights(
+  report: ReportDetail,
+  templateSnapshot: Record<string, unknown> | undefined,
+  netReturn: number,
+  maxDrawdown: number,
+  closedTrades: number,
+): ParameterHighlight[] {
+  const parameters = report.parameters;
+  const templateName = String(templateSnapshot?.template_name ?? strategyLabel(report.strategy_kind));
+  const templateDescription =
+    typeof templateSnapshot?.description === "string" && templateSnapshot.description.trim().length > 0
+      ? templateSnapshot.description.trim()
+      : strategyBeginnerSummary(report.strategy_kind, report.interval);
+  const maxPositionRatio = readNumberParameter(parameters, "max_position_ratio");
+  const totalCapital = readNumberParameter(parameters, "total_capital");
+  const commissionBps = readNumberParameter(parameters, "commission_bps");
+  const slippageBps = readNumberParameter(parameters, "slippage_bps");
+  const frequency = typeof parameters.frequency === "string" ? formatScalar("frequency", parameters.frequency) : null;
+  const investmentAmount = readNumberParameter(parameters, "investment_amount");
+  const takeProfitPct = readNumberParameter(parameters, "take_profit_pct", "TakeProfitPct");
+  const stopLossPct = readNumberParameter(parameters, "stop_loss_pct", "force_exit_loss_pct");
+
+  let paceValue = `${report.interval} 节奏`;
+  let paceDescription =
+    report.interval === "1d"
+      ? "更适合先看阶段性趋势和回撤，不需要盯盘。"
+      : report.interval === "15m"
+        ? "属于中短线节奏，通常一天内会比日线更容易触发交易。"
+        : "节奏很快，更适合已经接受高频波动和更密集信号的人。";
+  if (report.strategy_kind === "dca" && frequency) {
+    paceValue = `${frequency} 定投`;
+    paceDescription = investmentAmount
+      ? `每次计划投入 ${formatMoney(investmentAmount)}，节奏比择时交易更稳定，重点看长期执行是否舒服。`
+      : "这套定投更强调固定节奏执行，而不是短线择时。";
+  } else if (closedTrades === 0) {
+    paceDescription += " 这次没有成交，说明当前节奏和入场条件还没有对上样本里的行情。";
+  } else if (closedTrades <= 3) {
+    paceDescription += " 这次触发次数不多，更适合把它当成偏谨慎的配置。";
+  } else {
+    paceDescription += ` 这次样本外已经触发 ${closedTrades} 笔成交，说明它并不是只会长期空转。`;
+  }
+
+  let riskValue = "先看仓位和成本";
+  const riskParts: string[] = [];
+  if (totalCapital !== null) {
+    riskParts.push(`初始资金约 ${formatMoney(totalCapital)}`);
+  }
+  if (maxPositionRatio !== null) {
+    riskParts.push(`最多使用 ${(maxPositionRatio * 100).toFixed(0)}% 仓位`);
+  }
+  if (riskParts.length > 0) {
+    riskValue = riskParts.join(" / ");
+  }
+  const costParts: string[] = [];
+  if (commissionBps !== null) {
+    costParts.push(`佣金 ${commissionBps} bps`);
+  }
+  if (slippageBps !== null) {
+    costParts.push(`滑点 ${slippageBps} bps`);
+  }
+  let riskDescription = costParts.length > 0 ? `成交假设按 ${costParts.join("，")} 计入。` : "这份报告没有额外展示成交成本假设。";
+  if (takeProfitPct !== null || stopLossPct !== null) {
+    const bounds: string[] = [];
+    if (takeProfitPct !== null) {
+      bounds.push(`止盈 ${formatScalar("take_profit_pct", takeProfitPct)}`);
+    }
+    if (stopLossPct !== null) {
+      bounds.push(`止损 ${formatScalar("stop_loss_pct", stopLossPct)}`);
+    }
+    riskDescription += ` 当前还带有 ${bounds.join("，")} 这类风险边界。`;
+  }
+
+  let rerunValue = "先去做对比";
+  let rerunDescription = "这份结果已经够完整，先和同标的其他报告对比，再决定值不值得改参数。";
+  if (closedTrades === 0) {
+    rerunValue = "先放宽触发条件";
+    rerunDescription = `这次最大的信号是“没有成交”。${rerunFocusGuide(report.strategy_kind)} 先让策略真正触发，再讨论优不优秀。`;
+  } else if (netReturn > 0 && maxDrawdown > 8) {
+    rerunValue = "先压回撤";
+    rerunDescription = `这次已经赚到钱，但回撤有 ${maxDrawdown.toFixed(2)}%。${rerunFocusGuide(report.strategy_kind)} 如果能接受收益稍降，优先换更稳的配置。`;
+  } else if (netReturn <= 0) {
+    rerunValue = "先换模板或周期";
+    rerunDescription = `这次样本外收益为 ${netReturn.toFixed(2)}%。${rerunFocusGuide(report.strategy_kind)} 如果连续几次都偏弱，就优先换周期或模板而不是死磕同一组数字。`;
+  }
+
+  return [
+    {
+      title: "模板定位",
+      value: templateName,
+      description: templateDescription,
+    },
+    {
+      title: "交易节奏",
+      value: paceValue,
+      description: paceDescription,
+    },
+    {
+      title: "仓位与成本",
+      value: riskValue,
+      description: riskDescription,
+    },
+    {
+      title: "如果要重跑",
+      value: rerunValue,
+      description: rerunDescription,
+    },
+  ];
+}
+
 export function ReportDetailView({ reportId }: ReportDetailViewProps) {
   const [report, setReport] = useState<ReportDetail | null>(null);
 
@@ -452,6 +620,7 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
   });
   const compareHref = buildCompareHref(report);
   const curveReading = buildCurveReading(report.equity_curve, netReturn, maxDrawdown, closedTrades);
+  const parameterHighlights = buildParameterHighlights(report, templateSnapshot, netReturn, maxDrawdown, closedTrades);
   const readingGuides = [
     {
       title: "收益怎么看",
@@ -566,44 +735,61 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
         )}
       </Card>
 
-      <Card size="small" title="本次使用的关键参数" className="section-card">
-        <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
-          {Object.entries(report.parameters)
-            .slice(0, 18)
-            .map(([key, value]) => (
-              <Descriptions.Item key={key} label={parameterLabel(report.strategy_kind, key)}>
-                {formatParameterValue(report.strategy_kind, key, value)}
-              </Descriptions.Item>
-            ))}
-        </Descriptions>
+      <Card size="small" title="这套配置大概是什么意思" className="section-card">
+        <div className="parameter-summary-banner">
+          <strong>先看模板定位、交易节奏和风险假设，不必先读完全部参数名</strong>
+          <p>对第一次复盘来说，你真正需要先理解的通常只有四件事：它想抓什么行情、打算用多快的节奏交易、最多会打多大仓位，以及如果要重跑应该先改哪一类开关。</p>
+        </div>
+        <div className="parameter-summary-grid">
+          {parameterHighlights.map((item) => (
+            <article key={item.title} className="parameter-summary-card">
+              <span>{item.title}</span>
+              <strong>{item.value}</strong>
+              <p>{item.description}</p>
+            </article>
+          ))}
+        </div>
+        <Collapse
+          className="advanced-trace-panel"
+          ghost
+          items={[
+            {
+              key: "parameters",
+              label: "高级参数明细：全部字段与模板追踪",
+              children: (
+                <div className="parameter-advanced-stack">
+                  <div className="parameter-advanced-section">
+                    <strong>全部参数字段</strong>
+                    <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
+                      {Object.entries(report.parameters).map(([key, value]) => (
+                        <Descriptions.Item key={key} label={parameterLabel(report.strategy_kind, key)}>
+                          {formatParameterValue(report.strategy_kind, key, value)}
+                        </Descriptions.Item>
+                      ))}
+                    </Descriptions>
+                  </div>
+                  {templateSnapshot ? (
+                    <div className="parameter-advanced-section">
+                      <strong>模板快照</strong>
+                      {typeof templateSnapshot.description === "string" && templateSnapshot.description.trim().length > 0 ? (
+                        <Typography.Paragraph>{templateSnapshot.description.trim()}</Typography.Paragraph>
+                      ) : null}
+                      <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
+                        <Descriptions.Item label="使用模板">{String(templateSnapshot.template_name ?? "-")}</Descriptions.Item>
+                        <Descriptions.Item label="策略">{strategyLabel(String(templateSnapshot.strategy_kind ?? report.strategy_kind))}</Descriptions.Item>
+                        <Descriptions.Item label="周期">{String(templateSnapshot.interval ?? "-")}</Descriptions.Item>
+                        <Descriptions.Item label="默认模板">{Boolean(templateSnapshot.is_default) ? "是" : "否"}</Descriptions.Item>
+                        <Descriptions.Item label="模板键">{String(templateSnapshot.template_key ?? "-")}</Descriptions.Item>
+                        <Descriptions.Item label="模板 ID">{String(templateSnapshot.id ?? "-")}</Descriptions.Item>
+                      </Descriptions>
+                    </div>
+                  ) : null}
+                </div>
+              ),
+            },
+          ]}
+        />
       </Card>
-
-      {templateSnapshot ? (
-        <Card size="small" title="策略模板来源" className="section-card">
-          <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
-            <Descriptions.Item label="使用模板">{String(templateSnapshot.template_name ?? "-")}</Descriptions.Item>
-            <Descriptions.Item label="策略">{strategyLabel(String(templateSnapshot.strategy_kind ?? report.strategy_kind))}</Descriptions.Item>
-            <Descriptions.Item label="周期">{String(templateSnapshot.interval ?? "-")}</Descriptions.Item>
-            <Descriptions.Item label="默认模板">{Boolean(templateSnapshot.is_default) ? "是" : "否"}</Descriptions.Item>
-          </Descriptions>
-          <Collapse
-            className="advanced-trace-panel"
-            ghost
-            items={[
-              {
-                key: "trace",
-                label: "查看高级追踪信息",
-                children: (
-                  <Descriptions size="small" column={{ xs: 1, sm: 2 }}>
-                    <Descriptions.Item label="模板键">{String(templateSnapshot.template_key ?? "-")}</Descriptions.Item>
-                    <Descriptions.Item label="模板 ID">{String(templateSnapshot.id ?? "-")}</Descriptions.Item>
-                  </Descriptions>
-                ),
-              },
-            ]}
-          />
-        </Card>
-      ) : null}
 
       <Card size="small" title="交易记录：策略具体买卖了什么" className="section-card">
         {report.trades.length === 0 ? (

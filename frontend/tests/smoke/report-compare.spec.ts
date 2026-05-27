@@ -19,6 +19,8 @@ test("报告详情可以带着当前报告进入对比区", async ({ page, reque
 
   await expect(page.getByRole("heading", { name: `回测报告 #${report.id}` })).toBeVisible();
   await expect(page.getByText("图上三条线分别代表什么")).toBeVisible();
+  await expect(page.getByText("这套配置大概是什么意思")).toBeVisible();
+  await expect(page.getByText("先看模板定位、交易节奏和风险假设，不必先读完全部参数名")).toBeVisible();
   await page.getByRole("link", { name: "去对比同标的报告" }).first().click();
 
   await expect(page).toHaveURL(new RegExp(`/reports\\?compare=${report.id}.*keyword=${report.symbol}.*interval=${report.interval}`));
