@@ -13,6 +13,7 @@ export function MarketDataView() {
   const [interval, setInterval] = useState<string | undefined>(undefined);
   const [syncInterval, setSyncInterval] = useState("1d");
   const [syncing, setSyncing] = useState(false);
+  const [syncingSymbol, setSyncingSymbol] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
 
   async function fetchStats() {
@@ -23,12 +24,16 @@ export function MarketDataView() {
     void fetchStats().then(setStats);
   }, []);
 
+  function syncPeriodForInterval(targetInterval: string) {
+    return targetInterval === "15m" ? "60d" : targetInterval === "1m" ? "7d" : undefined;
+  }
+
   async function syncAll() {
     setSyncing(true);
     try {
       await apiFetch("/api/market-data/sync", {
         method: "POST",
-        body: JSON.stringify({ interval: syncInterval, period: syncInterval === "15m" ? "60d" : syncInterval === "1m" ? "7d" : undefined }),
+        body: JSON.stringify({ interval: syncInterval, period: syncPeriodForInterval(syncInterval) }),
       });
       messageApi.success("同步已完成");
       setStats(await fetchStats());
@@ -36,6 +41,28 @@ export function MarketDataView() {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function syncCheckedSymbol() {
+    const targetSymbol = checkedSymbol.trim().toUpperCase();
+    if (!targetSymbol) {
+      messageApi.warning("请先输入并检查一个标的");
+      return;
+    }
+    setSyncingSymbol(true);
+    try {
+      await apiFetch("/api/market-data/sync", {
+        method: "POST",
+        body: JSON.stringify({ symbol: targetSymbol, interval: syncInterval, period: syncPeriodForInterval(syncInterval) }),
+      });
+      messageApi.success(`${targetSymbol} ${syncInterval} 同步完成`);
+      setStats(await fetchStats());
+      setTableKeyword(targetSymbol);
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "同步失败");
+    } finally {
+      setSyncingSymbol(false);
     }
   }
 
@@ -124,6 +151,12 @@ export function MarketDataView() {
           <strong>{symbolRows[0]?.name ?? (checkedSymbol || "等待输入")}</strong>
           {checkedSymbol ? <small>最近检查：{checkedSymbol}</small> : null}
           <span>{readiness.description}</span>
+          <div className="data-check-actions">
+            <Button loading={syncingSymbol} onClick={() => void syncCheckedSymbol()}>
+              同步当前标的 {syncInterval}
+            </Button>
+            <small>缺少周期时，先选周期再同步当前标的。</small>
+          </div>
         </div>
       </Card>
 

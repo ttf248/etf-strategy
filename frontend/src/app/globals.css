@@ -1022,6 +1022,18 @@ a {
   line-height: 22px;
 }
 
+.data-check-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.data-check-actions small {
+  color: var(--muted);
+  line-height: 18px;
+}
+
 .coverage-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
