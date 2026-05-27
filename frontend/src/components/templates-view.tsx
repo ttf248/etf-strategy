@@ -546,7 +546,7 @@ export function TemplatesView() {
         extra={selectedTemplateIds.length > 0 ? <Button size="small" onClick={() => setSelectedTemplateIds([])}>清空对比</Button> : null}
       >
         {comparedTemplates.length === 0 ? (
-          <Typography.Text type="secondary">先从推荐模板或模板库里选 2 到 4 个模板，对比“适合谁用、周期、难度和下一步建议”。</Typography.Text>
+          <Typography.Text type="secondary">先从推荐模板或完整列表里选 2 到 4 个模板，对比“适合谁用、周期、难度和下一步建议”。</Typography.Text>
         ) : (
           <div className="template-compare-stack">
             <div className="template-compare-grid">
