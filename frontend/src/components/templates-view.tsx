@@ -901,7 +901,7 @@ export function TemplatesView() {
             ) : (
               parameterSpecs.map((field) => (
                 <Form.Item key={field.key} name={["parameter_fields", field.key]} label={field.label} rules={[{ required: true }]}>
-                  <Input placeholder="逗号分隔，例如 0.01,0.02,0.03" />
+                  <Input placeholder="用逗号分开填写，例如 0.01, 0.02, 0.03" />
                 </Form.Item>
               ))
             )}
