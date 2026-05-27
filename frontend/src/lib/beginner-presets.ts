@@ -10,9 +10,9 @@ export type BeginnerPreset = {
 };
 
 export type BacktestLaunchPreset = {
-  symbol: string;
-  interval: string;
-  strategyKind: string;
+  symbol?: string;
+  interval?: string;
+  strategyKind?: string;
   templateId?: number;
 };
 
@@ -113,11 +113,16 @@ export function buildBacktestPresetHref(preset: BeginnerPreset): string {
 }
 
 export function buildBacktestLaunchHref(preset: BacktestLaunchPreset): string {
-  const searchParams = new URLSearchParams({
-    symbol: preset.symbol,
-    interval: preset.interval,
-    strategy_kind: preset.strategyKind,
-  });
+  const searchParams = new URLSearchParams();
+  if (preset.symbol) {
+    searchParams.set("symbol", preset.symbol);
+  }
+  if (preset.interval) {
+    searchParams.set("interval", preset.interval);
+  }
+  if (preset.strategyKind) {
+    searchParams.set("strategy_kind", preset.strategyKind);
+  }
   if (preset.templateId !== undefined) {
     searchParams.set("template_id", String(preset.templateId));
   }

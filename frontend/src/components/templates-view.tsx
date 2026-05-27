@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Button, Card, Drawer, Form, Input, InputNumber, message, Select, Space, Switch, Table, Tag, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type StrategyTemplate } from "@/lib/api";
@@ -13,6 +14,7 @@ import {
   strategyOptions,
 } from "@/lib/strategy-template-config";
 import { PageHeader, ToolbarCount } from "@/components/platform-ui";
+import { buildBacktestLaunchHref } from "@/lib/beginner-presets";
 
 type TemplateFormValues = {
   template_key?: string;
@@ -81,6 +83,19 @@ export function TemplatesView() {
       return true;
     });
   }, [filters, templates]);
+
+  const recommendedTemplates = useMemo(() => {
+    return templates
+      .filter((item) => item.is_active)
+      .sort((left, right) => {
+        const defaultScore = Number(right.is_default) - Number(left.is_default);
+        if (defaultScore !== 0) {
+          return defaultScore;
+        }
+        return left.updated_at < right.updated_at ? 1 : -1;
+      })
+      .slice(0, 4);
+  }, [templates]);
 
   async function loadTemplates(showSpinner: boolean = true) {
     if (showSpinner) {
@@ -257,6 +272,40 @@ export function TemplatesView() {
         </Card>
       </div>
 
+      <Card title="推荐模板" size="small" className="section-card">
+        {recommendedTemplates.length === 0 ? (
+          <Typography.Text type="secondary">当前没有启用的模板，先到下方启用一个默认模板，再去创建回测。</Typography.Text>
+        ) : (
+          <div className="template-recommend-grid">
+            {recommendedTemplates.map((template) => {
+              const guide = strategyGuide[template.strategy_kind] ?? { scene: "自定义策略", level: "自定义" };
+              return (
+                <article key={template.id} className="template-recommend-card">
+                  <div className="template-recommend-head">
+                    <div>
+                      <strong>{template.template_name}</strong>
+                      <span>{strategyLabel(template.strategy_kind)} / {template.interval} / {template.execution_profile}</span>
+                    </div>
+                    <Tag color={template.is_default ? "gold" : "green"}>{template.is_default ? "默认推荐" : "可直接使用"}</Tag>
+                  </div>
+                  <p>{template.description || guide.scene}</p>
+                  <div className="template-recommend-meta">
+                    <span>适合：{guide.scene}</span>
+                    <span>难度：{guide.level}</span>
+                  </div>
+                  <div className="template-recommend-actions">
+                    <Button type="primary">
+                      <Link href={buildBacktestLaunchHref({ interval: template.interval, strategyKind: template.strategy_kind, templateId: template.id })}>用这个模板去回测</Link>
+                    </Button>
+                    <Button onClick={() => openEditDrawer(template)}>查看高级参数</Button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
       <Card size="small" title="策略模板库" className="section-card">
         <div className="table-toolbar">
           <Space wrap>
@@ -307,6 +356,9 @@ export function TemplatesView() {
                   <span>难度：{guide.level}</span>
                 </div>
                 <div className="template-mobile-actions">
+                  <Button size="small" type="primary">
+                    <Link href={buildBacktestLaunchHref({ interval: template.interval, strategyKind: template.strategy_kind, templateId: template.id })}>去回测</Link>
+                  </Button>
                   <Button size="small" onClick={() => openEditDrawer(template)}>
                     编辑高级参数
                   </Button>
@@ -348,10 +400,13 @@ export function TemplatesView() {
             { title: "说明", dataIndex: "description", ellipsis: true },
             {
               title: "操作",
-              width: 170,
+              width: 250,
               fixed: "right",
               render: (_, row) => (
                 <Space size="small">
+                  <Button size="small" type="primary">
+                    <Link href={buildBacktestLaunchHref({ interval: row.interval, strategyKind: row.strategy_kind, templateId: row.id })}>去回测</Link>
+                  </Button>
                   <Button size="small" onClick={() => openEditDrawer(row)}>
                     编辑
                   </Button>

@@ -71,13 +71,13 @@ export function BacktestsView() {
     const templateId = templateIdRaw ? Number(templateIdRaw) : undefined;
     const validIntervals = new Set(intervalOptions.map((item) => item.value));
     const validStrategies = new Set(strategyOptions.map((item) => item.value));
-    if (!symbol) {
+    if (!symbol && !interval && !strategyKind && templateId === undefined) {
       return null;
     }
     return {
-      symbol,
-      interval: interval && validIntervals.has(interval) ? interval : "15m",
-      strategy_kind: strategyKind && validStrategies.has(strategyKind) ? strategyKind : "grid",
+      symbol: symbol || undefined,
+      interval: interval && validIntervals.has(interval) ? interval : undefined,
+      strategy_kind: strategyKind && validStrategies.has(strategyKind) ? strategyKind : undefined,
       template_id: templateId !== undefined && Number.isFinite(templateId) ? templateId : undefined,
     };
   }, [searchParams]);
@@ -109,12 +109,20 @@ export function BacktestsView() {
     if (basePresetAppliedRef.current || !queryPreset) {
       return;
     }
-    form.setFieldsValue({
-      symbol: queryPreset.symbol,
-      interval: queryPreset.interval,
-      strategy_kind: queryPreset.strategy_kind,
-      template_id: queryPreset.template_id,
-    });
+    const nextValues: Record<string, unknown> = {};
+    if (queryPreset.symbol) {
+      nextValues.symbol = queryPreset.symbol;
+    }
+    if (queryPreset.interval) {
+      nextValues.interval = queryPreset.interval;
+    }
+    if (queryPreset.strategy_kind) {
+      nextValues.strategy_kind = queryPreset.strategy_kind;
+    }
+    if (queryPreset.template_id !== undefined) {
+      nextValues.template_id = queryPreset.template_id;
+    }
+    form.setFieldsValue(nextValues);
     basePresetAppliedRef.current = true;
   }, [form, queryPreset]);
 
@@ -260,7 +268,12 @@ export function BacktestsView() {
               {queryPreset ? (
                 <div className="wizard-preset-banner">
                   <strong>已带入首页示例</strong>
-                  <span>{queryPreset.symbol} / {queryPreset.interval} / {strategyLabel(queryPreset.strategy_kind)}，确认后直接点下一步即可。</span>
+                  <span>
+                    {[queryPreset.symbol, queryPreset.interval, queryPreset.strategy_kind ? strategyLabel(queryPreset.strategy_kind) : undefined]
+                      .filter(Boolean)
+                      .join(" / ")}
+                    ，确认后直接点下一步即可。
+                  </span>
                 </div>
               ) : null}
               <div className="template-form-grid">
