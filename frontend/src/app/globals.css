@@ -506,6 +506,61 @@ a {
   line-height: 20px;
 }
 
+.template-mobile-list {
+  display: none;
+}
+
+.template-mobile-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.template-mobile-card-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.template-mobile-card-head div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.template-mobile-card-head strong {
+  color: #0f172a;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.template-mobile-card-head span,
+.template-mobile-card p,
+.template-mobile-meta span {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.template-mobile-meta {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.template-mobile-actions {
+  display: grid;
+  grid-template-columns: 1fr 92px;
+  gap: 8px;
+}
+
 .advanced-editor-note {
   margin-bottom: 14px;
   background: var(--surface-soft);
@@ -826,6 +881,15 @@ a {
 
   .template-guide-grid {
     grid-template-columns: 1fr;
+  }
+
+  .template-mobile-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .template-desktop-table {
+    display: none;
   }
 
   .result-verdict-card .ant-card-body {

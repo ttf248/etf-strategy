@@ -287,7 +287,39 @@ export function TemplatesView() {
           </Space>
           <ToolbarCount>共 {filteredTemplates.length} 个模板</ToolbarCount>
         </div>
+        <div className="template-mobile-list">
+          {filteredTemplates.map((template) => {
+            const guide = strategyGuide[template.strategy_kind] ?? { scene: "自定义策略", level: "自定义" };
+            return (
+              <article key={template.id} className="template-mobile-card">
+                <div className="template-mobile-card-head">
+                  <div>
+                    <strong>{template.template_name}</strong>
+                    <span>{strategyLabel(template.strategy_kind)} / {template.interval} / {template.execution_profile}</span>
+                  </div>
+                  <Tag color={template.is_default ? "gold" : template.is_active ? "green" : "default"}>
+                    {template.is_default ? "默认" : template.is_active ? "启用" : "停用"}
+                  </Tag>
+                </div>
+                <p>{template.description || guide.scene}</p>
+                <div className="template-mobile-meta">
+                  <span>适合：{guide.scene}</span>
+                  <span>难度：{guide.level}</span>
+                </div>
+                <div className="template-mobile-actions">
+                  <Button size="small" onClick={() => openEditDrawer(template)}>
+                    编辑高级参数
+                  </Button>
+                  <Button size="small" onClick={() => void toggleTemplate(template, !template.is_active)}>
+                    {template.is_active ? "停用" : "启用"}
+                  </Button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
         <Table
+          className="template-desktop-table"
           rowKey="id"
           size="small"
           loading={loading}
@@ -335,7 +367,7 @@ export function TemplatesView() {
 
       <Drawer
         title={editingTemplate ? `编辑高级模板 #${editingTemplate.id}` : "新建高级模板"}
-        width={860}
+        size="large"
         open={drawerOpen}
         destroyOnHidden
         onClose={() => setDrawerOpen(false)}
