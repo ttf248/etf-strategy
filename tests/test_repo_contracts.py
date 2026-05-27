@@ -32,6 +32,7 @@ class RepoContractTests(unittest.TestCase):
             REPO_ROOT / "doc" / "development.md",
             REPO_ROOT / "doc" / "api.md",
             REPO_ROOT / "doc" / "strategy-engine.md",
+            REPO_ROOT / "doc" / "frontend-ux-audit.md",
         ]
 
         for markdown_file in markdown_files:

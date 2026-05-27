@@ -1,6 +1,6 @@
 # ETF Strategy
 
-ETF Strategy 是一个中文优先的开源策略研究平台，用于从 Yahoo Finance 获取行情、长期存储 K 线、提交异步回测任务，并在 Web 控制台查看平台状态、行情统计、参数模板和历史回测报告。
+ETF Strategy 是一个中文优先的开源策略研究平台，用于从 Yahoo Finance 获取行情、长期存储 K 线、提交异步回测任务，并在 Web 前端按新手流程创建回测、查看报告和准备数据。
 
 当前架构由 Python 研究引擎、FastAPI 后端、PostgreSQL、Worker、Scheduler 和 Next.js 前端组成。CLI 仍然保留，用于离线研究、批量回测、CSV 导入和运维命令。
 
@@ -10,7 +10,7 @@ ETF Strategy 是一个中文优先的开源策略研究平台，用于从 Yahoo 
 - 回测执行：API 入队，Worker 异步执行，报告结构化落库。
 - 参数模板：在数据库中管理策略、周期、执行口径和寻参空间。
 - 多策略研究：网格、定投、日线反弹、分钟反抽和指数回落网格共用同一套工作流。
-- Web 控制台：平台总控、服务心跳、行情统计、同步记录、回测任务、模板中心、历史报告。
+- Web 前端：新手首页、创建回测、查看报告、数据准备、策略模板和系统状态。
 - CLI 研究：保留下载、寻参、验证、报告和批量研究入口。
 - 报告样例：[统一报告索引](reports/report_index.md)、[日线多策略报告](reports/1810_hk/daily/1810_hk_daily_strategy_compare_report.md)、[15 分钟多策略报告](reports/1810_hk/minute/1810_hk_15m_strategy_compare_report.md)、[15 分钟网格基线报告](reports/1810_hk/minute/1810_hk_15m_grid_report.md)。
 
@@ -92,8 +92,9 @@ npx next dev --hostname 127.0.0.1 --port 3000
 
 - API：`http://127.0.0.1:8000`
 - API 文档：`http://127.0.0.1:8000/docs`
-- 前端：`http://127.0.0.1:3000`
-- 平台总控：`http://127.0.0.1:3000/platform`
+- 新手首页：`http://127.0.0.1:3000`
+- 创建回测：`http://127.0.0.1:3000/backtests`
+- 系统状态：`http://127.0.0.1:3000/platform`
 
 VS Code 用户可以直接使用 `启动平台前后端全套`。
 
@@ -153,6 +154,7 @@ tests/           unittest 测试
 - [API 接口说明](doc/api.md)
 - [策略引擎](doc/strategy-engine.md)
 - [前端说明](frontend/README.md)
+- [前端体验审查](doc/frontend-ux-audit.md)
 
 ## 配置
 
