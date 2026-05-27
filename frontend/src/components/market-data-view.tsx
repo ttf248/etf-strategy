@@ -29,6 +29,12 @@ type CoverageInsight = {
   examples: CoverageProfile[];
 };
 
+type StartDecisionCard = {
+  title: string;
+  value: string;
+  description: string;
+};
+
 function coverageStage(profile: CoverageProfile) {
   const hasDaily = profile.intervals.has("1d");
   const has15m = profile.intervals.has("15m");
@@ -51,6 +57,97 @@ function compareCoverageProfile(left: CoverageProfile, right: CoverageProfile) {
     return intervalDiff;
   }
   return left.symbol.localeCompare(right.symbol);
+}
+
+function buildStartDecisionCards(
+  checkedSymbol: string,
+  symbolRows: MarketCoverage[],
+  symbolIntervals: Set<string>,
+  intervalRecommendations: IntervalRecommendation[],
+  readySymbolCount: number,
+): StartDecisionCard[] {
+  const normalizedSymbol = checkedSymbol.trim().toUpperCase();
+  const hasRows = symbolRows.length > 0;
+  const hasDaily = symbolIntervals.has("1d");
+  const has15m = symbolIntervals.has("15m");
+
+  let currentDecision: StartDecisionCard;
+  let nextAction: StartDecisionCard;
+  let syncAllDecision: StartDecisionCard;
+
+  if (!normalizedSymbol) {
+    currentDecision = {
+      title: "当前判断",
+      value: "先检查一个标的",
+      description: "先输入一个你想测的标的代码，页面才会告诉你当前该补什么，不需要先看全部覆盖表。",
+    };
+    nextAction = {
+      title: "现在最该做",
+      value: "先看现成示例",
+      description: "如果你只想跑通第一轮，优先用页面里的现成示例标的，再决定要不要检查自己的目标标的。",
+    };
+    syncAllDecision = {
+      title: "什么时候才同步全部",
+      value: "现在先不用",
+      description: "第一次试跑不需要先做全量建库。只有你准备批量扩充标的池时，才需要补全部标的某个周期。",
+    };
+    return [currentDecision, nextAction, syncAllDecision];
+  }
+
+  if (!hasRows) {
+    currentDecision = {
+      title: "当前判断",
+      value: `${normalizedSymbol} 还没数据`,
+      description: "当前数据库里还没有这个标的，先把它补到可用，再考虑其他标的和更多周期。",
+    };
+    nextAction = {
+      title: "现在最该做",
+      value: intervalRecommendations[0]?.title ?? "先补日线",
+      description: intervalRecommendations[0]?.description ?? "第一次通常先补 1d，再按需要补 15m。",
+    };
+    syncAllDecision = {
+      title: "什么时候才同步全部",
+      value: "先别同步全部",
+      description: "先把当前标的补到能回测，比先补全库更直接。只有当前标的已经够用、你还要扩大范围时，再做全量同步。",
+    };
+    return [currentDecision, nextAction, syncAllDecision];
+  }
+
+  if (hasDaily && has15m) {
+    currentDecision = {
+      title: "当前判断",
+      value: `${normalizedSymbol} 已可直接首跑`,
+      description: "这个标的已经同时具备 1d 和 15m，足够支撑大多数新手第一轮回测。",
+    };
+    nextAction = {
+      title: "现在最该做",
+      value: "直接去创建回测",
+      description: "现在更应该先跑出一份报告，再根据结果决定要不要补更多标的或更多周期。",
+    };
+    syncAllDecision = {
+      title: "什么时候才同步全部",
+      value: readySymbolCount > 0 ? "只有想扩大标的池时再做" : "暂时不用",
+      description: "全量同步只在你准备批量筛更多标的、或者库里可直接首跑的标的太少时才有必要。当前这个标的已经够开始。",
+    };
+    return [currentDecision, nextAction, syncAllDecision];
+  }
+
+  currentDecision = {
+    title: "当前判断",
+    value: `${normalizedSymbol} 还能继续补`,
+    description: "这个标的已经有部分数据，可以开始一些策略，但还没覆盖到最常用的新手组合。",
+  };
+  nextAction = {
+    title: "现在最该做",
+    value: intervalRecommendations[0]?.title ?? "先补推荐周期",
+    description: intervalRecommendations[0]?.description ?? "先把常用周期补齐，再回到创建回测页。",
+  };
+  syncAllDecision = {
+    title: "什么时候才同步全部",
+    value: "当前仍以补这个标的为先",
+    description: "如果你只是想验证这一只标的，先补推荐周期就够了。只有你准备同时研究更多标的时，再做全量同步。",
+  };
+  return [currentDecision, nextAction, syncAllDecision];
 }
 
 export function MarketDataView() {
@@ -188,6 +285,10 @@ export function MarketDataView() {
       },
     ];
   }, [coverageProfiles]);
+  const readySymbolCount = useMemo(
+    () => coverageProfiles.filter((item) => item.intervals.has("1d") && item.intervals.has("15m")).length,
+    [coverageProfiles],
+  );
 
   const symbolRows = useMemo(() => {
     if (!stats || !checkedSymbol.trim()) {
@@ -274,6 +375,10 @@ export function MarketDataView() {
     }
     return null;
   }, [checkedSymbol, symbolIntervals, symbolRows.length]);
+  const startDecisionCards = useMemo(
+    () => buildStartDecisionCards(checkedSymbol, symbolRows, symbolIntervals, intervalRecommendations, readySymbolCount),
+    [checkedSymbol, intervalRecommendations, readySymbolCount, symbolIntervals, symbolRows],
+  );
 
   function applyCheckedSymbol(targetSymbol: string) {
     const normalizedSymbol = targetSymbol.trim().toUpperCase();
@@ -297,14 +402,6 @@ export function MarketDataView() {
         eyebrow="Data Setup"
         title="数据准备"
         description="先检查一个标的是否已有可回测行情。缺数据时再同步，不需要先理解数据库表。"
-        actions={
-          <Space>
-            <Select value={syncInterval} options={intervalOptions} onChange={setSyncInterval} style={{ width: 120 }} />
-            <Button loading={syncing} onClick={() => void syncAll()}>
-              同步全部
-            </Button>
-          </Space>
-        }
       />
 
       <Card size="small" className="section-card data-check-card">
@@ -368,6 +465,15 @@ export function MarketDataView() {
                 ? "这个标的已经具备当前常用周期，可以直接去创建回测；只有想核对更多标的时，再展开下面的高级明细。"
                 : "当前标的已经有部分数据，可以先开始回测；如果你准备长期复盘或默认分钟策略，再把缺的推荐周期补齐。"}
           </p>
+          <div className="start-path-guide-grid">
+            {startDecisionCards.map((item) => (
+              <article key={item.title} className="start-path-guide-card">
+                <span>{item.title}</span>
+                <strong>{item.value}</strong>
+                <p>{item.description}</p>
+              </article>
+            ))}
+          </div>
         </div>
         <div className="start-path-actions">
           {checkedSymbolLaunchHref ? (
@@ -473,6 +579,18 @@ export function MarketDataView() {
         <div className="data-library-banner">
           <strong>只有在你需要核对全部覆盖细节时，再展开完整明细</strong>
           <p>大多数时候，上面的检查结果、准备程度分层和推荐周期已经足够决定下一步。只有当你要筛多个标的、核对更新时间或排查覆盖异常时，再看完整表格。</p>
+        </div>
+        <div className="data-maintenance-banner">
+          <div>
+            <strong>高级补数：只有准备扩大量级时，再补全部标的某个周期</strong>
+            <p>如果你现在只是想跑通一个标的，不需要点这里。全量补数更适合“准备扩大标的池”或“当前可直接首跑的标的太少”的场景。</p>
+          </div>
+          <Space wrap>
+            <Select value={syncInterval} options={intervalOptions} onChange={setSyncInterval} style={{ width: 120 }} />
+            <Button loading={syncing} onClick={() => void syncAll()}>
+              补全部标的当前周期
+            </Button>
+          </Space>
         </div>
         <Collapse
           className="advanced-table-panel"
