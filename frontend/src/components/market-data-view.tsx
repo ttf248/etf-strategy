@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, Empty, Input, Select, Skeleton, Space, Table } from "antd";
+import { Button, Card, Empty, Input, Select, Skeleton, Space, Table, message } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type MarketCoverage, type MarketDataStats } from "@/lib/api";
 import { MetricCard, PageHeader, ToolbarCount } from "@/components/platform-ui";
@@ -9,10 +9,33 @@ export function MarketDataView() {
   const [stats, setStats] = useState<MarketDataStats | null>(null);
   const [keyword, setKeyword] = useState("");
   const [interval, setInterval] = useState<string | undefined>(undefined);
+  const [syncInterval, setSyncInterval] = useState("1d");
+  const [syncing, setSyncing] = useState(false);
+  const [messageApi, contextHolder] = message.useMessage();
+
+  async function fetchStats() {
+    return apiFetch<MarketDataStats>("/api/market-data/stats");
+  }
 
   useEffect(() => {
-    void apiFetch<MarketDataStats>("/api/market-data/stats").then(setStats);
+    void fetchStats().then(setStats);
   }, []);
+
+  async function syncAll() {
+    setSyncing(true);
+    try {
+      await apiFetch("/api/market-data/sync", {
+        method: "POST",
+        body: JSON.stringify({ interval: syncInterval, period: syncInterval === "15m" ? "60d" : syncInterval === "1m" ? "7d" : undefined }),
+      });
+      messageApi.success("同步已完成");
+      setStats(await fetchStats());
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "同步失败");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   const filteredRows = useMemo(() => {
     if (!stats) {
@@ -34,10 +57,19 @@ export function MarketDataView() {
 
   return (
     <div className="page-stack">
+      {contextHolder}
       <PageHeader
         eyebrow="Market Data"
         title="行情数据"
         description="查看 PostgreSQL 中已入库的标的、周期、覆盖区间和最近同步状态。"
+        actions={
+          <Space>
+            <Select value={syncInterval} options={stats.by_interval.map((item) => ({ label: item.interval, value: item.interval }))} onChange={setSyncInterval} style={{ width: 120 }} />
+            <Button loading={syncing} onClick={() => void syncAll()}>
+              同步全部
+            </Button>
+          </Space>
+        }
       />
 
       <div className="summary-grid">

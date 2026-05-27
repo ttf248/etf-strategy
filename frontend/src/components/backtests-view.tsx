@@ -1,7 +1,7 @@
 "use client";
 
-import { Button, Card, Descriptions, Form, Input, InputNumber, message, Select, Table } from "antd";
-import { useEffect, useMemo, useState } from "react";
+import { Button, Card, Descriptions, Form, Input, InputNumber, message, Select, Space, Table } from "antd";
+import { useEffect, useMemo, useState, type Key } from "react";
 import { apiFetch, type BacktestJob, type StrategyTemplate } from "@/lib/api";
 import { intervalOptions, strategyLabel, strategyOptions } from "@/lib/strategy-template-config";
 import { PageHeader, StatusTag } from "@/components/platform-ui";
@@ -10,6 +10,7 @@ export function BacktestsView() {
   const [form] = Form.useForm();
   const [jobs, setJobs] = useState<BacktestJob[]>([]);
   const [templates, setTemplates] = useState<StrategyTemplate[]>([]);
+  const [selectedJobIds, setSelectedJobIds] = useState<Key[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
   const selectedStrategy = Form.useWatch("strategy_kind", form) ?? "grid";
@@ -82,6 +83,54 @@ export function BacktestsView() {
       messageApi.error(error instanceof Error ? error.message : "提交失败");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function cancelJob(jobId: number) {
+    try {
+      await apiFetch(`/api/backtests/${jobId}/cancel`, { method: "POST" });
+      messageApi.success(`已提交取消请求：${jobId}`);
+      await loadJobs();
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "取消失败");
+    }
+  }
+
+  async function retryJob(jobId: number) {
+    try {
+      await apiFetch(`/api/backtests/${jobId}/retry`, { method: "POST" });
+      messageApi.success(`已重新入队：${jobId}`);
+      await loadJobs();
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "重试失败");
+    }
+  }
+
+  async function bulkCancelJobs() {
+    try {
+      await apiFetch("/api/backtests/bulk-cancel", {
+        method: "POST",
+        body: JSON.stringify({ job_ids: selectedJobIds.map(Number) }),
+      });
+      messageApi.success("已提交批量取消请求");
+      setSelectedJobIds([]);
+      await loadJobs();
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "批量取消失败");
+    }
+  }
+
+  async function bulkRetryJobs() {
+    try {
+      await apiFetch("/api/backtests/bulk-retry", {
+        method: "POST",
+        body: JSON.stringify({ job_ids: selectedJobIds.map(Number) }),
+      });
+      messageApi.success("已提交批量重试请求");
+      setSelectedJobIds([]);
+      await loadJobs();
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "批量重试失败");
     }
   }
 
@@ -187,11 +236,27 @@ export function BacktestsView() {
         </Card>
       ) : null}
 
-      <Card title="任务中心" size="small" className="section-card">
+      <Card
+        title="任务中心"
+        size="small"
+        className="section-card"
+        extra={
+          <Space>
+            <span className="toolbar-count">已选 {selectedJobIds.length} 项</span>
+            <Button size="small" disabled={selectedJobIds.length === 0} onClick={() => void bulkCancelJobs()}>
+              批量取消
+            </Button>
+            <Button size="small" disabled={selectedJobIds.length === 0} onClick={() => void bulkRetryJobs()}>
+              批量重试
+            </Button>
+          </Space>
+        }
+      >
         <Table
           rowKey="id"
           size="small"
           dataSource={jobs}
+          rowSelection={{ selectedRowKeys: selectedJobIds, onChange: setSelectedJobIds }}
           pagination={{ pageSize: 12, showSizeChanger: false }}
           scroll={{ x: 1180 }}
           columns={[
@@ -205,6 +270,21 @@ export function BacktestsView() {
             { title: "提交时间", dataIndex: "submitted_at", width: 180 },
             { title: "完成时间", dataIndex: "completed_at", width: 180 },
             { title: "错误", dataIndex: "error_message", ellipsis: true },
+            {
+              title: "操作",
+              width: 150,
+              fixed: "right",
+              render: (_, row) => (
+                <Space size="small">
+                  <Button size="small" disabled={!["queued", "running"].includes(row.status)} onClick={() => void cancelJob(row.id)}>
+                    取消
+                  </Button>
+                  <Button size="small" disabled={row.status !== "failed"} onClick={() => void retryJob(row.id)}>
+                    重试
+                  </Button>
+                </Space>
+              ),
+            },
           ]}
         />
       </Card>

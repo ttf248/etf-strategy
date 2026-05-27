@@ -6,12 +6,14 @@ import {
   DatabaseOutlined,
   FileSearchOutlined,
   FundOutlined,
+  MenuOutlined,
+  MonitorOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
-import { Layout, Menu } from "antd";
+import { Button, Drawer, Layout, Menu } from "antd";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 const { Header, Sider, Content } = Layout;
 
@@ -21,6 +23,7 @@ type ConsoleShellProps = {
 
 const items = [
   { key: "/", icon: <FundOutlined />, label: <Link href="/">平台概览</Link> },
+  { key: "/platform", icon: <MonitorOutlined />, label: <Link href="/platform">平台总控</Link> },
   { key: "/market-data", icon: <DatabaseOutlined />, label: <Link href="/market-data">行情数据</Link> },
   { key: "/templates", icon: <SettingOutlined />, label: <Link href="/templates">参数模板</Link> },
   { key: "/backtests", icon: <BarChartOutlined />, label: <Link href="/backtests">回测任务</Link> },
@@ -29,6 +32,7 @@ const items = [
 
 const routeTitles: Record<string, { title: string; kicker: string }> = {
   "/": { title: "平台概览", kicker: "Research Console" },
+  "/platform": { title: "平台总控", kicker: "Platform Control" },
   "/market-data": { title: "行情数据", kicker: "Market Data" },
   "/templates": { title: "参数模板", kicker: "Strategy Templates" },
   "/backtests": { title: "回测任务", kicker: "Backtest Jobs" },
@@ -37,8 +41,12 @@ const routeTitles: Record<string, { title: string; kicker: string }> = {
 
 export function ConsoleShell({ children }: ConsoleShellProps) {
   const pathname = usePathname();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const selectedKey = pathname.startsWith("/reports/") ? "/reports" : pathname;
   const current = routeTitles[selectedKey] ?? routeTitles["/"];
+  const renderMenu = () => (
+    <Menu mode="inline" selectedKeys={[selectedKey]} items={items} className="platform-nav" onClick={() => setMobileMenuOpen(false)} />
+  );
 
   return (
     <Layout className="platform-shell">
@@ -50,10 +58,11 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
             <span className="platform-logo-subtitle">Quant Research Platform</span>
           </div>
         </div>
-        <Menu mode="inline" selectedKeys={[selectedKey]} items={items} className="platform-nav" />
+        {renderMenu()}
       </Sider>
       <Layout className="platform-main">
         <Header className="platform-header">
+          <Button className="mobile-menu-trigger" icon={<MenuOutlined />} onClick={() => setMobileMenuOpen(true)} />
           <div className="platform-header-title">
             <span className="platform-header-kicker">{current.kicker}</span>
             <span className="platform-header-name">{current.title}</span>
@@ -67,13 +76,23 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
               <ClockCircleOutlined />
               Asia/Shanghai
             </span>
-            <span className="platform-pill">API 127.0.0.1:8000</span>
+            <span className="platform-pill compact">API 127.0.0.1:8000</span>
           </div>
         </Header>
         <Content className="platform-content">
           <div className="content-frame">{children}</div>
         </Content>
       </Layout>
+      <Drawer
+        title="ETF Strategy"
+        placement="left"
+        width={280}
+        open={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        className="mobile-nav-drawer"
+      >
+        {renderMenu()}
+      </Drawer>
     </Layout>
   );
 }

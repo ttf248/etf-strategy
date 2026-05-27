@@ -60,7 +60,18 @@ export function DetailItem({ label, value, tone }: DetailItemProps) {
 }
 
 export function StatusTag({ value }: { value: string }) {
-  const color = value === "succeeded" ? "green" : value === "failed" ? "red" : value === "running" ? "blue" : value === "queued" ? "gold" : "default";
+  const color =
+    value === "succeeded" || value === "ok" || value === "completed"
+      ? "green"
+      : value === "failed" || value === "down"
+        ? "red"
+        : value === "running"
+          ? "blue"
+          : value === "queued" || value === "cancel_requested"
+            ? "gold"
+            : value === "cancelled"
+              ? "default"
+              : "default";
   return <Tag color={color}>{value || "-"}</Tag>;
 }
 

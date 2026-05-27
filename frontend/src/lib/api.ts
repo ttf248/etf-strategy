@@ -30,6 +30,37 @@ export type BacktestJob = {
   reports?: Array<{ id: number; report_name: string; strategy_kind: string; interval: string }>;
 };
 
+export type PlatformStatus = {
+  api: { status: string; host: string; port: number; base_url: string };
+  frontend: { status: string; host: string; port: number; base_url: string };
+  database: { status: string; url: string; error?: string };
+  heartbeats: Array<{
+    service_name: string;
+    status: string;
+    pid: number;
+    started_at: string;
+    last_seen_at: string;
+    age_seconds: number;
+    details: Record<string, unknown>;
+  }>;
+  queue: Record<string, number>;
+  process_control_enabled: boolean;
+  sync_schedule: Array<{ id: string; interval: string; cron: string; period: string }>;
+};
+
+export type PlatformProcess = {
+  pid: number;
+  name: string;
+  service_name: string;
+  created_at: string;
+  command_line: string;
+};
+
+export type PlatformLogs = {
+  service: string;
+  lines: string[];
+};
+
 export type ReportSummary = {
   id: number;
   job_id: number;
