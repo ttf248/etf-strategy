@@ -7,7 +7,13 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type BacktestJob, type MarketDataStats, type ReportSummary } from "@/lib/api";
 import { FormatPercent, MetricCard, PageHeader, StatusTag } from "@/components/platform-ui";
 import { strategyLabel } from "@/lib/strategy-template-config";
-import { buildBacktestLaunchHref, buildBacktestPresetHref, buildBeginnerPresets } from "@/lib/beginner-presets";
+import { buildBacktestLaunchHref, buildBacktestPresetHref, buildBeginnerPresets, type BeginnerPreset } from "@/lib/beginner-presets";
+
+type GuideCard = {
+  title: string;
+  value: string;
+  description: string;
+};
 
 function getValidationMetrics(report: ReportSummary) {
   const validation = report.summary_metrics.validation ?? {};
@@ -51,7 +57,6 @@ function latestSuccessGuides(report: ReportSummary) {
 
 function buildStartRecommendation(params: {
   instrumentCount: number;
-  reportCount: number;
   presetCount: number;
   latestSucceededReportId: number | null;
   rerunHref: string | null;
@@ -64,6 +69,18 @@ function buildStartRecommendation(params: {
       primaryHref: `/reports/${params.latestSucceededReportId}`,
       secondaryLabel: "按相同配置再跑一次",
       secondaryHref: params.rerunHref,
+      guideItems: [
+        {
+          title: "为什么现在推荐这一步",
+          value: "因为你已经有一条成功路径",
+          description: "最近成功任务和报告都已存在，继续沿着它复盘或重跑，比重新从空白表单开始更省时间。",
+        },
+        {
+          title: "为什么不是先看别的页面",
+          value: "因为你先缺的是复盘判断",
+          description: "先确认上次收益、回撤和交易是否值得继续，再决定去对比、换参数还是换标的。",
+        },
+      ] satisfies GuideCard[],
     };
   }
   if (params.presetCount > 0) {
@@ -74,6 +91,18 @@ function buildStartRecommendation(params: {
       primaryHref: "#beginner-presets",
       secondaryLabel: "直接去创建回测",
       secondaryHref: "/backtests",
+      guideItems: [
+        {
+          title: "为什么现在推荐这一步",
+          value: "因为你已经有现成首跑组合",
+          description: "首页已经找到了同时适合新手和当前数据条件的示例标的，不需要先研究全部功能。",
+        },
+        {
+          title: "为什么不是先补更多数据",
+          value: "因为先跑通一次更重要",
+          description: "先完成一次提交和读报告，比先补齐一大堆标的更能帮助你理解平台主路径。",
+        },
+      ] satisfies GuideCard[],
     };
   }
   if (params.instrumentCount > 0) {
@@ -84,6 +113,18 @@ function buildStartRecommendation(params: {
       primaryHref: "/market-data",
       secondaryLabel: "直接去创建回测",
       secondaryHref: "/backtests",
+      guideItems: [
+        {
+          title: "为什么现在推荐这一步",
+          value: "因为库里有数据，但还没形成现成示例",
+          description: "最值得先确认的是你熟悉的标的有没有 1d 或 15m，而不是先看更多模板或报告。",
+        },
+        {
+          title: "为什么不是直接提交",
+          value: "因为先确认周期是否齐全更稳妥",
+          description: "确认好可用周期后再去创建回测，可以减少第一次提交就因为数据不足而失败的概率。",
+        },
+      ] satisfies GuideCard[],
     };
   }
   return {
@@ -93,6 +134,75 @@ function buildStartRecommendation(params: {
     primaryHref: "/market-data",
     secondaryLabel: "查看模板",
     secondaryHref: "/templates",
+    guideItems: [
+      {
+        title: "为什么现在推荐这一步",
+        value: "因为还缺可直接回测的数据",
+        description: "没有数据时，先看模板或报告都无法真正开始，先补一个熟悉标的最直接。",
+      },
+      {
+        title: "为什么只补一个标的就够",
+        value: "因为先跑通主路径比全量建库更重要",
+        description: "第一次只需要 1d 或 15m 的一个可用标的，等你确认流程顺畅后再扩展更多数据。",
+      },
+    ] satisfies GuideCard[],
+  };
+}
+
+function buildPresetGuides(preset: BeginnerPreset): GuideCard[] {
+  const readyForShortCycle = preset.availableIntervals.includes("15m");
+  const readyForLongCycle = preset.availableIntervals.includes("1d");
+  return [
+    {
+      title: "为什么优先推荐它",
+      value: readyForShortCycle && readyForLongCycle ? "短线和长线都能起步" : readyForShortCycle ? "分钟回测可直接开始" : "日线回测更容易上手",
+      description: preset.reason,
+    },
+    {
+      title: "更适合怎么用",
+      value: readyForShortCycle ? `先用 ${strategyLabel(preset.strategyKind)} 跑一轮` : "先看长期或日线节奏",
+      description:
+        readyForShortCycle
+          ? "这类示例更适合先把创建回测、提交任务和读报告的完整主路径跑通。"
+          : "这类示例更适合先看长期收益和回撤，再决定要不要扩到分钟策略。",
+    },
+  ];
+}
+
+function buildHomeReportSpotlight(report: ReportSummary, latestSucceededReportId: number | null): { label: string; color: string; description: string } {
+  const { netReturn, maxDrawdown, closedTrades } = getValidationMetrics(report);
+  if (report.id === latestSucceededReportId) {
+    return {
+      label: "刚跑通的成功样本",
+      color: "blue",
+      description: "这份报告和最近一次成功路径直接对应，最适合先确认你刚跑通的结果到底值不值得继续。",
+    };
+  }
+  if (closedTrades === 0) {
+    return {
+      label: "先查为什么没成交",
+      color: "default",
+      description: "这份结果更适合用来判断是标的不活跃、周期不合适，还是模板条件太苛刻。",
+    };
+  }
+  if (netReturn > 0 && maxDrawdown <= 8) {
+    return {
+      label: "适合先看",
+      color: "green",
+      description: "它既赚钱又相对稳，更适合作为首页第一批先读的参考样本。",
+    };
+  }
+  if (netReturn > 0) {
+    return {
+      label: "重点看波动",
+      color: "gold",
+      description: "它能赚钱，但更需要确认回撤和净值波动是不是你能接受的节奏。",
+    };
+  }
+  return {
+    label: "适合做反面对照",
+    color: "red",
+    description: "这份结果更像对照组，适合帮助你判断哪些模板、参数或周期该优先排除。",
   };
 }
 
@@ -155,11 +265,30 @@ export function DashboardView() {
     : null;
   const startRecommendation = buildStartRecommendation({
     instrumentCount: stats.instrument_count,
-    reportCount: reports.length,
     presetCount: beginnerPresets.length,
     latestSucceededReportId,
     rerunHref: latestSucceededRerunHref,
   });
+  const spotlightReports = [...reports]
+    .sort((left, right) => {
+      const leftSpotlight = buildHomeReportSpotlight(left, latestSucceededReportId);
+      const rightSpotlight = buildHomeReportSpotlight(right, latestSucceededReportId);
+      const leftPriority =
+        leftSpotlight.label === "刚跑通的成功样本" ? 4 :
+        leftSpotlight.label === "适合先看" ? 3 :
+        leftSpotlight.label === "重点看波动" ? 2 :
+        leftSpotlight.label === "适合做反面对照" ? 1 : 0;
+      const rightPriority =
+        rightSpotlight.label === "刚跑通的成功样本" ? 4 :
+        rightSpotlight.label === "适合先看" ? 3 :
+        rightSpotlight.label === "重点看波动" ? 2 :
+        rightSpotlight.label === "适合做反面对照" ? 1 : 0;
+      if (leftPriority !== rightPriority) {
+        return rightPriority - leftPriority;
+      }
+      return right.id - left.id;
+    })
+    .slice(0, 4);
 
   return (
     <div className="page-stack">
@@ -190,6 +319,15 @@ export function DashboardView() {
         <div className="start-path-main">
           <strong>{startRecommendation.title}</strong>
           <p>{startRecommendation.description}</p>
+          <div className="start-path-guide-grid">
+            {startRecommendation.guideItems.map((item) => (
+              <article key={item.title} className="start-path-guide-card">
+                <span>{item.title}</span>
+                <strong>{item.value}</strong>
+                <p>{item.description}</p>
+              </article>
+            ))}
+          </div>
         </div>
         <div className="start-path-actions">
           <Button type="primary">
@@ -254,6 +392,15 @@ export function DashboardView() {
                     <Tag key={item}>{item}</Tag>
                   ))}
                   <Tag color="gold">{strategyLabel(preset.strategyKind)}</Tag>
+                </div>
+                <div className="beginner-preset-guides">
+                  {buildPresetGuides(preset).map((item) => (
+                    <article key={`${preset.symbol}-${item.title}`} className="beginner-preset-guide-card">
+                      <span>{item.title}</span>
+                      <strong>{item.value}</strong>
+                      <p>{item.description}</p>
+                    </article>
+                  ))}
                 </div>
                 <Button type="primary">
                   <Link href={buildBacktestPresetHref(preset)}>用这个示例开始</Link>
@@ -321,14 +468,20 @@ export function DashboardView() {
         <MetricCard label="最近数据同步" value={latestSyncStatus} note={latestSync?.completed_at ?? latestSync?.interval ?? "等待同步记录"} />
       </div>
 
-      <Card title="最近生成的报告" size="small" className="section-card">
+      <Card title="现在更适合先看的报告" size="small" className="section-card">
         {reports.length === 0 ? (
           <Empty description="暂无报告，先创建一次回测。" />
         ) : (
-          <div className="home-report-list">
-            {reports.slice(0, 4).map((report) => {
+          <>
+            <div className="home-report-banner">
+              <strong>这些卡片不是只按时间堆出来，而是按“更值得先读”排序</strong>
+              <p>首页优先把刚跑通的成功样本、收益更稳的结果，以及适合当反面对照的报告放在前面，帮助你先决定先读哪一份，而不是自己盲猜。</p>
+            </div>
+            <div className="home-report-list">
+              {spotlightReports.map((report) => {
               const validation = report.summary_metrics.validation ?? {};
               const { netReturn, maxDrawdown } = getValidationMetrics(report);
+              const spotlight = buildHomeReportSpotlight(report, latestSucceededReportId);
               const brief =
                 netReturn > 0 && maxDrawdown <= 8
                   ? "这份结果更稳，适合先打开看看为什么能赚钱。"
@@ -342,11 +495,18 @@ export function DashboardView() {
                       <strong>#{report.id} {report.symbol}</strong>
                       <span>{report.name || "未命名标的"} / {report.interval} / {strategyLabel(report.strategy_kind)}</span>
                     </div>
-                    <Tag>{report.dataset_end}</Tag>
+                    <div className="home-report-card-tags">
+                      <Tag color={spotlight.color}>{spotlight.label}</Tag>
+                      <Tag>{report.dataset_end}</Tag>
+                    </div>
                   </div>
                   <div className="home-report-metrics">
                     <span>样本外收益 <FormatPercent value={validation.NetReturnPct ?? validation.ReturnPct ?? 0} /></span>
                     <span>最大回撤 {Number(validation.MaxDrawdownPct ?? 0).toFixed(2)}%</span>
+                  </div>
+                  <div className="home-report-spotlight">
+                    <strong>为什么现在先看它</strong>
+                    <p>{spotlight.description}</p>
                   </div>
                   <p className="home-report-brief">{brief}</p>
                   <Button type="primary">
@@ -355,7 +515,8 @@ export function DashboardView() {
                 </article>
               );
             })}
-          </div>
+            </div>
+          </>
         )}
       </Card>
 

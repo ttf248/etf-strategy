@@ -68,6 +68,7 @@ test("首页到回测提交主路径可用", async ({ page, request }) => {
   await expect(page.getByRole("heading", { name: "从一个标的开始，跑出第一份回测报告" })).toBeVisible();
   await expect(page.getByText("第一次使用建议按这条路走")).toBeVisible();
   await expect(page.getByText("数据准备 -> 创建回测 -> 查看报告")).toBeVisible();
+  await expect(page.getByText("为什么现在推荐这一步")).toBeVisible();
   await expect(page.getByRole("link", { name: "开始一次回测" })).toHaveAttribute("href", "/backtests");
 
   const launchParams = new URLSearchParams({
