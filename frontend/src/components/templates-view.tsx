@@ -425,12 +425,12 @@ export function TemplatesView() {
           <strong>
             {defaultRecommendedTemplate
               ? "先从推荐模板里挑一个开始，不要一上来新建自定义模板"
-              : "当前没有可直接使用的模板，先到高级管理里启用一个默认模板"}
+              : "当前没有可直接使用的模板，先到维护区启用一个默认模板"}
           </strong>
           <p>
             {defaultRecommendedTemplate
               ? "新手更需要先把回测流程和报告阅读跑通，而不是先改参数。只有当默认模板明显不适合你的标的、周期或手续费假设时，再去编辑或新建模板。"
-              : "如果当前没有启用模板，先在下方高级管理区启用默认模板，或者在确实需要时新建自定义模板。"}
+              : "如果当前没有启用模板，先在下方维护区启用默认模板，或者在确实需要时新建自定义模板。"}
           </p>
           <div className="start-path-guide-grid">
             <article className="start-path-guide-card">
@@ -444,7 +444,7 @@ export function TemplatesView() {
               <p>只有当默认模板明显不适合你的标的、周期或手续费假设时，新建或编辑自定义模板才有明确价值。</p>
             </article>
             <article className="start-path-guide-card">
-              <span>什么时候进高级管理</span>
+              <span>什么时候进维护区</span>
               <strong>需要维护时再进去</strong>
               <p>例如当前没有启用模板、默认模板不适合当前场景，或者你确实要新增自己的参数范围。</p>
             </article>
@@ -485,7 +485,7 @@ export function TemplatesView() {
 
       <Card title="推荐模板" size="small" className="section-card">
         {recommendedTemplates.length === 0 ? (
-          <Typography.Text type="secondary">当前没有启用的模板。先展开下方高级管理，启用一个默认模板或新建自定义模板，再回到这里选择。</Typography.Text>
+          <Typography.Text type="secondary">当前没有启用的模板。先展开下方维护区，启用一个默认模板或新建自定义模板，再回到这里选择。</Typography.Text>
         ) : (
           <>
             <div className="template-order-banner">
@@ -619,7 +619,7 @@ export function TemplatesView() {
         )}
       </Card>
 
-      <Card size="small" title="高级模板管理" className="section-card">
+      <Card size="small" title="模板维护与自定义" className="section-card">
         <div className="template-management-banner">
           <strong>只有在你需要维护模板时，再展开完整列表并调整详细设置</strong>
           <p>日常使用优先在上面的推荐模板和对比区做选择。启用模板、新建模板、查看完整列表和调整详细设置都保留在这里，但不再作为首屏主路径。</p>
@@ -647,7 +647,7 @@ export function TemplatesView() {
           items={[
             {
               key: "template-library",
-              label: "高级管理：启用模板、新建模板和查看完整列表",
+              label: "维护区：启用模板、新建模板和查看完整列表",
               children: (
                 <>
                   <div className="table-toolbar">
