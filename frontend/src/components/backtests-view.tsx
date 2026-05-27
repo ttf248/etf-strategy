@@ -223,7 +223,7 @@ export function BacktestsView() {
           parameter_space: selectedTemplate?.parameter_space_json,
         }),
       });
-      messageApi.success(`任务已提交，编号=${result.job_id}`);
+      messageApi.success(`任务已提交，编号 ${result.job_id}`);
       await loadJobs();
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "提交失败");
@@ -235,7 +235,7 @@ export function BacktestsView() {
   async function cancelJob(jobId: number) {
     try {
       await apiFetch(`/api/backtests/${jobId}/cancel`, { method: "POST" });
-      messageApi.success(`已请求取消任务，编号=${jobId}`);
+      messageApi.success(`已请求取消任务，编号 ${jobId}`);
       await loadJobs();
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "取消失败");
@@ -245,7 +245,7 @@ export function BacktestsView() {
   async function retryJob(jobId: number) {
     try {
       await apiFetch(`/api/backtests/${jobId}/retry`, { method: "POST" });
-      messageApi.success(`任务已重新安排，编号=${jobId}`);
+      messageApi.success(`任务已重新安排，编号 ${jobId}`);
       await loadJobs();
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "重试失败");
