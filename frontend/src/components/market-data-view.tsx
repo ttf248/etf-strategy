@@ -1,8 +1,9 @@
 "use client";
 
-import { Card, Empty, Input, Select, Skeleton, Space, Table, Typography } from "antd";
+import { Card, Empty, Input, Select, Skeleton, Space, Table } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type MarketCoverage, type MarketDataStats } from "@/lib/api";
+import { MetricCard, PageHeader, ToolbarCount } from "@/components/platform-ui";
 
 export function MarketDataView() {
   const [stats, setStats] = useState<MarketDataStats | null>(null);
@@ -33,40 +34,28 @@ export function MarketDataView() {
 
   return (
     <div className="page-stack">
-      <Typography.Title level={3} className="section-title">
-        行情数据统计
-      </Typography.Title>
+      <PageHeader
+        eyebrow="Market Data"
+        title="行情数据"
+        description="查看 PostgreSQL 中已入库的标的、周期、覆盖区间和最近同步状态。"
+      />
+
       <div className="summary-grid">
-        <Card size="small">
-          <div className="metric-kpi">
-            <span>已存标的</span>
-            <strong>{stats.instrument_count}</strong>
-          </div>
-        </Card>
-        <Card size="small">
-          <div className="metric-kpi">
-            <span>K 线总量</span>
-            <strong>{stats.total_bars.toLocaleString()}</strong>
-          </div>
-        </Card>
+        <MetricCard label="已存标的" value={stats.instrument_count} note="instruments" />
+        <MetricCard label="K 线总量" value={stats.total_bars.toLocaleString()} note="price_bars" />
         {stats.by_interval.map((item) => (
-          <Card key={item.interval} size="small">
-            <div className="metric-kpi">
-              <span>{item.interval}</span>
-              <strong>{item.bar_count.toLocaleString()}</strong>
-            </div>
-          </Card>
+          <MetricCard key={item.interval} label={`${item.interval} 周期`} value={item.bar_count.toLocaleString()} note="bars" />
         ))}
       </div>
 
-      <Card size="small" title="存量覆盖">
-        <div className="table-toolbar" style={{ marginBottom: 12 }}>
+      <Card size="small" title="存量覆盖" className="section-card">
+        <div className="table-toolbar">
           <Space wrap>
             <Input
               placeholder="筛选标的或名称"
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
-              style={{ width: 220 }}
+              style={{ width: 240 }}
             />
             <Select
               allowClear
@@ -74,10 +63,10 @@ export function MarketDataView() {
               value={interval}
               onChange={setInterval}
               options={stats.by_interval.map((item) => ({ label: item.interval, value: item.interval }))}
-              style={{ width: 160 }}
+              style={{ width: 150 }}
             />
           </Space>
-          <span>共 {filteredRows.length} 条覆盖记录</span>
+          <ToolbarCount>共 {filteredRows.length} 条覆盖记录</ToolbarCount>
         </div>
 
         {filteredRows.length === 0 ? (
@@ -87,9 +76,10 @@ export function MarketDataView() {
             rowKey={(row) => `${row.symbol}-${row.interval}`}
             size="small"
             dataSource={filteredRows}
-            pagination={{ pageSize: 20 }}
+            pagination={{ pageSize: 20, showSizeChanger: false }}
+            scroll={{ x: 1160 }}
             columns={[
-              { title: "标的", dataIndex: "symbol", width: 120 },
+              { title: "标的", dataIndex: "symbol", width: 120, fixed: "left" },
               { title: "名称", dataIndex: "name", ellipsis: true },
               { title: "交易所", dataIndex: "exchange", width: 90 },
               { title: "周期", dataIndex: "interval", width: 90 },

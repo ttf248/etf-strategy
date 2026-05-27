@@ -12,6 +12,7 @@ import {
   strategyLabel,
   strategyOptions,
 } from "@/lib/strategy-template-config";
+import { PageHeader, ToolbarCount } from "@/components/platform-ui";
 
 type TemplateFormValues = {
   template_key?: string;
@@ -218,14 +219,11 @@ export function TemplatesView() {
   return (
     <div className="page-stack">
       {contextHolder}
-      <Typography.Title level={3} className="section-title">
-        参数模板
-      </Typography.Title>
-
-      <Card
-        size="small"
-        title="模板中心"
-        extra={
+      <PageHeader
+        eyebrow="Strategy Templates"
+        title="参数模板"
+        description="集中管理策略参数空间、执行口径和默认模板，回测提交时会保存模板快照。"
+        actions={
           <Space>
             <Button onClick={() => void loadTemplates()}>刷新</Button>
             <Button type="primary" onClick={openCreateDrawer}>
@@ -233,7 +231,9 @@ export function TemplatesView() {
             </Button>
           </Space>
         }
-      >
+      />
+
+      <Card size="small" title="模板中心" className="section-card">
         <div className="table-toolbar">
           <Space wrap>
             <Select
@@ -246,14 +246,14 @@ export function TemplatesView() {
             <Select
               allowClear
               placeholder="周期"
-              style={{ width: 120 }}
+              style={{ width: 130 }}
               options={intervalOptions}
               onChange={(value) => setFilters((current) => ({ ...current, interval: value }))}
             />
             <Select
               allowClear
               placeholder="状态"
-              style={{ width: 120 }}
+              style={{ width: 130 }}
               options={[
                 { label: "启用", value: "active" },
                 { label: "停用", value: "inactive" },
@@ -261,36 +261,29 @@ export function TemplatesView() {
               onChange={(value) => setFilters((current) => ({ ...current, active: value }))}
             />
           </Space>
+          <ToolbarCount>共 {filteredTemplates.length} 个模板</ToolbarCount>
         </div>
         <Table
           rowKey="id"
           size="small"
           loading={loading}
           dataSource={filteredTemplates}
-          pagination={{ pageSize: 12 }}
+          pagination={{ pageSize: 12, showSizeChanger: false }}
+          scroll={{ x: 1240 }}
           columns={[
-            { title: "名称", dataIndex: "template_name", width: 240 },
-            { title: "模板键", dataIndex: "template_key", width: 220 },
+            { title: "名称", dataIndex: "template_name", width: 240, fixed: "left" },
+            { title: "模板键", dataIndex: "template_key", width: 220, ellipsis: true },
             { title: "策略", dataIndex: "strategy_kind", render: (value: string) => strategyLabel(value), width: 220 },
             { title: "周期", dataIndex: "interval", width: 90 },
             { title: "口径", dataIndex: "execution_profile", width: 100 },
             { title: "并行数", dataIndex: "jobs", width: 90 },
-            {
-              title: "默认",
-              dataIndex: "is_default",
-              width: 90,
-              render: (value: boolean) => <Tag color={value ? "gold" : "default"}>{value ? "默认" : "-"}</Tag>,
-            },
-            {
-              title: "状态",
-              dataIndex: "is_active",
-              width: 90,
-              render: (value: boolean) => <Tag color={value ? "green" : "default"}>{value ? "启用" : "停用"}</Tag>,
-            },
+            { title: "默认", dataIndex: "is_default", width: 90, render: (value: boolean) => <Tag color={value ? "gold" : "default"}>{value ? "默认" : "-"}</Tag> },
+            { title: "状态", dataIndex: "is_active", width: 90, render: (value: boolean) => <Tag color={value ? "green" : "default"}>{value ? "启用" : "停用"}</Tag> },
             { title: "更新时间", dataIndex: "updated_at", width: 180 },
             {
               title: "操作",
-              width: 180,
+              width: 170,
+              fixed: "right",
               render: (_, row) => (
                 <Space size="small">
                   <Button size="small" onClick={() => openEditDrawer(row)}>
@@ -308,9 +301,9 @@ export function TemplatesView() {
 
       <Drawer
         title={editingTemplate ? `编辑模板 #${editingTemplate.id}` : "新建模板"}
-        width={820}
+        width={860}
         open={drawerOpen}
-        destroyOnClose
+        destroyOnHidden
         onClose={() => setDrawerOpen(false)}
       >
         <Form
@@ -325,6 +318,7 @@ export function TemplatesView() {
             }
           }}
         >
+          <Typography.Title level={5}>基础信息</Typography.Title>
           <div className="template-form-grid">
             <Form.Item name="template_name" label="模板名称" rules={[{ required: true }]}>
               <Input />
@@ -404,24 +398,19 @@ export function TemplatesView() {
               <Card size="small">当前策略不需要自定义寻参空间。</Card>
             ) : (
               parameterSpecs.map((field) => (
-                <Form.Item
-                  key={field.key}
-                  name={["parameter_fields", field.key]}
-                  label={field.label}
-                  rules={[{ required: true }]}
-                >
+                <Form.Item key={field.key} name={["parameter_fields", field.key]} label={field.label} rules={[{ required: true }]}>
                   <Input placeholder="逗号分隔，例如 0.01,0.02,0.03" />
                 </Form.Item>
               ))
             )}
           </div>
 
-          <Space style={{ marginTop: 16 }}>
+          <div className="form-action-row">
             <Button onClick={() => setDrawerOpen(false)}>取消</Button>
             <Button type="primary" htmlType="submit" loading={saving}>
               保存
             </Button>
-          </Space>
+          </div>
         </Form>
       </Drawer>
     </div>
