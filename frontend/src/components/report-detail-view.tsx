@@ -1,11 +1,13 @@
 "use client";
 
-import { Card, Collapse, Descriptions, Empty, Skeleton, Space, Table, Tag, Typography } from "antd";
+import Link from "next/link";
+import { Button, Card, Collapse, Descriptions, Empty, Skeleton, Space, Table, Tag, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { apiFetch, type ReportDetail } from "@/lib/api";
 import { EquityChart } from "@/components/equity-chart";
 import { DetailItem, FormatPercent, PageHeader } from "@/components/platform-ui";
 import { parameterFieldSpecsByStrategy, strategyLabel } from "@/lib/strategy-template-config";
+import { buildBacktestLaunchHref } from "@/lib/beginner-presets";
 
 type ReportDetailViewProps = {
   reportId: string;
@@ -328,6 +330,22 @@ function formatCell(value: unknown): string {
   return String(value);
 }
 
+function readTemplateId(report: ReportDetail, templateSnapshot?: Record<string, unknown>): number | undefined {
+  const candidates = [templateSnapshot?.id, report.parameters.template_id];
+  for (const value of candidates) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+}
+
 export function ReportDetailView({ reportId }: ReportDetailViewProps) {
   const [report, setReport] = useState<ReportDetail | null>(null);
 
@@ -346,6 +364,13 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
   const closedTrades = Number(validation.ClosedTrades ?? 0);
   const verdict = buildVerdict(netReturn, maxDrawdown, closedTrades);
   const returnTone = netReturn > 0 ? "positive" : netReturn < 0 ? "negative" : undefined;
+  const templateId = readTemplateId(report, templateSnapshot);
+  const rerunHref = buildBacktestLaunchHref({
+    symbol: report.symbol,
+    interval: report.interval,
+    strategyKind: report.strategy_kind,
+    templateId,
+  });
   const readingGuides = [
     {
       title: "收益怎么看",
@@ -367,6 +392,16 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
         eyebrow="Result Detail"
         title={`回测报告 #${report.id}`}
         description={`${report.symbol} / ${report.interval} / ${strategyLabel(report.strategy_kind)}`}
+        actions={
+          <Space wrap>
+            <Button>
+              <Link href="/reports">回到报告列表</Link>
+            </Button>
+            <Button type="primary">
+              <Link href={rerunHref}>按当前配置重跑</Link>
+            </Button>
+          </Space>
+        }
       />
 
       <Card size="small" className="section-card result-verdict-card">
