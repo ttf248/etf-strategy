@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type ReportSummary } from "@/lib/api";
 import { FormatPercent, MetricCard, PageHeader, ToolbarCount } from "@/components/platform-ui";
+import { strategyLabel } from "@/lib/strategy-template-config";
 
 type Verdict = {
   label: string;
@@ -37,6 +38,7 @@ export function ReportsView() {
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [keyword, setKeyword] = useState("");
   const [interval, setInterval] = useState<string | undefined>(undefined);
+  const [selectedReportIds, setSelectedReportIds] = useState<number[]>([]);
 
   useEffect(() => {
     void apiFetch<ReportSummary[]>("/api/reports?limit=200").then(setReports);
@@ -66,6 +68,19 @@ export function ReportsView() {
     }
     return getValidationMetrics(current).netReturn > getValidationMetrics(best).netReturn ? current : best;
   }, null);
+  const comparedReports = useMemo(
+    () => reports.filter((item) => selectedReportIds.includes(item.id)),
+    [reports, selectedReportIds],
+  );
+
+  function toggleCompare(reportId: number) {
+    setSelectedReportIds((current) => {
+      if (current.includes(reportId)) {
+        return current.filter((item) => item !== reportId);
+      }
+      return [...current, reportId].slice(-4);
+    });
+  }
 
   return (
     <div className="page-stack">
@@ -85,6 +100,37 @@ export function ReportsView() {
         />
         <MetricCard label="最近报告" value={latestReport?.symbol ?? "-"} note={latestReport?.created_at ?? "暂无报告"} />
       </div>
+
+      <Card
+        size="small"
+        title="报告对比"
+        className="section-card report-compare-card"
+        extra={selectedReportIds.length ? <Button size="small" onClick={() => setSelectedReportIds([])}>清空对比</Button> : null}
+      >
+        {comparedReports.length === 0 ? (
+          <Typography.Text type="secondary">从报告列表中选择 2 到 4 份报告，对比样本外收益、最大回撤和交易次数。</Typography.Text>
+        ) : (
+          <div className="report-compare-grid">
+            {comparedReports.map((report) => {
+              const { netReturn, maxDrawdown, closedTrades } = getValidationMetrics(report);
+              return (
+                <article key={report.id} className="report-compare-item">
+                  <div className="report-compare-head">
+                    <strong>#{report.id} {report.symbol}</strong>
+                    <Button size="small" type="link" onClick={() => toggleCompare(report.id)}>移除</Button>
+                  </div>
+                  <span>{report.interval} / {strategyLabel(report.strategy_kind)}</span>
+                  <div className="report-compare-metrics">
+                    <span>收益 <FormatPercent value={netReturn} /></span>
+                    <span>回撤 {maxDrawdown.toFixed(2)}%</span>
+                    <span>交易 {closedTrades}</span>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </Card>
 
       <Card size="small" title="报告列表" className="section-card">
         <div className="table-toolbar">
@@ -117,6 +163,9 @@ export function ReportsView() {
                       <span>回撤 {maxDrawdown.toFixed(2)}%</span>
                       <span>交易 {closedTrades}</span>
                     </div>
+                    <Button block onClick={() => toggleCompare(report.id)}>
+                      {selectedReportIds.includes(report.id) ? "已加入对比" : "加入对比"}
+                    </Button>
                     <Button type="primary" block>
                       <Link href={`/reports/${report.id}`}>打开报告详情</Link>
                     </Button>
@@ -129,6 +178,10 @@ export function ReportsView() {
               rowKey="id"
               size="small"
               dataSource={filteredReports}
+              rowSelection={{
+                selectedRowKeys: selectedReportIds,
+                onChange: (keys) => setSelectedReportIds(keys.map(Number).slice(-4)),
+              }}
               pagination={{ pageSize: 12, showSizeChanger: false }}
               scroll={{ x: 980 }}
               columns={[
@@ -136,7 +189,7 @@ export function ReportsView() {
                 { title: "标的", dataIndex: "symbol", width: 120 },
                 { title: "名称", dataIndex: "name", ellipsis: true },
                 { title: "周期", dataIndex: "interval", width: 90 },
-                { title: "策略", dataIndex: "strategy_kind", width: 180, ellipsis: true },
+              { title: "策略", dataIndex: "strategy_kind", width: 180, ellipsis: true, render: (value: string) => strategyLabel(value) },
                 {
                   title: "结论",
                   width: 150,

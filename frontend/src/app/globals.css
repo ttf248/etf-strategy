@@ -768,6 +768,59 @@ a {
   display: none;
 }
 
+.report-compare-card .ant-card-body {
+  min-height: 76px;
+}
+
+.report-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.report-compare-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.report-compare-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.report-compare-head strong {
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.report-compare-item > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.report-compare-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.report-compare-metrics span {
+  padding: 8px;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 650;
+  text-align: center;
+}
+
 .report-mobile-card {
   display: flex;
   flex-direction: column;
