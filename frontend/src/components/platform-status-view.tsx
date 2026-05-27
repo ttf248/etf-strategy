@@ -32,7 +32,7 @@ function formatActiveTaskNote(runningJobs: number, queuedJobs: number, cancelReq
   if (runningJobs === 0 && queuedJobs === 0 && cancelRequestedJobs === 0) {
     return "当前没有正在跑或等待处理的任务";
   }
-  const parts = [`运行中 ${runningJobs}`, `排队 ${queuedJobs}`];
+  const parts = [`运行中 ${runningJobs}`, `等待开始 ${queuedJobs}`];
   if (cancelRequestedJobs > 0) {
     parts.push(`等待取消 ${cancelRequestedJobs}`);
   }
@@ -211,7 +211,7 @@ export function PlatformStatusView() {
         </Card>
         <Card size="small" className="maintenance-path-card">
           <strong>任务没结果时</strong>
-          <span>如果任务一直排队或报告没生成，再回来查看执行状态、等待队列和日志，确认回测执行服务是否正常。</span>
+          <span>如果任务一直等待开始或报告没生成，再回来查看执行状态、等待中的任务和日志，确认回测执行服务是否正常。</span>
           <Button type="link">
             <Link href="/reports">先看报告列表</Link>
           </Button>
@@ -245,7 +245,7 @@ export function PlatformStatusView() {
                         columns={[
                           { title: "服务", dataIndex: "service_name", width: 140, render: (value: string) => formatServiceLabel(value) },
                           { title: "状态", dataIndex: "status", width: 100, render: (value: string) => <StatusTag value={value} /> },
-                          { title: "PID", dataIndex: "pid", width: 90 },
+                          { title: "进程编号", dataIndex: "pid", width: 100 },
                           { title: "心跳延迟", dataIndex: "age_seconds", width: 110, render: (value: number) => `${value}s` },
                           { title: "最近心跳", dataIndex: "last_seen_at", ellipsis: true },
                         ]}
@@ -290,7 +290,7 @@ export function PlatformStatusView() {
                 scroll={{ x: 1100 }}
                 columns={[
                   { title: "服务", dataIndex: "service_name", width: 140, render: (value: string) => formatServiceLabel(value) },
-                  { title: "PID", dataIndex: "pid", width: 90 },
+                  { title: "进程编号", dataIndex: "pid", width: 100 },
                   { title: "程序名", dataIndex: "name", width: 120 },
                   { title: "启动时间", dataIndex: "created_at", width: 180 },
                   { title: "命令行", dataIndex: "command_line", ellipsis: true },
