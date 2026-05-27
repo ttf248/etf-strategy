@@ -18,6 +18,16 @@ const strategyGuide: Record<string, { scene: string; beginnerHint: string; risk:
   minute_index_grid_retrace: { scene: "指数回落后的网格", beginnerHint: "偏专项策略", risk: "需要匹配指数和标的数据" },
 };
 
+function executionProfileLabel(profile: string): string {
+  if (profile === "realistic") {
+    return "实盘口径";
+  }
+  if (profile === "research") {
+    return "研究口径";
+  }
+  return profile;
+}
+
 function buildTemplatePickHint(template: StrategyTemplate | null, strategyKind: string, interval: string) {
   if (!template) {
     return {
@@ -225,7 +235,7 @@ export function BacktestsView() {
   async function cancelJob(jobId: number) {
     try {
       await apiFetch(`/api/backtests/${jobId}/cancel`, { method: "POST" });
-      messageApi.success(`已提交取消请求：${jobId}`);
+      messageApi.success(`已请求取消任务，编号=${jobId}`);
       await loadJobs();
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "取消失败");
@@ -235,7 +245,7 @@ export function BacktestsView() {
   async function retryJob(jobId: number) {
     try {
       await apiFetch(`/api/backtests/${jobId}/retry`, { method: "POST" });
-      messageApi.success(`已重新入队：${jobId}`);
+      messageApi.success(`任务已重新安排，编号=${jobId}`);
       await loadJobs();
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "重试失败");
@@ -481,10 +491,10 @@ export function BacktestsView() {
                         <Form.Item name="lookback_days" label="日线样本内天数">
                           <InputNumber min={1} style={{ width: "100%" }} />
                         </Form.Item>
-                        <Form.Item name="validation_ratio" label="分钟线样本外比例">
+                        <Form.Item name="validation_ratio" label="留给样本外验证的比例">
                           <InputNumber min={0.05} max={0.95} step={0.05} style={{ width: "100%" }} />
                         </Form.Item>
-                        <Form.Item name="jobs" label="并行数">
+                        <Form.Item name="jobs" label="同时尝试的参数组数">
                           <InputNumber min={1} max={16} style={{ width: "100%" }} />
                         </Form.Item>
                         <Form.Item name="commission_bps" label="手续费（万分比）">
@@ -496,13 +506,13 @@ export function BacktestsView() {
                         <Form.Item name="max_position_ratio" label="最大仓位">
                           <InputNumber min={0} max={1} step={0.05} style={{ width: "100%" }} />
                         </Form.Item>
-                        <Form.Item name="left_side_policy" label="左侧处理">
+                        <Form.Item name="left_side_policy" label="左侧行情时怎么处理">
                           <Select
                             allowClear
                             options={[
                               { label: "持有", value: "hold" },
-                              { label: "强平", value: "force_exit" },
-                              { label: "双口径", value: "both" },
+                              { label: "强制离场", value: "force_exit" },
+                              { label: "两种都保留", value: "both" },
                             ]}
                           />
                         </Form.Item>
@@ -537,7 +547,7 @@ export function BacktestsView() {
             <Descriptions.Item label="模板">{selectedTemplate.template_name}</Descriptions.Item>
             <Descriptions.Item label="策略">{strategyLabel(selectedTemplate.strategy_kind)}</Descriptions.Item>
             <Descriptions.Item label="周期">{selectedTemplate.interval}</Descriptions.Item>
-            <Descriptions.Item label="成交假设">{selectedTemplate.execution_profile}</Descriptions.Item>
+            <Descriptions.Item label="成交假设">{executionProfileLabel(selectedTemplate.execution_profile)}</Descriptions.Item>
             <Descriptions.Item label="说明">{selectedTemplate.description || "使用模板默认参数"}</Descriptions.Item>
             <Descriptions.Item label="同时尝试的参数组数">{selectedTemplate.jobs}</Descriptions.Item>
             <Descriptions.Item label="默认模板">{selectedTemplate.is_default ? "是" : "否"}</Descriptions.Item>
@@ -587,7 +597,7 @@ export function BacktestsView() {
                   <article key={job.id} className="job-mobile-card">
                     <div className="job-mobile-card-head">
                       <div>
-                        <strong>任务 #{job.id}</strong>
+                        <strong>任务编号 {job.id}</strong>
                         <span>{String(payload.symbol ?? "-")} / {String(payload.interval ?? "-")} / {strategyLabel(String(payload.strategy_kind ?? "-"))}</span>
                       </div>
                       <StatusTag value={job.status} />
