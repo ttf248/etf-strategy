@@ -491,7 +491,7 @@ export function BacktestsView() {
                         <Form.Item name="lookback_days" label="日线样本内天数">
                           <InputNumber min={1} style={{ width: "100%" }} />
                         </Form.Item>
-                        <Form.Item name="validation_ratio" label="留给样本外验证的比例">
+                        <Form.Item name="validation_ratio" label="最后留多少比例做验证">
                           <InputNumber min={0.05} max={0.95} step={0.05} style={{ width: "100%" }} />
                         </Form.Item>
                         <Form.Item name="jobs" label="同时尝试的参数组数">

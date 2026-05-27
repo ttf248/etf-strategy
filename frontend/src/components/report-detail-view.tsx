@@ -53,7 +53,7 @@ const baseParameterLabels: Record<string, string> = {
   Symbol: "标的代码",
   template_id: "模板编号",
   total_capital: "初始资金",
-  validation_ratio: "留给样本外验证的比例",
+  validation_ratio: "最后留多少比例做验证",
   validation_start: "从哪一天开始算样本外",
 };
 
