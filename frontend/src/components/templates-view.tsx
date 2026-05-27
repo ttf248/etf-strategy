@@ -897,7 +897,7 @@ export function TemplatesView() {
           <Typography.Title level={5}>可尝试的参数范围</Typography.Title>
           <div className="template-form-grid">
             {parameterSpecs.length === 0 ? (
-              <Card size="small">当前策略不需要自定义寻参空间。</Card>
+              <Card size="small">当前策略不需要额外设置参数范围。</Card>
             ) : (
               parameterSpecs.map((field) => (
                 <Form.Item key={field.key} name={["parameter_fields", field.key]} label={field.label} rules={[{ required: true }]}>
