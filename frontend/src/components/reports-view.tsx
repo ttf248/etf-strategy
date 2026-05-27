@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type ReportSummary } from "@/lib/api";
 import { FormatPercent, MetricCard, PageHeader, ToolbarCount } from "@/components/platform-ui";
 import { strategyLabel } from "@/lib/strategy-template-config";
+import { buildBacktestLaunchHref } from "@/lib/beginner-presets";
 
 const FAVORITE_REPORTS_STORAGE_KEY = "etf-strategy.favorite-report-ids";
 
@@ -35,6 +36,14 @@ function buildVerdict(netReturn: number, maxDrawdown: number): Verdict {
     return { label: "没有触发交易", color: "default", description: "样本外阶段可能没有满足开仓条件。" };
   }
   return { label: "暂不理想", color: "red", description: "样本外收益为负，建议换参数或换标的。" };
+}
+
+function buildRerunHref(report: ReportSummary) {
+  return buildBacktestLaunchHref({
+    symbol: report.symbol,
+    interval: report.interval,
+    strategyKind: report.strategy_kind,
+  });
 }
 
 export function ReportsView() {
@@ -119,6 +128,26 @@ export function ReportsView() {
     () => reports.filter((item) => selectedReportIds.includes(item.id)),
     [reports, selectedReportIds],
   );
+  const bestComparedReport = useMemo(
+    () =>
+      comparedReports.reduce<ReportSummary | null>((best, current) => {
+        if (!best) {
+          return current;
+        }
+        return getValidationMetrics(current).netReturn > getValidationMetrics(best).netReturn ? current : best;
+      }, null),
+    [comparedReports],
+  );
+  const safestComparedReport = useMemo(
+    () =>
+      comparedReports.reduce<ReportSummary | null>((best, current) => {
+        if (!best) {
+          return current;
+        }
+        return getValidationMetrics(current).maxDrawdown < getValidationMetrics(best).maxDrawdown ? current : best;
+      }, null),
+    [comparedReports],
+  );
 
   function toggleCompare(reportId: number) {
     setSelectedReportIds((current) => {
@@ -167,27 +196,61 @@ export function ReportsView() {
         {comparedReports.length === 0 ? (
           <Typography.Text type="secondary">从报告列表中选择 2 到 4 份报告，对比样本外收益、最大回撤和交易次数。</Typography.Text>
         ) : (
-          <div className="report-compare-grid">
-            {comparedReports.map((report) => {
-              const { netReturn, maxDrawdown, closedTrades } = getValidationMetrics(report);
-              return (
-                <article key={report.id} className="report-compare-item">
-                  <div className="report-compare-head">
-                    <strong>
-                      #{report.id} {report.symbol}
-                      {validFavoriteReportIds.includes(report.id) ? " · 已收藏" : ""}
-                    </strong>
-                    <Button size="small" type="link" onClick={() => toggleCompare(report.id)}>移除</Button>
-                  </div>
-                  <span>{report.interval} / {strategyLabel(report.strategy_kind)}</span>
-                  <div className="report-compare-metrics">
-                    <span>收益 <FormatPercent value={netReturn} /></span>
-                    <span>回撤 {maxDrawdown.toFixed(2)}%</span>
-                    <span>交易 {closedTrades}</span>
-                  </div>
-                </article>
-              );
-            })}
+          <div className="report-compare-stack">
+            <div className="report-compare-grid">
+              {comparedReports.map((report) => {
+                const { netReturn, maxDrawdown, closedTrades } = getValidationMetrics(report);
+                return (
+                  <article key={report.id} className="report-compare-item">
+                    <div className="report-compare-head">
+                      <strong>
+                        #{report.id} {report.symbol}
+                        {validFavoriteReportIds.includes(report.id) ? " · 已收藏" : ""}
+                      </strong>
+                      <Button size="small" type="link" onClick={() => toggleCompare(report.id)}>移除</Button>
+                    </div>
+                    <span>{report.interval} / {strategyLabel(report.strategy_kind)}</span>
+                    <div className="report-compare-metrics">
+                      <span>收益 <FormatPercent value={netReturn} /></span>
+                      <span>回撤 {maxDrawdown.toFixed(2)}%</span>
+                      <span>交易 {closedTrades}</span>
+                    </div>
+                    <div className="report-compare-actions">
+                      <Button size="small" type="primary">
+                        <Link href={`/reports/${report.id}`}>看详情</Link>
+                      </Button>
+                      <Button size="small">
+                        <Link href={buildRerunHref(report)}>按此配置重跑</Link>
+                      </Button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            <div className="report-compare-summary">
+              <strong>对比后下一步</strong>
+              <p>
+                {bestComparedReport
+                  ? `收益最高的是 #${bestComparedReport.id} ${bestComparedReport.symbol}。`
+                  : "先选出你最关心的那份报告。"}
+                {safestComparedReport
+                  ? ` 回撤最小的是 #${safestComparedReport.id} ${safestComparedReport.symbol}。`
+                  : ""}
+                如果你更看重赚钱效率，先打开收益最高那份；如果你更看重稳健，先看回撤最小那份，再决定要不要重跑。
+              </p>
+              <div className="report-compare-summary-actions">
+                {bestComparedReport ? (
+                  <Button type="primary">
+                    <Link href={`/reports/${bestComparedReport.id}`}>打开收益最高报告</Link>
+                  </Button>
+                ) : null}
+                {safestComparedReport ? (
+                  <Button>
+                    <Link href={buildRerunHref(safestComparedReport)}>按低回撤配置重跑</Link>
+                  </Button>
+                ) : null}
+              </div>
+            </div>
           </div>
         )}
       </Card>
@@ -246,6 +309,9 @@ export function ReportsView() {
                     <Button type="primary" block>
                       <Link href={`/reports/${report.id}`}>打开报告详情</Link>
                     </Button>
+                    <Button block>
+                      <Link href={buildRerunHref(report)}>按此配置重跑</Link>
+                    </Button>
                   </article>
                 );
               })}
@@ -297,8 +363,8 @@ export function ReportsView() {
                 },
                 { title: "生成时间", dataIndex: "created_at", width: 180, ellipsis: true },
                 {
-                      title: "收藏",
-                      width: 110,
+                  title: "收藏",
+                  width: 110,
                       render: (_, row) => (
                         <Button
                           size="small"
@@ -312,12 +378,17 @@ export function ReportsView() {
                     },
                 {
                   title: "操作",
-                  width: 88,
+                  width: 180,
                   fixed: "right",
                   render: (_, row) => (
-                    <Button size="small" type="link">
-                      <Link href={`/reports/${row.id}`}>打开</Link>
-                    </Button>
+                    <Space size="small">
+                      <Button size="small" type="link">
+                        <Link href={`/reports/${row.id}`}>打开</Link>
+                      </Button>
+                      <Button size="small">
+                        <Link href={buildRerunHref(row)}>重跑</Link>
+                      </Button>
+                    </Space>
                   ),
                 },
               ]}

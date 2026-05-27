@@ -1010,6 +1010,12 @@ a {
   min-height: 76px;
 }
 
+.report-compare-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .report-compare-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -1057,6 +1063,40 @@ a {
   font-size: 12px;
   font-weight: 650;
   text-align: center;
+}
+
+.report-compare-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.report-compare-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 12px;
+  background: rgba(29, 78, 216, 0.06);
+}
+
+.report-compare-summary strong {
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.report-compare-summary p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.report-compare-summary-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, max-content));
+  gap: 8px;
 }
 
 .report-mobile-card {
