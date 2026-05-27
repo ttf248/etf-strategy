@@ -840,7 +840,7 @@ export function TemplatesView() {
             <Form.Item name="jobs" label="同时尝试的参数组数">
               <InputNumber min={1} max={32} style={{ width: "100%" }} />
             </Form.Item>
-            <Form.Item name="validation_start" label="从哪一天开始算样本外">
+            <Form.Item name="validation_start" label="从哪一天开始单独验证">
               <Input placeholder="只在日线模板里填写" />
             </Form.Item>
             <Form.Item name="lookback_days" label="先回看多少天历史">

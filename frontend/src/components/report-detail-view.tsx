@@ -54,7 +54,7 @@ const baseParameterLabels: Record<string, string> = {
   template_id: "模板编号",
   total_capital: "初始资金",
   validation_ratio: "最后留多少比例做验证",
-  validation_start: "从哪一天开始算样本外",
+  validation_start: "从哪一天开始单独验证",
 };
 
 const eventTypeLabels: Record<string, string> = {
