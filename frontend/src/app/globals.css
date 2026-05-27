@@ -450,6 +450,50 @@ a {
   font-size: 20px;
 }
 
+.support-boundary-card .ant-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, max-content);
+  gap: 18px;
+  align-items: center;
+}
+
+.support-boundary-main {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.support-boundary-main div:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.support-boundary-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--brand);
+  background: rgba(29, 78, 216, 0.09);
+  font-size: 20px;
+  flex: 0 0 auto;
+}
+
+.support-boundary-main strong {
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.support-boundary-main p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .beginner-preset-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -2781,6 +2825,10 @@ a {
   }
 
   .start-path-card .ant-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .support-boundary-card .ant-card-body {
     grid-template-columns: 1fr;
   }
 

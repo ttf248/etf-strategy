@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRightOutlined, CheckCircleOutlined, DatabaseOutlined, FileSearchOutlined, PlayCircleOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined, CheckCircleOutlined, DatabaseOutlined, FileSearchOutlined, MonitorOutlined, PlayCircleOutlined } from "@ant-design/icons";
 import { Button, Card, Col, Collapse, Empty, Row, Skeleton, Space, Table, Tag, Typography } from "antd";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -342,8 +342,18 @@ export function DashboardView() {
       <Row gutter={[16, 16]}>
         <Col xs={24} md={8}>
           <Card className="action-card" size="small">
+            <div className="action-card-icon"><DatabaseOutlined /></div>
+            <Typography.Title level={4}>1. 数据准备</Typography.Title>
+            <p>先检查一个熟悉标的有没有 1d 或 15m。只补当前首跑需要的数据，不用一开始全量建库。</p>
+            <Button type="link">
+              <Link href="/market-data">去检查数据 <ArrowRightOutlined /></Link>
+            </Button>
+          </Card>
+        </Col>
+        <Col xs={24} md={8}>
+          <Card className="action-card" size="small">
             <div className="action-card-icon"><PlayCircleOutlined /></div>
-            <Typography.Title level={4}>1. 创建回测</Typography.Title>
+            <Typography.Title level={4}>2. 创建回测</Typography.Title>
             <p>输入 Yahoo 标的代码，选择一个默认策略模板，先跑通完整流程。</p>
             <Button type="link">
               <Link href="/backtests">去创建 <ArrowRightOutlined /></Link>
@@ -353,24 +363,27 @@ export function DashboardView() {
         <Col xs={24} md={8}>
           <Card className="action-card" size="small">
             <div className="action-card-icon"><FileSearchOutlined /></div>
-            <Typography.Title level={4}>2. 阅读结果</Typography.Title>
-            <p>优先看样本外收益、最大回撤、净值曲线和交易记录。</p>
+            <Typography.Title level={4}>3. 查看报告</Typography.Title>
+            <p>优先看样本外收益、最大回撤、净值曲线和交易记录，再决定重跑还是做对比。</p>
             <Button type="link">
               <Link href="/reports">看报告 <ArrowRightOutlined /></Link>
             </Button>
           </Card>
         </Col>
-        <Col xs={24} md={8}>
-          <Card className="action-card" size="small">
-            <div className="action-card-icon"><DatabaseOutlined /></div>
-            <Typography.Title level={4}>3. 准备数据</Typography.Title>
-            <p>如果标的不存在或数据不够，再进入数据准备页同步行情。</p>
-            <Button type="link">
-              <Link href="/market-data">检查数据 <ArrowRightOutlined /></Link>
-            </Button>
-          </Card>
-        </Col>
       </Row>
+
+      <Card size="small" className="section-card support-boundary-card">
+        <div className="support-boundary-main">
+          <div className="support-boundary-icon"><MonitorOutlined /></div>
+          <div>
+            <strong>只有页面打不开、任务长期不动或连续失败时，再去系统状态</strong>
+            <p>{"系统状态页只负责排障，不是日常第一步。平时优先留在“数据准备 -> 创建回测 -> 查看报告”这条主路径里。"}</p>
+          </div>
+        </div>
+        <Button>
+          <Link href="/platform">确实需要时再去系统状态</Link>
+        </Button>
+      </Card>
 
       <Card id="beginner-presets" title="现成示例标的" size="small" className="section-card">
         {beginnerPresets.length === 0 ? (
@@ -479,42 +492,42 @@ export function DashboardView() {
             </div>
             <div className="home-report-list">
               {spotlightReports.map((report) => {
-              const validation = report.summary_metrics.validation ?? {};
-              const { netReturn, maxDrawdown } = getValidationMetrics(report);
-              const spotlight = buildHomeReportSpotlight(report, latestSucceededReportId);
-              const brief =
-                netReturn > 0 && maxDrawdown <= 8
-                  ? "这份结果更稳，适合先打开看看为什么能赚钱。"
-                  : netReturn > 0
-                    ? "这份结果虽然赚钱，但要先看回撤自己是否能接受。"
-                    : "这份结果不理想，适合拿来和别的模板或周期做反面对比。";
-              return (
-                <article key={report.id} className="home-report-card">
-                  <div className="home-report-card-head">
-                    <div>
-                      <strong>#{report.id} {report.symbol}</strong>
-                      <span>{report.name || "未命名标的"} / {report.interval} / {strategyLabel(report.strategy_kind)}</span>
+                const validation = report.summary_metrics.validation ?? {};
+                const { netReturn, maxDrawdown } = getValidationMetrics(report);
+                const spotlight = buildHomeReportSpotlight(report, latestSucceededReportId);
+                const brief =
+                  netReturn > 0 && maxDrawdown <= 8
+                    ? "这份结果更稳，适合先打开看看为什么能赚钱。"
+                    : netReturn > 0
+                      ? "这份结果虽然赚钱，但要先看回撤自己是否能接受。"
+                      : "这份结果不理想，适合拿来和别的模板或周期做反面对比。";
+                return (
+                  <article key={report.id} className="home-report-card">
+                    <div className="home-report-card-head">
+                      <div>
+                        <strong>#{report.id} {report.symbol}</strong>
+                        <span>{report.name || "未命名标的"} / {report.interval} / {strategyLabel(report.strategy_kind)}</span>
+                      </div>
+                      <div className="home-report-card-tags">
+                        <Tag color={spotlight.color}>{spotlight.label}</Tag>
+                        <Tag>{report.dataset_end}</Tag>
+                      </div>
                     </div>
-                    <div className="home-report-card-tags">
-                      <Tag color={spotlight.color}>{spotlight.label}</Tag>
-                      <Tag>{report.dataset_end}</Tag>
+                    <div className="home-report-metrics">
+                      <span>样本外收益 <FormatPercent value={validation.NetReturnPct ?? validation.ReturnPct ?? 0} /></span>
+                      <span>最大回撤 {Number(validation.MaxDrawdownPct ?? 0).toFixed(2)}%</span>
                     </div>
-                  </div>
-                  <div className="home-report-metrics">
-                    <span>样本外收益 <FormatPercent value={validation.NetReturnPct ?? validation.ReturnPct ?? 0} /></span>
-                    <span>最大回撤 {Number(validation.MaxDrawdownPct ?? 0).toFixed(2)}%</span>
-                  </div>
-                  <div className="home-report-spotlight">
-                    <strong>为什么现在先看它</strong>
-                    <p>{spotlight.description}</p>
-                  </div>
-                  <p className="home-report-brief">{brief}</p>
-                  <Button type="primary">
-                    <Link href={`/reports/${report.id}`}>打开报告</Link>
-                  </Button>
-                </article>
-              );
-            })}
+                    <div className="home-report-spotlight">
+                      <strong>为什么现在先看它</strong>
+                      <p>{spotlight.description}</p>
+                    </div>
+                    <p className="home-report-brief">{brief}</p>
+                    <Button type="primary">
+                      <Link href={`/reports/${report.id}`}>打开报告</Link>
+                    </Button>
+                  </article>
+                );
+              })}
             </div>
           </>
         )}
