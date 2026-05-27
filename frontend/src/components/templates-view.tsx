@@ -622,7 +622,7 @@ export function TemplatesView() {
       <Card size="small" title="高级模板管理" className="section-card">
         <div className="template-management-banner">
           <strong>只有在你需要维护模板时，再展开完整模板库和高级参数编辑</strong>
-          <p>日常使用优先在上面的推荐模板和对比区做选择。启用停用、新建模板、完整筛选表和参数编辑都保留在这里，但不再作为首屏主路径。</p>
+          <p>日常使用优先在上面的推荐模板和对比区做选择。启用模板、新建模板、查看完整列表和调整详细设置都保留在这里，但不再作为首屏主路径。</p>
         </div>
         <div className="template-management-grid">
           <article className="template-management-card">
@@ -647,12 +647,12 @@ export function TemplatesView() {
           items={[
             {
               key: "template-library",
-              label: "高级管理：启用停用、新建模板和完整模板库",
+              label: "高级管理：启用模板、新建模板和查看完整列表",
               children: (
                 <>
                   <div className="table-toolbar">
                     <Space wrap>
-                      <Button onClick={() => void loadTemplates()}>刷新模板库</Button>
+                      <Button onClick={() => void loadTemplates()}>重新读取模板列表</Button>
                       <Button type="primary" onClick={openCreateDrawer}>
                         新建高级模板
                       </Button>
