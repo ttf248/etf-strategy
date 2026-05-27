@@ -12,18 +12,36 @@ type ReportDetailViewProps = {
 };
 
 const baseParameterLabels: Record<string, string> = {
+  AnchorDate: "锚定日期",
+  BaseUnits: "基础份额",
   benchmark: "对照基准",
+  Benchmark: "对照基准",
   commission_bps: "交易佣金",
   cooldown_bars: "停手冷却 K 线数",
+  EndDate: "结束时间",
+  EntryDate: "入场时间",
+  EntryPrice: "入场价格",
   execution_profile: "成交假设",
   force_exit_loss_pct: "强制离场亏损线",
+  GridCount: "网格层数",
+  GridMode: "网格模式",
   jobs: "并行寻参任务数",
   left_side_policy: "左侧行情处理",
   lookback_days: "回看天数",
+  LotSize: "每手数量",
+  Market: "市场",
   max_position_ratio: "最大仓位",
+  NetPnl: "样本外盈亏",
   parameter_space: "寻参范围",
+  PeakDate: "阶段高点时间",
+  PeakPrice: "阶段高点价格",
+  ReturnPct: "样本外收益",
+  Scenario: "回测场景",
+  Score: "策略评分",
   slippage_bps: "滑点假设",
+  StartDate: "开始时间",
   stop_loss_pct: "停手跌幅",
+  Symbol: "标的代码",
   template_id: "模板 ID",
   total_capital: "初始资金",
   validation_ratio: "样本外比例",
@@ -70,6 +88,7 @@ const valueLabels: Record<string, Record<string, string>> = {
   },
   execution_profile: {
     conservative: "保守成交",
+    realistic: "实盘口径",
     research: "研究默认",
   },
   frequency: {
@@ -77,8 +96,21 @@ const valueLabels: Record<string, Record<string, string>> = {
     weekly: "每周",
   },
   left_side_policy: {
+    both: "同时对比",
     force_exit: "触发阈值后强制离场",
     hold: "继续持有",
+  },
+  Benchmark: {
+    buy_hold: "买入持有",
+    cash_idle: "现金空仓",
+  },
+  benchmark: {
+    buy_hold: "买入持有",
+    cash_idle: "现金空仓",
+  },
+  GridMode: {
+    cash: "现金空仓",
+    buy_hold: "买入持有",
   },
 };
 
@@ -127,7 +159,7 @@ function formatScalar(key: string, value: unknown): string {
     if ((key.includes("ratio") || key.includes("spacing") || key.includes("profit")) && Math.abs(value) <= 1) {
       return `${(value * 100).toFixed(2)}%`;
     }
-    if (key.endsWith("_pct")) {
+    if (key.endsWith("_pct") || key.endsWith("Pct")) {
       return `${value.toFixed(2)}%`;
     }
     return Number.isInteger(value) ? String(value) : value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
@@ -172,6 +204,16 @@ function formatEventDetails(payload: unknown) {
       ))}
     </Space>
   );
+}
+
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+  }
+  return String(value);
 }
 
 export function ReportDetailView({ reportId }: ReportDetailViewProps) {
@@ -269,42 +311,92 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
       ) : null}
 
       <Card size="small" title="交易记录：策略具体买卖了什么" className="section-card">
-        <Table
-          rowKey={(row) => `${String(row.trade_time)}-${String(row.trade_type)}-${String(row.price)}`}
-          size="small"
-          dataSource={report.trades}
-          pagination={{ pageSize: 10, showSizeChanger: false }}
-          scroll={{ x: 980 }}
-          columns={[
-            { title: "时间", dataIndex: "trade_time", width: 180, fixed: "left" },
-            { title: "方向", dataIndex: "side", width: 90, render: (value: string) => tradeSideLabels[value] ?? value },
-            { title: "价格", dataIndex: "price", width: 110 },
-            { title: "数量", dataIndex: "quantity", width: 100 },
-            { title: "金额", dataIndex: "amount", width: 120 },
-            { title: "费用", dataIndex: "fee", width: 100 },
-            { title: "类型", dataIndex: "trade_type", width: 160, render: (value: string) => tradeTypeLabels[value] ?? value },
-            { title: "备注", dataIndex: "note", ellipsis: true },
-          ]}
-        />
+        {report.trades.length === 0 ? (
+          <Empty description="没有交易记录" />
+        ) : (
+          <div className="trade-mobile-list">
+            {report.trades.slice(0, 10).map((trade, index) => (
+              <article key={`${String(trade.trade_time)}-${String(trade.trade_type)}-${index}`} className="trade-mobile-card">
+                <div className="trade-mobile-card-head">
+                  <div>
+                    <strong>{tradeSideLabels[String(trade.side)] ?? formatCell(trade.side)}</strong>
+                    <span>{formatCell(trade.trade_time)}</span>
+                  </div>
+                  <Tag>{tradeTypeLabels[String(trade.trade_type)] ?? formatCell(trade.trade_type)}</Tag>
+                </div>
+                <div className="trade-mobile-metrics">
+                  <span>价格 {formatCell(trade.price)}</span>
+                  <span>数量 {formatCell(trade.quantity)}</span>
+                  <span>金额 {formatCell(trade.amount)}</span>
+                  <span>费用 {formatCell(trade.fee)}</span>
+                </div>
+                {trade.note ? <p>{formatCell(trade.note)}</p> : null}
+              </article>
+            ))}
+            {report.trades.length > 10 ? <Typography.Text type="secondary">移动端先显示前 10 条，桌面表格可查看更多。</Typography.Text> : null}
+          </div>
+        )}
+        {report.trades.length > 0 ? (
+          <Table
+            className="report-detail-desktop-table"
+            rowKey={(row) => `${String(row.trade_time)}-${String(row.trade_type)}-${String(row.price)}`}
+            size="small"
+            dataSource={report.trades}
+            pagination={{ pageSize: 10, showSizeChanger: false }}
+            scroll={{ x: 980 }}
+            columns={[
+              { title: "时间", dataIndex: "trade_time", width: 180, fixed: "left" },
+              { title: "方向", dataIndex: "side", width: 90, render: (value: string) => tradeSideLabels[value] ?? value },
+              { title: "价格", dataIndex: "price", width: 110 },
+              { title: "数量", dataIndex: "quantity", width: 100 },
+              { title: "金额", dataIndex: "amount", width: 120 },
+              { title: "费用", dataIndex: "fee", width: 100 },
+              { title: "类型", dataIndex: "trade_type", width: 160, render: (value: string) => tradeTypeLabels[value] ?? value },
+              { title: "备注", dataIndex: "note", ellipsis: true },
+            ]}
+          />
+        ) : null}
       </Card>
 
       <Card size="small" title="事件流水：策略触发了哪些信号" className="section-card">
-        <Table
-          rowKey={(row) => `${String(row.event_time)}-${String(row.event_type)}-${String(row.price)}`}
-          size="small"
-          dataSource={report.events}
-          pagination={{ pageSize: 10, showSizeChanger: false }}
-          scroll={{ x: 860 }}
-          columns={[
-            { title: "时间", dataIndex: "event_time", width: 180, fixed: "left" },
-            { title: "事件", dataIndex: "event_type", width: 160, render: (value: string) => eventTypeLabels[value] ?? value },
-            { title: "价格", dataIndex: "price", width: 120 },
-            {
-              title: "明细说明",
-              render: (_, row) => formatEventDetails(row.payload),
-            },
-          ]}
-        />
+        {report.events.length === 0 ? (
+          <Empty description="没有事件记录" />
+        ) : (
+          <div className="event-mobile-list">
+            {report.events.slice(0, 10).map((event, index) => (
+              <article key={`${String(event.event_time)}-${String(event.event_type)}-${index}`} className="event-mobile-card">
+                <div className="event-mobile-card-head">
+                  <div>
+                    <strong>{eventTypeLabels[String(event.event_type)] ?? formatCell(event.event_type)}</strong>
+                    <span>{formatCell(event.event_time)}</span>
+                  </div>
+                  <Tag>价格 {formatCell(event.price)}</Tag>
+                </div>
+                <div className="event-mobile-detail">{formatEventDetails(event.payload)}</div>
+              </article>
+            ))}
+            {report.events.length > 10 ? <Typography.Text type="secondary">移动端先显示前 10 条，桌面表格可查看更多。</Typography.Text> : null}
+          </div>
+        )}
+        {report.events.length > 0 ? (
+          <Table
+            className="report-detail-desktop-table"
+            rowKey={(row) => `${String(row.event_time)}-${String(row.event_type)}-${String(row.price)}`}
+            size="small"
+            dataSource={report.events}
+            pagination={{ pageSize: 10, showSizeChanger: false }}
+            scroll={{ x: 860 }}
+            columns={[
+              { title: "时间", dataIndex: "event_time", width: 180, fixed: "left" },
+              { title: "事件", dataIndex: "event_type", width: 160, render: (value: string) => eventTypeLabels[value] ?? value },
+              { title: "价格", dataIndex: "price", width: 120 },
+              {
+                title: "明细说明",
+                render: (_, row) => formatEventDetails(row.payload),
+              },
+            ]}
+          />
+        ) : null}
       </Card>
     </div>
   );

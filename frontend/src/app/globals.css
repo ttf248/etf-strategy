@@ -730,6 +730,70 @@ a {
   gap: 10px;
 }
 
+.trade-mobile-list,
+.event-mobile-list {
+  display: none;
+}
+
+.trade-mobile-card,
+.event-mobile-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.trade-mobile-card-head,
+.event-mobile-card-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.trade-mobile-card-head div,
+.event-mobile-card-head div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trade-mobile-card-head strong,
+.event-mobile-card-head strong {
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.trade-mobile-card-head span,
+.event-mobile-card-head span,
+.trade-mobile-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.trade-mobile-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.trade-mobile-metrics span,
+.event-mobile-detail {
+  padding: 8px;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .data-check-card .ant-card-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);
@@ -1031,6 +1095,16 @@ a {
 
   .result-verdict-card .ant-card-body {
     grid-template-columns: 1fr;
+  }
+
+  .trade-mobile-list,
+  .event-mobile-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .report-detail-desktop-table {
+    display: none;
   }
 
   .data-check-card .ant-card-body {
