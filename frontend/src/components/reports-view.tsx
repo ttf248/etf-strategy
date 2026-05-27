@@ -303,7 +303,7 @@ export function ReportsView() {
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Results"
+        eyebrow="查看报告"
         title="查看回测报告"
         description="先看结论和风险，再打开详情看净值曲线、交易记录和参数。"
       />
@@ -416,7 +416,7 @@ export function ReportsView() {
         )}
       </Card>
 
-      <Card size="small" title="报告列表" className="section-card">
+      <Card size="small" title="先挑几份值得细看的报告" className="section-card">
         <div className="table-toolbar">
           <Space wrap>
             <Input placeholder="筛选标的或名称" value={keyword} onChange={(event) => setKeyword(event.target.value)} style={{ width: 240 }} />
@@ -437,7 +437,7 @@ export function ReportsView() {
           <>
             <div className="report-library-banner">
               <strong>报告默认不是按时间堆叠，而是按更适合先看的顺序排好</strong>
-              <p>排序顺序固定为：先看收藏，再看回撤更可控的正收益结果，然后看高波动正收益、没成交结果，最后再看反面对照。只有当你需要批量勾选或细看全部字段时，再展开下面的高级表格视图。</p>
+              <p>排序顺序固定为：先看收藏，再看回撤更可控的正收益结果，然后看高波动正收益、没成交结果，最后再看反面对照。只有当你需要同时勾选几份报告，或者细看全部字段时，再展开下面的高级表格视图。</p>
               <div className="report-reading-order-tags">
                 <span>1. 先看收藏</span>
                 <span>2. 稳健正收益</span>
@@ -502,7 +502,7 @@ export function ReportsView() {
               items={[
                 {
                   key: "desktop-table",
-                  label: "高级表格视图：批量勾选与精细筛选",
+                  label: "高级表格视图：多选比较与精细筛选",
                   children: (
                     <Table
                       className="report-desktop-table"

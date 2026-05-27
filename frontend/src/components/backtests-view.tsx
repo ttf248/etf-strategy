@@ -63,7 +63,7 @@ function buildJobReadingHint(job: BacktestJob) {
     return "这次失败先看错误提示，通常是数据不足、模板不匹配，或参数不适合当前标的。";
   }
   if (job.status === "queued") {
-    return "任务还在排队，先不用重复提交；等它开始运行后再决定是否取消。";
+    return "这次回测还在等待开始，先不用重复提交；等它真正开始后，再决定是否取消。";
   }
   if (job.status === "running") {
     return "任务正在执行，先等待结果；如果长时间不动，再去系统状态页排查。";
@@ -248,11 +248,11 @@ export function BacktestsView() {
         method: "POST",
         body: JSON.stringify({ job_ids: selectedJobIds.map(Number) }),
       });
-      messageApi.success("已提交批量取消请求");
+      messageApi.success("已提交所选任务的取消请求");
       setSelectedJobIds([]);
       await loadJobs();
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "批量取消失败");
+      messageApi.error(error instanceof Error ? error.message : "取消所选任务失败");
     }
   }
 
@@ -262,11 +262,11 @@ export function BacktestsView() {
         method: "POST",
         body: JSON.stringify({ job_ids: selectedJobIds.map(Number) }),
       });
-      messageApi.success("已提交批量重试请求");
+      messageApi.success("已重新提交所选失败任务");
       setSelectedJobIds([]);
       await loadJobs();
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "批量重试失败");
+      messageApi.error(error instanceof Error ? error.message : "重试所选任务失败");
     }
   }
 
@@ -274,7 +274,7 @@ export function BacktestsView() {
     <div className="page-stack">
       {contextHolder}
       <PageHeader
-        eyebrow="Run Backtest"
+        eyebrow="创建回测"
         title="创建一次回测"
         description="按 3 步完成：先填标的和周期，再选策略模板，最后确认并提交。"
         actions={<Button onClick={() => void loadJobs()}>刷新结果</Button>}
@@ -453,7 +453,7 @@ export function BacktestsView() {
               <div className="submit-reading-grid">
                 <article className="submit-reading-card">
                   <span>提交后会发生什么</span>
-                  <strong>任务会先排队或开始运行</strong>
+                  <strong>系统会先安排这次回测</strong>
                   <p>正常情况下，提交成功后几秒内就会在下面的“最近回测任务”出现，不需要重复点提交。</p>
                 </article>
                 <article className="submit-reading-card">
@@ -561,8 +561,8 @@ export function BacktestsView() {
                 <p>新手更需要先确认“有没有成功生成报告、失败是不是同一个原因、现在还有没有任务在跑”，而不是直接翻完整任务表。刚提交成功时，只看最近任务里的第一条就够了。</p>
               </div>
               <div className="job-summary-metrics">
-                <span>运行中 {runningJobs.length}</span>
-                <span>排队 {queuedJobs.length}</span>
+                <span>处理中 {runningJobs.length}</span>
+                <span>等待开始 {queuedJobs.length}</span>
                 <span>失败 {failedJobs.length}</span>
                 <span>已完成 {succeededJobs.length}</span>
               </div>
@@ -628,17 +628,17 @@ export function BacktestsView() {
               items={[
                 {
                   key: "history",
-                  label: "高级历史记录：批量取消、批量重试和完整任务表",
+                  label: "高级明细：多选处理与完整历史",
                   children: (
                     <>
                       <div className="table-toolbar">
-                        <ToolbarCount>已选 {selectedJobIds.length} 项，只有在确实需要批量处理时再操作。</ToolbarCount>
+                        <ToolbarCount>已选 {selectedJobIds.length} 条，只有在确实需要一次处理多条任务时再操作。</ToolbarCount>
                         <Space>
                           <Button size="small" disabled={selectedJobIds.length === 0} onClick={() => void bulkCancelJobs()}>
-                            批量取消
+                            取消所选
                           </Button>
                           <Button size="small" disabled={selectedJobIds.length === 0} onClick={() => void bulkRetryJobs()}>
-                            批量重试
+                            重试所选
                           </Button>
                         </Space>
                       </div>
@@ -679,7 +679,7 @@ export function BacktestsView() {
                         ]}
                       />
                       <Typography.Paragraph className="table-help">
-                        任务成功后会自动生成报告，可到“查看报告”页面打开。失败任务通常是标的数据不足、代码写错或参数组合不适用。
+                        任务成功后会自动生成报告，可到“查看报告”页面打开。失败通常是标的数据不足、模板不匹配，或参数组合不适合当前行情。
                       </Typography.Paragraph>
                     </>
                   ),
