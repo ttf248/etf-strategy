@@ -504,13 +504,22 @@ export function ReportsView() {
                 );
               })}
             </div>
+            <div className="detail-secondary-hint">
+              <strong>只有在你想逐列核对、同时勾选几份结果时，再展开下面这张完整表</strong>
+              <p>如果你只是第一次浏览这批结果，前面的卡片通常更够用。完整表格更适合对照字段、批量勾选和细查生成时间之类的排查动作。</p>
+            </div>
             <Collapse
               className="advanced-table-panel"
               ghost
               items={[
                 {
                   key: "desktop-table",
-                  label: "高级表格视图：多选比较与精细筛选",
+                  label: (
+                    <div className="advanced-trace-label">
+                      <strong>需要逐列核对时，再看完整表格</strong>
+                      <span>这里更适合多选比较、按列查看全部字段，或确认每份结果的生成时间、策略和编号。</span>
+                    </div>
+                  ),
                   children: (
                     <Table
                       className="report-desktop-table"

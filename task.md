@@ -2877,3 +2877,33 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 报告列表完整表格入口降噪补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按报告列表页局部体验边界优化，只处理完整表格折叠入口的叙事与存在感，把它从“高级表格功能入口”收成“需要逐列核对时再看”的次级信息。
+
+### 修改内容
+
+- `frontend/src/components/reports-view.tsx`
+  - 在完整表格折叠区前新增弱提示，明确第一次浏览结果时通常先看卡片即可。
+  - 将折叠标题改成“需要逐列核对时，再看完整表格”，并补充一行用途说明。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不删除完整表格、多选、按列核对或分页能力，只调整入口叙事，让这块更像排查入口，而不是首屏主路径动作。
+- 这轮不改表格列、选择逻辑、排序或卡片区，只处理折叠入口这一层，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
