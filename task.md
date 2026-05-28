@@ -3546,3 +3546,33 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页兜底状态提示口径补充
+
+### 状态
+
+已完成：代码修改与本轮验证均已完成，待单独提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理最近任务卡 `buildJobReadingHint()` 里的兜底提示，把“重跑、取消、去报告页看结果”这种后台动作与页面口吻收成更贴近“按原再跑、停掉这次、去结果列表继续看”的用户表达。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将兜底提示从“先看状态和错误提示，再决定是重跑、取消，还是去报告页看结果。”改成“先看状态和错误提示，再决定要不要按原再跑、停掉这次，或者去结果列表继续看。”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不改任务状态判断逻辑，也不动 `queued / running / failed / cancelled / succeeded` 已有分支，只调整兜底提示这一条文案。
+- 这轮不改摘要横幅、完整历史表格或其他动作按钮，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 已执行 `cd frontend && npx playwright test tests/smoke/platform-maintenance.spec.ts`
+- 已执行 `cd frontend && npm run test:smoke`

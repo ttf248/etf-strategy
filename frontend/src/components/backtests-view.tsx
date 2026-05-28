@@ -81,7 +81,7 @@ function buildJobReadingHint(job: BacktestJob) {
   if (job.status === "cancelled" || job.status === "cancel_requested") {
     return "这轮已经停掉；如果你还想继续验证，直接按原配置再跑一次就行。";
   }
-  return "先看状态和错误提示，再决定是重跑、取消，还是去报告页看结果。";
+  return "先看状态和错误提示，再决定要不要按原再跑、停掉这次，或者去结果列表继续看。";
 }
 
 export function BacktestsView() {
