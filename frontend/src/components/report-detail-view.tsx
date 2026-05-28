@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Button, Card, Collapse, Descriptions, Empty, Skeleton, Space, Table, Tag, Typography } from "antd";
 import { useEffect, useState } from "react";
-import { apiFetch, type ReportDetail } from "@/lib/api";
+import { apiFetch, type ReportDetail, type ReportSummary } from "@/lib/api";
 import { EquityChart } from "@/components/equity-chart";
 import { DetailItem, FormatPercent, PageHeader } from "@/components/platform-ui";
 import { parameterFieldSpecsByStrategy, strategyLabel } from "@/lib/strategy-template-config";
@@ -18,6 +18,25 @@ type ParameterHighlight = {
   title: string;
   value: string;
   description: string;
+};
+
+type ValidationMetrics = {
+  netReturn: number;
+  maxDrawdown: number;
+  closedTrades: number;
+  vsBuyHold: number | null;
+  outperformBuyHold: boolean;
+};
+
+type PeerComparisonInsight = {
+  headline: string;
+  description: string;
+  guides: Array<{
+    title: string;
+    value: string;
+    description: string;
+  }>;
+  recommendedCompareIds: number[];
 };
 
 const baseParameterLabels: Record<string, string> = {
@@ -450,6 +469,166 @@ function buildCompareHref(report: ReportDetail): string {
   return `/reports?${searchParams.toString()}`;
 }
 
+function buildCompareHrefWithPeers(report: ReportDetail, peerIds: number[]): string {
+  const searchParams = new URLSearchParams();
+  [report.id, ...peerIds]
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .slice(0, 4)
+    .forEach((value) => searchParams.append("compare", String(value)));
+  searchParams.set("keyword", report.symbol);
+  searchParams.set("interval", report.interval);
+  return `/reports?${searchParams.toString()}`;
+}
+
+function getValidationMetrics(report: ReportSummary | ReportDetail): ValidationMetrics {
+  const validation = report.summary_metrics.validation ?? {};
+  const netReturn = Number(validation.NetReturnPct ?? validation.ReturnPct ?? 0);
+  const maxDrawdown = Number(validation.MaxDrawdownPct ?? 0);
+  const closedTrades = Number(validation.ClosedTrades ?? 0);
+  const relativeValue = validation.StrategyVsBuyHold ?? validation.GridVsBuyHold;
+  const vsBuyHold = typeof relativeValue === "number" && Number.isFinite(relativeValue) ? relativeValue : null;
+  const outperformBuyHold =
+    typeof validation.OutperformBuyHold === "boolean"
+      ? validation.OutperformBuyHold
+      : typeof vsBuyHold === "number"
+        ? vsBuyHold > 0
+        : false;
+  return { netReturn, maxDrawdown, closedTrades, vsBuyHold, outperformBuyHold };
+}
+
+function comparePeerReports(left: ReportSummary, right: ReportSummary): number {
+  const leftMetrics = getValidationMetrics(left);
+  const rightMetrics = getValidationMetrics(right);
+  if (leftMetrics.closedTrades === 0 && rightMetrics.closedTrades > 0) {
+    return 1;
+  }
+  if (leftMetrics.closedTrades > 0 && rightMetrics.closedTrades === 0) {
+    return -1;
+  }
+  if (leftMetrics.netReturn !== rightMetrics.netReturn) {
+    return rightMetrics.netReturn - leftMetrics.netReturn;
+  }
+  if (leftMetrics.maxDrawdown !== rightMetrics.maxDrawdown) {
+    return leftMetrics.maxDrawdown - rightMetrics.maxDrawdown;
+  }
+  if ((leftMetrics.vsBuyHold ?? 0) !== (rightMetrics.vsBuyHold ?? 0)) {
+    return (rightMetrics.vsBuyHold ?? 0) - (leftMetrics.vsBuyHold ?? 0);
+  }
+  return right.id - left.id;
+}
+
+function reportDetailAsSummary(report: ReportDetail): ReportSummary {
+  return {
+    id: report.id,
+    job_id: report.job_id,
+    symbol: report.symbol,
+    name: report.name,
+    interval: report.interval,
+    strategy_kind: report.strategy_kind,
+    report_name: report.report_name,
+    dataset_start: report.dataset_start,
+    dataset_end: report.dataset_end,
+    created_at: report.created_at,
+    summary_metrics: report.summary_metrics,
+  };
+}
+
+function buildPeerComparisonInsight(report: ReportDetail, reports: ReportSummary[]): PeerComparisonInsight | null {
+  const currentSummary = reportDetailAsSummary(report);
+  const universe = reports.some((item) => item.id === report.id) ? reports : [currentSummary, ...reports];
+  const peers = universe.filter((item) => item.symbol === report.symbol && item.interval === report.interval);
+  if (peers.length <= 1) {
+    return null;
+  }
+
+  const sortedPeers = [...peers].sort(comparePeerReports);
+  const currentRank = sortedPeers.findIndex((item) => item.id === report.id) + 1;
+  if (currentRank <= 0) {
+    return null;
+  }
+
+  const sameStrategyPeers = sortedPeers.filter((item) => item.strategy_kind === report.strategy_kind);
+  const sameStrategyRank = sameStrategyPeers.findIndex((item) => item.id === report.id) + 1;
+  const bestAlternativePeer = sortedPeers.find((item) => item.id !== report.id && item.strategy_kind !== report.strategy_kind) ?? sortedPeers.find((item) => item.id !== report.id) ?? null;
+  const bestSameStrategyPeer = sameStrategyPeers[0] ?? null;
+  const currentMetrics = getValidationMetrics(currentSummary);
+
+  let headline = `同标的同周期共有 ${sortedPeers.length} 份结果，当前这份处于中游`;
+  let description = "这组横向定位按是否有成交、验证收益、最大回撤和相对买入持有的表现综合排序，目的是先判断当前配置值不值得继续投入时间。";
+  if (currentRank === 1) {
+    headline = `同标的同周期共有 ${sortedPeers.length} 份结果，当前这份排在最前`;
+    description = currentMetrics.closedTrades > 0
+      ? "当前结果已经是这组样本里最值得先复盘的候选。下一步应优先确认它领先的原因，避免只看到单次好运。"
+      : "虽然当前排在最前，但这通常只是因为可比较样本很少。应继续补更多同标的报告，避免过早下结论。";
+  } else if (currentRank <= Math.min(3, sortedPeers.length)) {
+    headline = `同标的同周期共有 ${sortedPeers.length} 份结果，当前这份已经进入前列`;
+    description = "当前结果已经值得纳入重点复盘对象，但还需要和领先样本并排比较，确认差距究竟来自收益、回撤还是交易频率。";
+  } else if (currentRank > Math.ceil(sortedPeers.length / 2)) {
+    headline = `同标的同周期共有 ${sortedPeers.length} 份结果，当前这份暂时落后`;
+    description = "当前结果更适合作为反向对照。与其继续单看细节，不如直接和领先样本对比，找出差距是出在策略方向还是参数设定。";
+  }
+
+  const recommendedCompareIds = [bestAlternativePeer?.id, bestSameStrategyPeer?.id]
+    .filter((value): value is number => typeof value === "number" && value !== report.id)
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .slice(0, 3);
+
+  return {
+    headline,
+    description,
+    guides: [
+      {
+        title: "当前排位",
+        value: `第 ${currentRank} / ${sortedPeers.length} 名`,
+        description:
+          currentRank === 1
+            ? "在同标的、同周期结果里，当前这份综合位置最高。"
+            : `同组里还有 ${currentRank - 1} 份结果排在它前面，建议优先看这些样本为什么更靠前。`,
+      },
+      {
+        title: "同策略位置",
+        value:
+          sameStrategyPeers.length <= 1
+            ? "当前仅此一份"
+            : `第 ${sameStrategyRank} / ${sameStrategyPeers.length} 名`,
+        description:
+          sameStrategyPeers.length <= 1
+            ? "当前标的和周期下还没有其他同策略样本，后续可以继续补同策略不同模板或参数范围的对照。"
+            : sameStrategyRank === 1
+              ? "在同策略结果里已经是当前最优样本，下一步更适合拿去和其他策略比较。"
+              : "同策略内部还有更好的样本，先确认差距来自模板、参数，还是市场阶段。 ",
+      },
+      {
+        title: "最该马上对比",
+        value:
+          bestAlternativePeer === null
+            ? "暂无其他候选"
+            : `${strategyLabel(bestAlternativePeer.strategy_kind)} / 编号 ${bestAlternativePeer.id}`,
+        description:
+          bestAlternativePeer === null
+            ? "当前还没有其他同标的候选结果，建议先回到结果库补更多对照样本。"
+            : `这份结果是当前最适合并排看的参照。它的验证收益 ${getValidationMetrics(bestAlternativePeer).netReturn.toFixed(2)}%，最大回撤 ${getValidationMetrics(bestAlternativePeer).maxDrawdown.toFixed(2)}%。`,
+      },
+      {
+        title: "当前最该问的问题",
+        value:
+          currentRank === 1
+            ? "领先是否稳定"
+            : currentRank <= Math.min(3, sortedPeers.length)
+              ? "差距能否补齐"
+              : "是否该换方向",
+        description:
+          currentRank === 1
+            ? "先确认领先是否来自更高收益、较低回撤，还是仅仅因为样本数还不够。"
+            : currentRank <= Math.min(3, sortedPeers.length)
+              ? "重点看领先样本是不是只多赚了一点，还是在收益、回撤、交易活跃度上都明显更好。"
+              : "重点判断当前策略逻辑是否不适合这个标的，避免只在参数上反复微调。",
+      },
+    ],
+    recommendedCompareIds,
+  };
+}
+
 function formatCurveTime(value: string): string {
   return value.replace("T", " ").slice(0, 16);
 }
@@ -688,9 +867,33 @@ function buildParameterHighlights(
 
 export function ReportDetailView({ reportId }: ReportDetailViewProps) {
   const [report, setReport] = useState<ReportDetail | null>(null);
+  const [reports, setReports] = useState<ReportSummary[]>([]);
 
   useEffect(() => {
-    void apiFetch<ReportDetail>(`/api/reports/${reportId}`).then(setReport);
+    let alive = true;
+
+    void (async () => {
+      const detail = await apiFetch<ReportDetail>(`/api/reports/${reportId}`);
+      if (!alive) {
+        return;
+      }
+      setReport(detail);
+
+      try {
+        const reportsPayload = await apiFetch<ReportSummary[]>("/api/reports?limit=200");
+        if (alive) {
+          setReports(reportsPayload);
+        }
+      } catch {
+        if (alive) {
+          setReports([]);
+        }
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, [reportId]);
 
   if (!report) {
@@ -714,7 +917,9 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
     strategyKind: report.strategy_kind,
     templateId,
   });
+  const peerComparison = buildPeerComparisonInsight(report, reports);
   const compareHref = buildCompareHref(report);
+  const recommendedCompareHref = buildCompareHrefWithPeers(report, peerComparison?.recommendedCompareIds ?? []);
   const curveReading = buildCurveReading(report.equity_curve, netReturn, maxDrawdown, closedTrades);
   const parameterHighlights = buildParameterHighlights(report, templateSnapshot, netReturn, maxDrawdown, closedTrades);
   const templateName = String(templateSnapshot?.template_name ?? "未记录模板");
@@ -792,9 +997,16 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
             <strong>{nextAction.value}</strong>
             <p>{nextAction.description}</p>
           </div>
+          {peerComparison ? (
+            <div className="report-decision-side-card">
+              <span>同标的横向位置</span>
+              <strong>{peerComparison.guides[0]?.value ?? "暂无可比样本"}</strong>
+              <p>{peerComparison.description}</p>
+            </div>
+          ) : null}
           <div className="report-decision-actions">
             <Button type="primary">
-              <Link href={compareHref}>带入对比区继续判断</Link>
+              <Link href={peerComparison ? recommendedCompareHref : compareHref}>{peerComparison ? "带上最该比的结果继续判断" : "带入对比区继续判断"}</Link>
             </Button>
             <Button>
               <Link href={rerunHref}>按当前配置重跑</Link>
@@ -805,6 +1017,32 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
           </div>
         </div>
       </Card>
+
+      {peerComparison ? (
+        <Card size="small" title="同标的横向定位" className="section-card">
+          <div className="curve-reading-banner">
+            <strong>{peerComparison.headline}</strong>
+            <p>{peerComparison.description}</p>
+          </div>
+          <div className="report-decision-guide-grid">
+            {peerComparison.guides.map((item) => (
+              <article key={item.title} className="report-decision-guide-card">
+                <span>{item.title}</span>
+                <strong>{item.value}</strong>
+                <p>{item.description}</p>
+              </article>
+            ))}
+          </div>
+          <div className="report-decision-actions">
+            <Button type="primary">
+              <Link href={recommendedCompareHref}>把这几份带去对比</Link>
+            </Button>
+            <Button>
+              <Link href={compareHref}>只带当前结果去结果库</Link>
+            </Button>
+          </div>
+        </Card>
+      ) : null}
 
       <Card size="small" title="结果背景" className="section-card">
         <div className="detail-grid">
