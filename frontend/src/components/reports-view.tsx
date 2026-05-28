@@ -465,7 +465,7 @@ export function ReportsView() {
                   <article key={report.id} className="report-mobile-card">
                     <div className="report-mobile-card-head">
                       <div>
-                        <strong>编号 {report.id} {report.symbol}</strong>
+                        <strong>{report.symbol}，编号 {report.id}</strong>
                         <span>{report.name || "未命名标的"} / {report.interval}</span>
                       </div>
                       <div className="report-mobile-card-tags">

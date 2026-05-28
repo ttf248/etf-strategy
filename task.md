@@ -3719,3 +3719,30 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 已执行 `cd frontend && npm run test:smoke`
+
+## 报告页结果卡标题顺序补充
+
+### 状态
+
+已完成：代码修改与本轮验证均已完成，待单独提交。
+
+### 修改方案
+
+继续按报告页局部体验边界优化，只处理首屏结果卡标题，把“编号在前、标的在后”的后台列表排法收成更像用户浏览结果卡时会先看的内容顺序。
+
+### 修改内容
+
+- `frontend/src/components/reports-view.tsx`
+  - 将报告卡标题从“编号 {id} {symbol}”改成“{symbol}，编号 {id}”。
+
+### 设计取舍
+
+- 不改报告排序、对比区、顶部统计卡、完整表格或其他编号展示，只调整首屏结果卡标题这一处顺序。
+- 这轮不顺手处理对比区标题或表格标题，避免扩大提交边界。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 已执行 `cd frontend && npm run test:smoke`
