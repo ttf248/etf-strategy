@@ -755,11 +755,11 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
           items={[
             {
               key: "parameters",
-              label: "高级参数明细：全部字段与模板追踪",
+              label: "补充字段：全部参数和模板来源",
               children: (
                 <div className="parameter-advanced-stack">
                   <div className="parameter-advanced-section">
-                    <strong>全部参数字段</strong>
+                    <strong>全部参数</strong>
                     <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
                       {Object.entries(report.parameters).map(([key, value]) => (
                         <Descriptions.Item key={key} label={parameterLabel(report.strategy_kind, key)}>
@@ -770,7 +770,7 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
                   </div>
                   {templateSnapshot ? (
                     <div className="parameter-advanced-section">
-                      <strong>模板快照</strong>
+                      <strong>模板来源快照</strong>
                       {typeof templateSnapshot.description === "string" && templateSnapshot.description.trim().length > 0 ? (
                         <Typography.Paragraph>{templateSnapshot.description.trim()}</Typography.Paragraph>
                       ) : null}
