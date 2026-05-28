@@ -597,7 +597,7 @@ export function BacktestsView() {
                   <article key={job.id} className="job-mobile-card">
                     <div className="job-mobile-card-head">
                       <div>
-                        <strong>任务编号 {job.id}</strong>
+                        <strong>这次回测 #{job.id}</strong>
                         <span>{String(payload.symbol ?? "-")} / {String(payload.interval ?? "-")} / {strategyLabel(String(payload.strategy_kind ?? "-"))}</span>
                       </div>
                       <StatusTag value={job.status} />

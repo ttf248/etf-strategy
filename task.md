@@ -3053,3 +3053,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页最近任务卡标题口径补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理“最近回测任务”卡片头部的标题口径，把“任务编号”这种后台记录式叫法收成更像“这是你刚跑的哪一轮回测”。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将最近任务卡标题从“任务编号 {id}”改成“这次回测 #{id}”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不删除任务编号信息，也不改变状态标签、标的摘要、模板信息或错误提示，只调整最近任务卡头部的标题口径。
+- 这轮不改主按钮、次级动作、摘要横幅或完整历史表格，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
