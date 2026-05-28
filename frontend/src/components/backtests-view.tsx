@@ -681,7 +681,7 @@ export function BacktestsView() {
                           { title: "完成时间", dataIndex: "completed_at", width: 180 },
                           { title: "没跑成原因", dataIndex: "error_message", ellipsis: true },
                           {
-                            title: "操作",
+                            title: "现在可做",
                             width: 150,
                             fixed: "right",
                             render: (_, row) => (
