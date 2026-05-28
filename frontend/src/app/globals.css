@@ -2638,6 +2638,13 @@ a {
   line-height: 20px;
 }
 
+.result-decision-card .ant-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, max-content);
+  gap: 18px;
+  align-items: center;
+}
+
 .report-reading-order-tags {
   display: flex;
   flex-wrap: wrap;
@@ -3666,6 +3673,10 @@ a {
 
   .platform-content {
     padding: 18px 16px 28px;
+  }
+
+  .result-decision-card .ant-card-body {
+    grid-template-columns: 1fr;
   }
 
   .beginner-hero {

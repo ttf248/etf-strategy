@@ -45,6 +45,20 @@ type SymbolFocusCard = {
   summary: string;
 };
 
+type ResultDecisionBoard = {
+  title: string;
+  description: string;
+  primaryLabel: string;
+  primaryHref: string;
+  secondaryLabel: string;
+  secondaryHref: string;
+  guides: Array<{
+    title: string;
+    value: string;
+    description: string;
+  }>;
+};
+
 function getValidationMetrics(report: ReportSummary) {
   const validation = report.summary_metrics.validation ?? {};
   const netReturn = Number(validation.NetReturnPct ?? validation.ReturnPct ?? 0);
@@ -451,6 +465,174 @@ export function ReportsView() {
   );
   const recommendedReport = sortedCardReports[0] ?? null;
   const recommendedMetrics = recommendedReport ? getValidationMetrics(recommendedReport) : null;
+  const resultDecisionBoard = useMemo((): ResultDecisionBoard | null => {
+    if (filteredReports.length === 0 || !recommendedReport || !recommendedMetrics) {
+      return null;
+    }
+
+    const steadyReports = sortedCardReports.filter((item) => {
+      const metrics = getValidationMetrics(item);
+      return metrics.closedTrades > 0 && metrics.netReturn > 0 && metrics.maxDrawdown <= 8;
+    });
+    const positiveReportsList = sortedCardReports.filter((item) => {
+      const metrics = getValidationMetrics(item);
+      return metrics.closedTrades > 0 && metrics.netReturn > 0;
+    });
+    const noTradeReports = filteredReports.filter((item) => getValidationMetrics(item).closedTrades === 0);
+    const negativeReports = filteredReports.filter((item) => getValidationMetrics(item).netReturn < 0);
+    const recommendedGroup = sortedCardReports.filter(
+      (item) => item.symbol === recommendedReport.symbol && item.interval === recommendedReport.interval,
+    );
+    const compareCandidates = recommendedGroup.slice(0, 4);
+    const compareHref = compareCandidates.length > 1 ? buildCompareHrefForReports(compareCandidates) : null;
+    const safestPositiveReport =
+      positiveReportsList.reduce<ReportSummary | null>((best, current) => {
+        if (!best) {
+          return current;
+        }
+        return getValidationMetrics(current).maxDrawdown < getValidationMetrics(best).maxDrawdown ? current : best;
+      }, null) ?? recommendedReport;
+    const safestPositiveMetrics = getValidationMetrics(safestPositiveReport);
+
+    if (steadyReports.length > 0) {
+      return {
+        title: `当前这批结果里，已经有 ${steadyReports.length} 份更值得继续深挖的候选`,
+        description:
+          compareCandidates.length > 1
+            ? "这说明当前筛选下不只是偶然出现一份好结果，而是已经形成了值得横向比较的候选组。此时最优动作通常不是立刻重跑，而是先打开最佳样本，再判断领先是否稳定。"
+            : "这说明当前筛选下已经出现收益与回撤更平衡的样本。此时最优动作通常不是立刻重跑，而是先确认这份结果是否真的值得作为下一轮基线。",
+        primaryLabel: `先看编号 ${recommendedReport.id}`,
+        primaryHref: `/reports/${recommendedReport.id}`,
+        secondaryLabel: compareHref ? "直接进入同组对比" : "按这套配置重跑",
+        secondaryHref: compareHref ?? buildRerunHref(recommendedReport),
+        guides: [
+          {
+            title: "最值得先看的样本",
+            value: `${recommendedReport.symbol} / ${strategyLabel(recommendedReport.strategy_kind)} / ${recommendedReport.interval}`,
+            description: `这份结果当前排在首位，单独验证收益 ${recommendedMetrics.netReturn.toFixed(2)}%，最大回撤 ${recommendedMetrics.maxDrawdown.toFixed(2)}%。`,
+          },
+          {
+            title: "当前最明显的优势",
+            value: recommendedMetrics.outperformBuyHold ? `已有 ${quickFilterStats.beat_buy_hold} 份跑赢买入持有` : `已有 ${steadyReports.length} 份稳健正收益`,
+            description: recommendedMetrics.outperformBuyHold
+              ? "这批结果里已经有人证明自己优于最简单的持有方案，下一步重点是确认领先是否稳定，而不是只看单次收益高低。"
+              : "这批结果里已经出现风险收益更平衡的候选，继续研究的价值已经明确。接下来应优先看差异原因。 ",
+          },
+          {
+            title: "现在最该做什么",
+            value: compareHref ? "先打开，再做同组对比" : "先确认这份结果能否充当基线",
+            description: compareHref
+              ? "先读首位样本的结论，再把同标的、同周期前几份结果并排比较，判断优势来自策略方向、参数空间还是市场阶段。"
+              : "先确认收益、回撤和是否跑赢买入持有都站得住，再决定要不要用这份结果作为下一轮重跑或扩展参数的基线。",
+          },
+        ],
+      };
+    }
+
+    if (positiveReportsList.length > 0) {
+      const dominantRisk =
+        safestPositiveMetrics.maxDrawdown > 12
+          ? "回撤偏高"
+          : !safestPositiveMetrics.outperformBuyHold
+            ? "尚未证明优于买入持有"
+            : "仍需确认领先是否稳定";
+      return {
+        title: "当前已经有赚钱样本，但还不能直接把它当成可用策略",
+        description:
+          "这通常意味着方向未必错，但收益、回撤和相对买入持有的关系还不够清晰。此时最优动作通常不是立刻放弃，而是先看最接近可用的一份，再决定是否对比或压回撤。",
+        primaryLabel: `先看编号 ${safestPositiveReport.id}`,
+        primaryHref: `/reports/${safestPositiveReport.id}`,
+        secondaryLabel: compareHref ? "先拉同组对比" : "按低回撤候选重跑",
+        secondaryHref: compareHref ?? buildRerunHref(safestPositiveReport),
+        guides: [
+          {
+            title: "最接近可用的样本",
+            value: `收益 ${safestPositiveMetrics.netReturn.toFixed(2)}% / 回撤 ${safestPositiveMetrics.maxDrawdown.toFixed(2)}%`,
+            description: `${safestPositiveReport.symbol} / ${strategyLabel(safestPositiveReport.strategy_kind)} / ${safestPositiveReport.interval} 当前更适合作为“先复盘再判断”的入口。`,
+          },
+          {
+            title: "当前最大问题",
+            value: dominantRisk,
+            description:
+              dominantRisk === "回撤偏高"
+                ? "说明现在不是没有收益，而是收益的代价太大。先确认净值波动和最深回落能不能接受，再决定是否缩仓或改模板。"
+                : dominantRisk === "尚未证明优于买入持有"
+                  ? "说明这批结果还没有回答“值不值得替代最简单持有方案”这个核心问题，优先比较同组样本更有效。"
+                  : "说明这批结果还没有证明自己不是偶然领先，最适合先做同组横向比较。 ",
+          },
+          {
+            title: "现在最该做什么",
+            value: compareHref ? "先对比，再决定重跑" : "先看细节，再决定是否压回撤",
+            description: compareHref
+              ? "先把同标的、同周期的候选结果放进对比区，确认到底是收益更高，还是只是更敢承受回撤。"
+              : "先打开这份最接近可用的样本，确认收益主要来自哪段行情，再决定是继续研究还是回去改配置。",
+          },
+        ],
+      };
+    }
+
+    if (noTradeReports.length === filteredReports.length) {
+      return {
+        title: "当前这批结果还没真正触发交易，先别急着讨论收益",
+        description:
+          "当所有结果都没有成交时，继续比较收益率没有意义。此时最优动作通常是先确认当前标的、周期和模板是不是太保守，或者数据覆盖与策略节奏根本不匹配。",
+        primaryLabel: "回到回测页改配置",
+        primaryHref: "/backtests",
+        secondaryLabel: "先检查数据覆盖",
+        secondaryHref: "/market-data",
+        guides: [
+          {
+            title: "当前状态",
+            value: `${noTradeReports.length} 份都没成交`,
+            description: "这说明问题不在选哪一份结果，而在当前筛选下所有样本都没有真正触发。先让策略动起来，比继续读卡片更重要。",
+          },
+          {
+            title: "最可能的问题",
+            value: "条件过严、周期不对，或样本不活跃",
+            description: "优先检查是不是选了不够活跃的标的、周期过长或过短，或者模板本身要求太严格，导致整批结果都没开仓。",
+          },
+          {
+            title: "现在最该做什么",
+            value: "先让它成交，再回来判断优劣",
+            description: "先回到回测页换周期、模板或标的；如果不确定覆盖是否够，再到数据准备页确认 1d 或 15m 是否齐备。",
+          },
+        ],
+      };
+    }
+
+    return {
+      title: "当前这批结果更适合作为反向对照，先别急着扩大研究范围",
+      description:
+        "这通常说明当前筛选下大部分样本还没有证明自己。此时最优动作不是堆更多结果，而是先看“最不差”的一份，确认问题主要出在策略方向、参数空间，还是当前市场阶段。",
+      primaryLabel: `先看编号 ${recommendedReport.id}`,
+      primaryHref: `/reports/${recommendedReport.id}`,
+      secondaryLabel: "回到回测页调整配置",
+      secondaryHref: "/backtests",
+      guides: [
+        {
+          title: "当前整体状态",
+          value: `负收益 ${negativeReports.length} 份 / 未成交 ${noTradeReports.length} 份`,
+          description: "这批结果当前更像一组排除样本，而不是候选样本。先确认为什么不成立，比继续扩结果池更重要。",
+        },
+        {
+          title: "最值得先读的一份",
+          value: `${recommendedReport.symbol} / 收益 ${recommendedMetrics.netReturn.toFixed(2)}%`,
+          description: "虽然它暂时排在前面，但更大的价值通常是帮助你看清当前策略哪里不适合，而不是直接作为采用对象。",
+        },
+        {
+          title: "现在最该做什么",
+          value: "先找失败原因，再决定重跑方向",
+          description: "先打开这份相对靠前的样本确认亏损和回撤来自哪里；如果问题明显，再回到回测页调整模板、标的或周期，而不是盲目重跑同一套配置。",
+        },
+      ],
+    };
+  }, [
+    filteredReports,
+    quickFilterStats.beat_buy_hold,
+    recommendedMetrics,
+    recommendedReport,
+    sortedCardReports,
+  ]);
 
   function toggleCompare(reportId: number) {
     setSelectedReportIds((current) => {
@@ -477,6 +659,32 @@ export function ReportsView() {
         title="回测结果库"
         description="先判断验证结论与风险收益特征，再进入详情查看净值曲线、交易记录和参数快照。"
       />
+
+      {resultDecisionBoard ? (
+        <Card size="small" title="当前这批结果，最该先做什么" className="section-card result-decision-card">
+          <div className="start-path-main">
+            <strong>{resultDecisionBoard.title}</strong>
+            <p>{resultDecisionBoard.description}</p>
+            <div className="start-path-guide-grid">
+              {resultDecisionBoard.guides.map((item) => (
+                <article key={item.title} className="start-path-guide-card">
+                  <span>{item.title}</span>
+                  <strong>{item.value}</strong>
+                  <p>{item.description}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+          <div className="start-path-actions">
+            <Button type="primary">
+              <Link href={resultDecisionBoard.primaryHref}>{resultDecisionBoard.primaryLabel}</Link>
+            </Button>
+            <Button>
+              <Link href={resultDecisionBoard.secondaryHref}>{resultDecisionBoard.secondaryLabel}</Link>
+            </Button>
+          </div>
+        </Card>
+      ) : null}
 
       <div className="detail-secondary-hint">
         <strong>这些指标用于快速了解当前结果池分布</strong>

@@ -25,6 +25,7 @@ test("报告详情可以带着当前报告进入对比区", async ({ page, reque
 
   await expect(page).toHaveURL(new RegExp(`/reports\\?compare=${report.id}.*keyword=${report.symbol}.*interval=${report.interval}`));
   await expect(page.getByText("已从详情页带入报告")).toBeVisible();
+  await expect(page.getByText("当前这批结果，最该先做什么")).toBeVisible();
   await expect(page.getByText("结果快筛")).toBeVisible();
   await expect(page.getByText("同标的研究焦点")).toBeVisible();
   await expect(page.getByText("先按判断目标收窄结果，再决定要不要通读全部卡片")).toBeVisible();
