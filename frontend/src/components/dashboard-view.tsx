@@ -3,9 +3,9 @@
 import { ArrowRightOutlined, CheckCircleOutlined, DatabaseOutlined, FileSearchOutlined, MonitorOutlined, PlayCircleOutlined } from "@ant-design/icons";
 import { Button, Card, Col, Collapse, Empty, Progress, Row, Skeleton, Space, Table, Tag, Typography, message } from "antd";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { apiFetch, type BacktestJob, type MarketDataStats, type ReportSummary } from "@/lib/api";
-import { FormatPercent, MetricCard, PageHeader, StatusTag } from "@/components/platform-ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiFetch, apiFetchSafe, type BacktestJob, type MarketDataStats, type ReportSummary } from "@/lib/api";
+import { FormatPercent, InlineErrorBanner, MetricCard, PageErrorState, PageHeader, StatusTag } from "@/components/platform-ui";
 import { strategyLabel } from "@/lib/strategy-template-config";
 import { buildBacktestLaunchHref, buildBacktestPresetHref, buildBeginnerPresets, type BeginnerPreset } from "@/lib/beginner-presets";
 
@@ -391,55 +391,53 @@ export function DashboardView() {
   const [jobs, setJobs] = useState<BacktestJob[]>([]);
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [partialError, setPartialError] = useState<string | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
   const beginnerPresets = useMemo(() => (stats ? buildBeginnerPresets(stats.coverages) : []), [stats]);
 
-  async function loadDashboardSnapshot(showSpinner: boolean = true) {
+  const loadDashboardSnapshot = useCallback(async (showSpinner: boolean = true) => {
     if (showSpinner) {
       setLoading(true);
     }
-    try {
-      const [statsPayload, jobsPayload, reportsPayload] = await Promise.all([
-        apiFetch<MarketDataStats>("/api/market-data/stats"),
-        apiFetch<BacktestJob[]>("/api/backtests?limit=8"),
-        apiFetch<ReportSummary[]>("/api/reports?limit=8"),
-      ]);
-      setStats(statsPayload);
-      setJobs(jobsPayload);
-      setReports(reportsPayload);
-    } finally {
-      setLoading(false);
-    }
-  }
+    const [statsResult, jobsResult, reportsResult] = await Promise.all([
+      apiFetchSafe<MarketDataStats>("/api/market-data/stats"),
+      apiFetchSafe<BacktestJob[]>("/api/backtests?limit=8"),
+      apiFetchSafe<ReportSummary[]>("/api/reports?limit=8"),
+    ]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadInitialSnapshot() {
-      try {
-        const [statsPayload, jobsPayload, reportsPayload] = await Promise.all([
-          apiFetch<MarketDataStats>("/api/market-data/stats"),
-          apiFetch<BacktestJob[]>("/api/backtests?limit=8"),
-          apiFetch<ReportSummary[]>("/api/reports?limit=8"),
-        ]);
-        if (cancelled) {
-          return;
-        }
-        setStats(statsPayload);
-        setJobs(jobsPayload);
-        setReports(reportsPayload);
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+    const issues: string[] = [];
+    if (statsResult.ok) {
+      setStats(statsResult.data);
+      setLoadError(null);
+    } else {
+      issues.push(`总览统计读取失败：${statsResult.error.message}`);
+      if (!stats) {
+        setLoadError(statsResult.error.message);
       }
     }
 
-    void loadInitialSnapshot();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (jobsResult.ok) {
+      setJobs(jobsResult.data);
+    } else {
+      issues.push(`任务列表读取失败：${jobsResult.error.message}`);
+    }
+
+    if (reportsResult.ok) {
+      setReports(reportsResult.data);
+    } else {
+      issues.push(`结果列表读取失败：${reportsResult.error.message}`);
+    }
+
+    setPartialError(statsResult.ok || stats ? (issues.length > 0 ? issues.join("；") : null) : null);
+    setLoading(false);
+  }, [stats]);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadDashboardSnapshot();
+    });
+  }, [loadDashboardSnapshot]);
 
   const hasActiveJobs = useMemo(
     () => jobs.some((item) => ["queued", "running", "cancel_requested"].includes(item.status)),
@@ -451,19 +449,10 @@ export function DashboardView() {
       return;
     }
     const timer = window.setInterval(() => {
-      void (async () => {
-        const [statsPayload, jobsPayload, reportsPayload] = await Promise.all([
-          apiFetch<MarketDataStats>("/api/market-data/stats"),
-          apiFetch<BacktestJob[]>("/api/backtests?limit=8"),
-          apiFetch<ReportSummary[]>("/api/reports?limit=8"),
-        ]);
-        setStats(statsPayload);
-        setJobs(jobsPayload);
-        setReports(reportsPayload);
-      })();
+      void loadDashboardSnapshot(false);
     }, 4000);
     return () => window.clearInterval(timer);
-  }, [hasActiveJobs]);
+  }, [hasActiveJobs, loadDashboardSnapshot]);
 
   async function cancelJob(jobId: number) {
     try {
@@ -494,7 +483,7 @@ export function DashboardView() {
   }
 
   if (!stats) {
-    return <Empty description="暂时无法读取平台数据" />;
+    return <PageErrorState title="研究总览暂时不可用" description={loadError ?? "暂时无法读取平台数据"} onRetry={() => void loadDashboardSnapshot()} />;
   }
 
   const latestSync = stats.recent_sync_runs[0] as { status?: string; interval?: string; completed_at?: string } | undefined;
@@ -550,6 +539,7 @@ export function DashboardView() {
   return (
     <div className="page-stack">
       {contextHolder}
+      {partialError ? <InlineErrorBanner message={partialError} onRetry={() => void loadDashboardSnapshot(false)} /> : null}
       <section className="hero-panel beginner-hero">
         <div className="beginner-hero-copy">
           <PageHeader

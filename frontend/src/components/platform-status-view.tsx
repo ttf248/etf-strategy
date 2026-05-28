@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { Button, Card, Col, Collapse, Empty, Row, Select, Skeleton, Space, Table, Typography, message } from "antd";
 import { useCallback, useEffect, useState } from "react";
-import { apiFetch, type PlatformLogs, type PlatformProcess, type PlatformStatus } from "@/lib/api";
-import { MetricCard, PageHeader, StatusTag, ToolbarCount } from "@/components/platform-ui";
+import { apiFetch, apiFetchSafe, type PlatformLogs, type PlatformProcess, type PlatformStatus } from "@/lib/api";
+import { InlineErrorBanner, MetricCard, PageErrorState, PageHeader, StatusTag, ToolbarCount } from "@/components/platform-ui";
 
 const serviceLabelMap: Record<string, string> = {
   api: "接口服务",
@@ -175,30 +175,49 @@ export function PlatformStatusView() {
   const [logs, setLogs] = useState<PlatformLogs | null>(null);
   const [logService, setLogService] = useState("api");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [partialError, setPartialError] = useState<string | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
 
   async function fetchPlatformPayload(service: string) {
-    const [statusPayload, processesPayload, logsPayload] = await Promise.all([
-      apiFetch<PlatformStatus>("/api/platform/status"),
-      apiFetch<PlatformProcess[]>("/api/platform/processes"),
-      apiFetch<PlatformLogs>(`/api/platform/logs?service=${service}&limit=120`),
+    const [statusResult, processesResult, logsResult] = await Promise.all([
+      apiFetchSafe<PlatformStatus>("/api/platform/status"),
+      apiFetchSafe<PlatformProcess[]>("/api/platform/processes"),
+      apiFetchSafe<PlatformLogs>(`/api/platform/logs?service=${service}&limit=120`),
     ]);
-    return { statusPayload, processesPayload, logsPayload };
+    return { statusResult, processesResult, logsResult };
   }
 
   const refreshPlatform = useCallback(async () => {
     setLoading(true);
-    try {
-      const payload = await fetchPlatformPayload(logService);
-      setStatus(payload.statusPayload);
-      setProcesses(payload.processesPayload);
-      setLogs(payload.logsPayload);
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "读取平台状态失败");
-    } finally {
-      setLoading(false);
+    const payload = await fetchPlatformPayload(logService);
+    const issues: string[] = [];
+
+    if (payload.statusResult.ok) {
+      setStatus(payload.statusResult.data);
+      setLoadError(null);
+    } else {
+      setLoadError(payload.statusResult.error.message);
+      issues.push(`平台状态读取失败：${payload.statusResult.error.message}`);
     }
-  }, [logService, messageApi]);
+
+    if (payload.processesResult.ok) {
+      setProcesses(payload.processesResult.data);
+    } else {
+      setProcesses([]);
+      issues.push(`本机服务列表读取失败：${payload.processesResult.error.message}`);
+    }
+
+    if (payload.logsResult.ok) {
+      setLogs(payload.logsResult.data);
+    } else {
+      setLogs(null);
+      issues.push(`日志读取失败：${payload.logsResult.error.message}`);
+    }
+
+    setPartialError(payload.statusResult.ok ? (issues.length > 0 ? issues.join("；") : null) : null);
+    setLoading(false);
+  }, [logService]);
 
   async function restartService(serviceName: string) {
     try {
@@ -211,29 +230,9 @@ export function PlatformStatusView() {
   }
 
   useEffect(() => {
-    let cancelled = false;
-    void fetchPlatformPayload(logService)
-      .then((payload) => {
-        if (cancelled) {
-          return;
-        }
-        setStatus(payload.statusPayload);
-        setProcesses(payload.processesPayload);
-        setLogs(payload.logsPayload);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          messageApi.error(error instanceof Error ? error.message : "读取平台状态失败");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
+    queueMicrotask(() => {
+      void refreshPlatform();
+    });
     // 仅在日志服务切换时重新加载；手动刷新由按钮触发。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logService]);
@@ -264,7 +263,7 @@ export function PlatformStatusView() {
   }
 
   if (!status) {
-    return <Empty description="暂时无法读取平台状态" />;
+    return <PageErrorState title="系统状态页暂时不可用" description={loadError ?? "暂时无法读取平台状态"} onRetry={() => void refreshPlatform()} />;
   }
 
   const platformReady = serviceOk(status.api.status) && serviceOk(status.frontend.status) && serviceOk(status.database.status);
@@ -307,6 +306,7 @@ export function PlatformStatusView() {
   return (
     <div className="page-stack">
       {contextHolder}
+      {partialError ? <InlineErrorBanner message={partialError} onRetry={() => void refreshPlatform()} /> : null}
       <PageHeader
         eyebrow="运行状态"
         title="系统状态"

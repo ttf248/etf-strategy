@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { Button, Card, Collapse, Descriptions, Empty, Skeleton, Space, Table, Tag, Typography } from "antd";
-import { useEffect, useState } from "react";
-import { apiFetch, type ReportDetail, type ReportSummary } from "@/lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { apiFetchSafe, type ReportDetail, type ReportSummary } from "@/lib/api";
 import { EquityChart } from "@/components/equity-chart";
-import { DetailItem, FormatPercent, PageHeader } from "@/components/platform-ui";
+import { DetailItem, FormatPercent, InlineErrorBanner, PageErrorState, PageHeader } from "@/components/platform-ui";
 import { parameterFieldSpecsByStrategy, strategyLabel } from "@/lib/strategy-template-config";
 import { buildBacktestLaunchHref } from "@/lib/beginner-presets";
 
@@ -881,35 +881,39 @@ function buildParameterHighlights(
 export function ReportDetailView({ reportId }: ReportDetailViewProps) {
   const [report, setReport] = useState<ReportDetail | null>(null);
   const [reports, setReports] = useState<ReportSummary[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [partialError, setPartialError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let alive = true;
+  const loadReportDetail = useCallback(async () => {
+    const detailResult = await apiFetchSafe<ReportDetail>(`/api/reports/${reportId}`);
+    if (detailResult.ok) {
+      setReport(detailResult.data);
+      setLoadError(null);
+    } else {
+      setLoadError(detailResult.error.message);
+      return;
+    }
 
-    void (async () => {
-      const detail = await apiFetch<ReportDetail>(`/api/reports/${reportId}`);
-      if (!alive) {
-        return;
-      }
-      setReport(detail);
-
-      try {
-        const reportsPayload = await apiFetch<ReportSummary[]>("/api/reports?limit=200");
-        if (alive) {
-          setReports(reportsPayload);
-        }
-      } catch {
-        if (alive) {
-          setReports([]);
-        }
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
+    const reportsResult = await apiFetchSafe<ReportSummary[]>("/api/reports?limit=200");
+    if (reportsResult.ok) {
+      setReports(reportsResult.data);
+      setPartialError(null);
+    } else {
+      setReports([]);
+      setPartialError(`同标的对比列表读取失败：${reportsResult.error.message}`);
+    }
   }, [reportId]);
 
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadReportDetail();
+    });
+  }, [loadReportDetail]);
+
   if (!report) {
+    if (loadError) {
+      return <PageErrorState title="报告详情暂时不可用" description={loadError} onRetry={() => void loadReportDetail()} />;
+    }
     return <Skeleton active paragraph={{ rows: 12 }} />;
   }
 
@@ -947,6 +951,7 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
 
   return (
     <div className="page-stack">
+      {partialError ? <InlineErrorBanner message={partialError} onRetry={() => void loadReportDetail()} retryLabel="重新读取对比列表" /> : null}
       <PageHeader
         eyebrow="报告详情"
         title={`回测报告 编号 ${report.id}`}

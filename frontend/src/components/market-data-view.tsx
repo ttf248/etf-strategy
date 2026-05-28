@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { Button, Card, Collapse, Empty, Input, Select, Skeleton, Space, Table, Tag, Typography, message } from "antd";
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch, type MarketCoverage, type MarketDataStats } from "@/lib/api";
-import { MetricCard, PageHeader, ToolbarCount } from "@/components/platform-ui";
+import { apiFetch, apiFetchSafe, type MarketCoverage, type MarketDataStats } from "@/lib/api";
+import { MetricCard, PageErrorState, PageHeader, ToolbarCount } from "@/components/platform-ui";
 import { intervalOptions } from "@/lib/strategy-template-config";
 import { buildBacktestLaunchHref, buildBacktestPresetHref, buildBeginnerPresets } from "@/lib/beginner-presets";
 
@@ -235,6 +235,8 @@ function buildPrimaryResearchPath(params: {
 
 export function MarketDataView() {
   const [stats, setStats] = useState<MarketDataStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [checkInput, setCheckInput] = useState("1810.HK");
   const [checkedSymbol, setCheckedSymbol] = useState("1810.HK");
   const [tableKeyword, setTableKeyword] = useState("");
@@ -244,12 +246,24 @@ export function MarketDataView() {
   const [syncingSymbol, setSyncingSymbol] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
 
-  async function fetchStats() {
-    return apiFetch<MarketDataStats>("/api/market-data/stats");
+  async function loadStatsData(showSpinner: boolean = true) {
+    if (showSpinner) {
+      setLoading(true);
+    }
+    const result = await apiFetchSafe<MarketDataStats>("/api/market-data/stats");
+    if (result.ok) {
+      setStats(result.data);
+      setLoadError(null);
+    } else {
+      setLoadError(result.error.message);
+    }
+    setLoading(false);
   }
 
   useEffect(() => {
-    void fetchStats().then(setStats);
+    queueMicrotask(() => {
+      void loadStatsData();
+    });
   }, []);
 
   function syncPeriodForInterval(targetInterval: string) {
@@ -264,7 +278,7 @@ export function MarketDataView() {
         body: JSON.stringify({ interval: syncInterval, period: syncPeriodForInterval(syncInterval) }),
       });
       messageApi.success("同步已完成");
-      setStats(await fetchStats());
+      await loadStatsData(false);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
     } finally {
@@ -290,7 +304,7 @@ export function MarketDataView() {
         body: JSON.stringify({ symbol: targetSymbol, interval: targetInterval, period: syncPeriodForInterval(targetInterval) }),
       });
       messageApi.success(`${targetSymbol} ${targetInterval} 同步完成`);
-      setStats(await fetchStats());
+      await loadStatsData(false);
       setTableKeyword(targetSymbol);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
@@ -488,8 +502,12 @@ export function MarketDataView() {
     applyCheckedSymbol(checkInput);
   }
 
-  if (!stats) {
+  if (loading && !stats) {
     return <Skeleton active paragraph={{ rows: 10 }} />;
+  }
+
+  if (!stats) {
+    return <PageErrorState title="数据准备页暂时不可用" description={loadError ?? "暂时无法读取数据覆盖状态"} onRetry={() => void loadStatsData()} />;
   }
 
   return (

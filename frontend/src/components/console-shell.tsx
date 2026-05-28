@@ -558,6 +558,50 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
   const latestRunningJob = useMemo(() => runningJobs[0] ?? queuedJobs[0] ?? null, [queuedJobs, runningJobs]);
   const latestReport = useMemo(() => [...snapshot.reports].sort((left, right) => right.id - left.id)[0] ?? null, [snapshot.reports]);
   const instrumentCount = snapshot.stats?.instrument_count ?? 0;
+  const shellStatusPills = useMemo(
+    () => [
+      { label: "可研究标的", value: String(instrumentCount) },
+      { label: "运行中", value: String(runningJobs.length) },
+      { label: "等待中", value: String(queuedJobs.length) },
+      { label: "失败", value: String(failedJobs.length) },
+    ],
+    [failedJobs.length, instrumentCount, queuedJobs.length, runningJobs.length],
+  );
+  const shellQuickCards = useMemo(() => {
+    const cards: Array<{ key: string; href: string; icon: ReactNode; title: string; description: string }> = [];
+    if (latestRunningJob) {
+      cards.push({
+        key: "job",
+        href: "/backtests",
+        icon: <BarChartOutlined />,
+        title: latestRunningJob.status === "running" ? `任务 #${latestRunningJob.id} 执行中` : `任务 #${latestRunningJob.id} 排队中`,
+        description:
+          latestRunningJob.status === "running"
+            ? `${latestRunningJob.runtime_details.stage_label ?? "执行中"} · 预计还需 ${formatDuration(latestRunningJob.runtime_details.eta_seconds)}`
+            : latestRunningJob.runtime_details.queue_position
+              ? `队列第 ${latestRunningJob.runtime_details.queue_position} 位`
+              : "等待 worker 领取",
+      });
+    }
+    if (latestReport) {
+      cards.push({
+        key: "report",
+        href: `/reports/${latestReport.id}`,
+        icon: <FileSearchOutlined />,
+        title: "打开最新结果",
+        description: `${latestReport.symbol} / ${latestReport.interval} / ${strategyLabel(latestReport.strategy_kind)}`,
+      });
+    } else {
+      cards.push({
+        key: "next",
+        href: instrumentCount > 0 ? "/backtests" : "/market-data",
+        icon: instrumentCount > 0 ? <FormOutlined /> : <DatabaseOutlined />,
+        title: instrumentCount > 0 ? "进入回测主流程" : "先补齐一个研究样本",
+        description: instrumentCount > 0 ? "已有数据覆盖，建议直接提交基线任务。" : "优先准备一个熟悉标的的 1d 或 15m。",
+      });
+    }
+    return cards.slice(0, 2);
+  }, [instrumentCount, latestReport, latestRunningJob]);
 
   const renderMenu = () => (
     <div className="nav-sections">
@@ -571,29 +615,32 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
   return (
     <Layout className="platform-shell">
       <Sider width={292} theme="light" className="platform-sider" breakpoint="lg" collapsedWidth="0">
-        <div className="platform-side-head">
-          <div className="platform-logo">
-            <div className="platform-logo-mark">SS</div>
-            <div className="platform-logo-text">
-              <span className="platform-logo-title">Strategy Studio</span>
-              <span className="platform-logo-subtitle">策略研究工作台</span>
+        <div className="platform-sider-inner">
+          <div className="platform-side-head">
+            <div className="platform-logo">
+              <div className="platform-logo-mark">SS</div>
+              <div className="platform-logo-text">
+                <span className="platform-logo-title">Strategy Studio</span>
+                <span className="platform-logo-subtitle">策略研究工作台</span>
+              </div>
             </div>
-          </div>
-          <div className="nav-workbench-card">
-            <span className="nav-workbench-label">当前研究状态</span>
-            <strong>{shellStatus.title}</strong>
-            <p>{shellStatus.description}</p>
-            <div className="nav-workbench-pills">
-              <span>可研究标的 {instrumentCount}</span>
-              <span>运行中 {runningJobs.length}</span>
-              <span>排队 {queuedJobs.length}</span>
-              <span>失败 {failedJobs.length}</span>
+            <div className="nav-workbench-card">
+              <span className="nav-workbench-label">当前研究状态</span>
+              <strong>{shellStatus.title}</strong>
+              <p>{shellStatus.description}</p>
+              <div className="nav-workbench-pills">
+                {shellStatusPills.map((pill) => (
+                  <span key={pill.label}>
+                    {pill.label} {pill.value}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
           <div className="workflow-rail">
             <div className="workflow-rail-head">
               <strong>标准研究路径</strong>
-              <span>不需要记忆入口，按这条顺序推进即可。</span>
+              <span>保持“数据准备 → 回测 → 结果复盘”的常规工作台顺序。</span>
             </div>
             <div className="workflow-rail-list">
               {workflowSteps.map((step, index) => {
@@ -622,87 +669,65 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
               })}
             </div>
           </div>
+          {renderMenu()}
         </div>
-        {renderMenu()}
       </Sider>
       <Layout className="platform-main">
         <Header className="platform-header">
           <Button className="mobile-menu-trigger" icon={<MenuOutlined />} onClick={() => setMobileMenuOpen(true)} />
-          <div className="platform-header-title">
-            <span className="platform-header-kicker">{current.kicker}</span>
-            <span className="platform-header-name">{current.title}</span>
+          <div className="platform-header-main">
+            <div className="platform-header-title">
+              <span className="platform-header-kicker">{current.kicker}</span>
+              <span className="platform-header-name">{current.title}</span>
+            </div>
+            <p className="platform-header-copy">{current.tipText}</p>
           </div>
-          <div className="platform-header-guide">
-            <strong>{current.tipTitle}</strong>
-            <span>{current.tipText}</span>
-          </div>
-          <div className="header-quick-strip">
-            {latestRunningJob ? (
-              <Link href="/backtests" className="header-quick-card">
-                <div className="header-quick-icon">
-                  <BarChartOutlined />
-                </div>
-                <div className="header-quick-body">
-                  <strong>
-                    {latestRunningJob.status === "running" ? `任务 #${latestRunningJob.id} 执行中` : `任务 #${latestRunningJob.id} 排队中`}
-                  </strong>
-                  <span>
-                    {latestRunningJob.status === "running"
-                      ? `${latestRunningJob.runtime_details.stage_label ?? "执行中"} · 预计还需 ${formatDuration(latestRunningJob.runtime_details.eta_seconds)}`
-                      : latestRunningJob.runtime_details.queue_position
-                        ? `队列第 ${latestRunningJob.runtime_details.queue_position} 位`
-                        : "等待 worker 领取"}
-                  </span>
-                </div>
-              </Link>
-            ) : null}
-            {latestReport ? (
-              <Link href={`/reports/${latestReport.id}`} className="header-quick-card">
-                <div className="header-quick-icon">
-                  <FileSearchOutlined />
-                </div>
-                <div className="header-quick-body">
-                  <strong>打开最新结果</strong>
-                  <span>{latestReport.symbol} / {latestReport.interval} / {strategyLabel(latestReport.strategy_kind)}</span>
-                </div>
-              </Link>
-            ) : (
-              <Link href={instrumentCount > 0 ? "/backtests" : "/market-data"} className="header-quick-card">
-                <div className="header-quick-icon">
-                  {instrumentCount > 0 ? <FormOutlined /> : <DatabaseOutlined />}
-                </div>
-                <div className="header-quick-body">
-                  <strong>{instrumentCount > 0 ? "进入回测主流程" : "先补齐一个研究样本"}</strong>
-                  <span>{instrumentCount > 0 ? "已有数据覆盖，建议直接提交基线任务。" : "优先准备一个熟悉标的的 1d 或 15m。"} </span>
-                </div>
-              </Link>
-            )}
+          <div className="platform-header-pills">
+            {shellStatusPills.map((pill) => (
+              <span key={pill.label} className="platform-status-pill">
+                <b>{pill.value}</b>
+                <small>{pill.label}</small>
+              </span>
+            ))}
           </div>
         </Header>
         <div className="platform-meta-strip">
-          <div className={`research-guidance-banner tone-${shellGuidance.tone}`}>
-            <div className="research-guidance-main">
-              <span className="research-guidance-kicker">{shellGuidance.kicker}</span>
-              <strong>{shellGuidance.title}</strong>
-              <p>{shellGuidance.description}</p>
+          <div className={`shell-banner tone-${shellGuidance.tone}`}>
+            <div className="shell-banner-main">
+              <div className="shell-banner-copy">
+                <span className="research-guidance-kicker">{shellGuidance.kicker}</span>
+                <strong>{shellGuidance.title}</strong>
+                <p>{shellGuidance.description}</p>
+              </div>
+              <div className="shell-banner-actions">
+                <Button type="primary">
+                  <Link href={shellGuidance.primaryHref}>{shellGuidance.primaryLabel}</Link>
+                </Button>
+                <Button>
+                  <Link href={shellGuidance.secondaryHref}>{shellGuidance.secondaryLabel}</Link>
+                </Button>
+              </div>
             </div>
-            <div className="research-guidance-signals">
-              {shellGuidance.signals.map((signal) => (
-                <article key={signal.label} className="research-guidance-signal">
-                  <span>{signal.label}</span>
-                  <strong>{signal.value}</strong>
-                  <p>{signal.detail}</p>
-                </article>
+            <div className="shell-banner-side">
+              {shellQuickCards.map((card) => (
+                <Link key={card.key} href={card.href} className="header-quick-card">
+                  <div className="header-quick-icon">{card.icon}</div>
+                  <div className="header-quick-body">
+                    <strong>{card.title}</strong>
+                    <span>{card.description}</span>
+                  </div>
+                </Link>
               ))}
             </div>
-            <div className="research-guidance-actions">
-              <Button type="primary">
-                <Link href={shellGuidance.primaryHref}>{shellGuidance.primaryLabel}</Link>
-              </Button>
-              <Button>
-                <Link href={shellGuidance.secondaryHref}>{shellGuidance.secondaryLabel}</Link>
-              </Button>
-            </div>
+          </div>
+          <div className="research-guidance-signals">
+            {shellGuidance.signals.map((signal) => (
+              <article key={signal.label} className="research-guidance-signal">
+                <span>{signal.label}</span>
+                <strong>{signal.value}</strong>
+                <p>{signal.detail}</p>
+              </article>
+            ))}
           </div>
         </div>
         <Content className="platform-content">
@@ -720,6 +745,14 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
         <div className="mobile-shell-summary">
           <strong>{shellStatus.title}</strong>
           <p>{shellStatus.description}</p>
+          <div className="mobile-shell-pill-grid">
+            {shellStatusPills.map((pill) => (
+              <span key={pill.label} className="platform-status-pill">
+                <b>{pill.value}</b>
+                <small>{pill.label}</small>
+              </span>
+            ))}
+          </div>
           <div className="mobile-shell-summary-actions">
             <Button type="primary" block>
               <Link href={shellGuidance.primaryHref} onClick={() => setMobileMenuOpen(false)}>

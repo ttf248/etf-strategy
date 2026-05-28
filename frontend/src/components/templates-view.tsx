@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Button, Card, Collapse, Drawer, Form, Input, InputNumber, message, Select, Space, Switch, Table, Tag, Typography } from "antd";
+import { Button, Card, Collapse, Drawer, Form, Input, InputNumber, Skeleton, message, Select, Space, Switch, Table, Tag, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch, type StrategyTemplate } from "@/lib/api";
+import { apiFetch, apiFetchSafe, type StrategyTemplate } from "@/lib/api";
 import {
   buildDefaultParameterSpace,
   decodeNumericArray,
@@ -13,7 +13,7 @@ import {
   strategyLabel,
   strategyOptions,
 } from "@/lib/strategy-template-config";
-import { PageHeader, ToolbarCount } from "@/components/platform-ui";
+import { PageErrorState, PageHeader, ToolbarCount } from "@/components/platform-ui";
 import { buildBacktestLaunchHref } from "@/lib/beginner-presets";
 
 type TemplateFormValues = {
@@ -220,6 +220,7 @@ export function TemplatesView() {
   const [form] = Form.useForm<TemplateFormValues>();
   const [templates, setTemplates] = useState<StrategyTemplate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<StrategyTemplate | null>(null);
@@ -280,26 +281,20 @@ export function TemplatesView() {
     if (showSpinner) {
       setLoading(true);
     }
-    try {
-      const payload = await apiFetch<StrategyTemplate[]>("/api/templates");
-      setTemplates(payload);
-    } finally {
-      setLoading(false);
+    const result = await apiFetchSafe<StrategyTemplate[]>("/api/templates");
+    if (result.ok) {
+      setTemplates(result.data);
+      setLoadError(null);
+    } else {
+      setLoadError(result.error.message);
     }
+    setLoading(false);
   }
 
   useEffect(() => {
-    let cancelled = false;
-    void apiFetch<StrategyTemplate[]>("/api/templates").then((payload) => {
-      if (cancelled) {
-        return;
-      }
-      setTemplates(payload);
-      setLoading(false);
+    queueMicrotask(() => {
+      void loadTemplates();
     });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   function openCreateDrawer() {
@@ -417,6 +412,14 @@ export function TemplatesView() {
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "更新状态失败");
     }
+  }
+
+  if (loading && templates.length === 0) {
+    return <Skeleton active paragraph={{ rows: 10 }} />;
+  }
+
+  if (!loading && templates.length === 0 && loadError) {
+    return <PageErrorState title="策略模板页暂时不可用" description={loadError} onRetry={() => void loadTemplates()} />;
   }
 
   function toggleCompare(templateId: number) {

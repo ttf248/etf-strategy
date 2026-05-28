@@ -4,9 +4,9 @@ import { useSearchParams } from "next/navigation";
 import { Button, Card, Collapse, Empty, Form, Input, InputNumber, message, Progress, Select, Space, Steps, Table, Tag, Typography } from "antd";
 import { useEffect, useMemo, useRef, useState, type Key } from "react";
 import Link from "next/link";
-import { apiFetch, type BacktestJob, type MarketDataStats, type StrategyTemplate } from "@/lib/api";
+import { apiFetch, apiFetchSafe, type BacktestJob, type MarketDataStats, type StrategyTemplate } from "@/lib/api";
 import { intervalOptions, strategyLabel, strategyOptions } from "@/lib/strategy-template-config";
-import { PageHeader, StatusTag, ToolbarCount } from "@/components/platform-ui";
+import { InlineErrorBanner, PageHeader, StatusTag, ToolbarCount } from "@/components/platform-ui";
 import { buildBeginnerPresets } from "@/lib/beginner-presets";
 
 const strategyGuide: Record<string, { scene: string; beginnerHint: string; risk: string }> = {
@@ -421,6 +421,7 @@ export function BacktestsView() {
   const [selectedJobIds, setSelectedJobIds] = useState<Key[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
+  const [loadWarning, setLoadWarning] = useState<string | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
   const searchParams = useSearchParams();
   const basePresetAppliedRef = useRef(false);
@@ -518,22 +519,39 @@ export function BacktestsView() {
     setJobs(payload);
   }
 
-  async function loadTemplates() {
-    const payload = await apiFetch<StrategyTemplate[]>("/api/templates?active_only=true");
-    setTemplates(payload);
-  }
+  async function loadInitialSnapshot() {
+    const [jobsResult, templatesResult, statsResult] = await Promise.all([
+      apiFetchSafe<BacktestJob[]>("/api/backtests?limit=100"),
+      apiFetchSafe<StrategyTemplate[]>("/api/templates?active_only=true"),
+      apiFetchSafe<MarketDataStats>("/api/market-data/stats"),
+    ]);
+    const issues: string[] = [];
 
-  async function loadStats() {
-    const payload = await apiFetch<MarketDataStats>("/api/market-data/stats");
-    setStats(payload);
+    if (jobsResult.ok) {
+      setJobs(jobsResult.data);
+    } else {
+      issues.push(`最近任务读取失败：${jobsResult.error.message}`);
+    }
+
+    if (templatesResult.ok) {
+      setTemplates(templatesResult.data);
+    } else {
+      issues.push(`模板列表读取失败：${templatesResult.error.message}`);
+    }
+
+    if (statsResult.ok) {
+      setStats(statsResult.data);
+    } else {
+      issues.push(`研究样本读取失败：${statsResult.error.message}`);
+    }
+
+    setLoadWarning(issues.length > 0 ? issues.join("；") : null);
   }
 
   useEffect(() => {
-    async function loadInitialJobs() {
-      await Promise.all([loadJobs(), loadTemplates(), loadStats()]);
-    }
-
-    void loadInitialJobs();
+    queueMicrotask(() => {
+      void loadInitialSnapshot();
+    });
   }, []);
 
   useEffect(() => {
@@ -542,7 +560,7 @@ export function BacktestsView() {
       return;
     }
     const timer = window.setInterval(() => {
-      void loadJobs();
+      void loadJobs().catch(() => undefined);
     }, 3000);
     return () => window.clearInterval(timer);
   }, [jobs]);
@@ -671,6 +689,7 @@ export function BacktestsView() {
   return (
     <div className="page-stack">
       {contextHolder}
+      {loadWarning ? <InlineErrorBanner message={loadWarning} onRetry={() => void loadInitialSnapshot()} /> : null}
       <PageHeader
         eyebrow="回测配置"
         title="创建回测任务"

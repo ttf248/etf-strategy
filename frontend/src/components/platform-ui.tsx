@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, Space, Tag, Typography } from "antd";
+import { Alert, Button, Card, Result, Space, Tag, Typography } from "antd";
 import type { ReactNode } from "react";
 
 type PageHeaderProps = {
@@ -87,4 +87,60 @@ export function ToolbarCount({ children }: { children: ReactNode }) {
 
 export function CompactActions({ children }: { children: ReactNode }) {
   return <Space size={8} wrap>{children}</Space>;
+}
+
+export function PageErrorState({
+  title = "页面暂时不可用",
+  description,
+  actionLabel = "重新加载",
+  onRetry,
+}: {
+  title?: string;
+  description: ReactNode;
+  actionLabel?: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <Card size="small" className="section-card state-card">
+      <Result
+        status="error"
+        title={title}
+        subTitle={description}
+        extra={
+          onRetry ? (
+            <Button type="primary" onClick={onRetry}>
+              {actionLabel}
+            </Button>
+          ) : null
+        }
+      />
+    </Card>
+  );
+}
+
+export function InlineErrorBanner({
+  message,
+  onRetry,
+  retryLabel = "重新读取",
+}: {
+  message: ReactNode;
+  onRetry?: () => void;
+  retryLabel?: string;
+}) {
+  return (
+    <Alert
+      className="inline-error-banner"
+      type="warning"
+      showIcon
+      message="部分数据暂时不可用"
+      description={message}
+      action={
+        onRetry ? (
+          <Button size="small" onClick={onRetry}>
+            {retryLabel}
+          </Button>
+        ) : undefined
+      }
+    />
+  );
 }

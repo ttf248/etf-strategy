@@ -1,12 +1,12 @@
 "use client";
 
 import { StarFilled, StarOutlined } from "@ant-design/icons";
-import { Button, Card, Collapse, Empty, Input, Select, Space, Table, Tag, Typography } from "antd";
+import { Button, Card, Collapse, Empty, Input, Select, Skeleton, Space, Table, Tag, Typography } from "antd";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch, type ReportSummary } from "@/lib/api";
-import { FormatPercent, MetricCard, PageHeader, ToolbarCount } from "@/components/platform-ui";
+import { apiFetchSafe, type ReportSummary } from "@/lib/api";
+import { FormatPercent, InlineErrorBanner, MetricCard, PageErrorState, PageHeader, ToolbarCount } from "@/components/platform-ui";
 import { strategyLabel } from "@/lib/strategy-template-config";
 import { buildBacktestLaunchHref } from "@/lib/beginner-presets";
 
@@ -233,6 +233,8 @@ function parseCompareIds(values: string[]): number[] {
 
 export function ReportsView() {
   const [reports, setReports] = useState<ReportSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [keyword, setKeyword] = useState("");
   const [interval, setInterval] = useState<string | undefined>(undefined);
   const [qualityBucket, setQualityBucket] = useState<QualityBucket>("all");
@@ -243,8 +245,24 @@ export function ReportsView() {
   const searchParams = useSearchParams();
   const searchPresetAppliedRef = useRef(false);
 
+  async function loadReports(showSpinner: boolean = true) {
+    if (showSpinner) {
+      setLoading(true);
+    }
+    const result = await apiFetchSafe<ReportSummary[]>("/api/reports?limit=200");
+    if (result.ok) {
+      setReports(result.data);
+      setLoadError(null);
+    } else {
+      setLoadError(result.error.message);
+    }
+    setLoading(false);
+  }
+
   useEffect(() => {
-    void apiFetch<ReportSummary[]>("/api/reports?limit=200").then(setReports);
+    queueMicrotask(() => {
+      void loadReports();
+    });
   }, []);
 
   useEffect(() => {
@@ -652,8 +670,17 @@ export function ReportsView() {
     });
   }
 
+  if (loading && reports.length === 0) {
+    return <Skeleton active paragraph={{ rows: 10 }} />;
+  }
+
+  if (!loading && reports.length === 0 && loadError) {
+    return <PageErrorState title="结果列表暂时不可用" description={loadError} onRetry={() => void loadReports()} />;
+  }
+
   return (
     <div className="page-stack">
+      {loadError && reports.length > 0 ? <InlineErrorBanner message={loadError} onRetry={() => void loadReports(false)} /> : null}
       <PageHeader
         eyebrow="结果库"
         title="回测结果库"
