@@ -59,7 +59,7 @@ export function DetailItem({ label, value, tone }: DetailItemProps) {
   );
 }
 
-export function StatusTag({ value }: { value: string }) {
+export function StatusTag({ value, label }: { value: string; label?: ReactNode }) {
   const color =
     value === "succeeded" || value === "ok" || value === "completed"
       ? "green"
@@ -72,7 +72,7 @@ export function StatusTag({ value }: { value: string }) {
             : value === "cancelled"
               ? "default"
               : "default";
-  return <Tag color={color}>{value || "-"}</Tag>;
+  return <Tag color={color}>{label ?? value ?? "-"}</Tag>;
 }
 
 export function FormatPercent({ value }: { value: unknown }) {

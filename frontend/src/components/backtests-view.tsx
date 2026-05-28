@@ -84,6 +84,28 @@ function buildJobReadingHint(job: BacktestJob) {
   return "先看状态和错误提示，再决定要不要按原再跑、停掉这次，或者去结果列表继续看。";
 }
 
+function backtestStatusLabel(status: string) {
+  if (status === "succeeded") {
+    return "已经出结果";
+  }
+  if (status === "failed") {
+    return "这次没跑成";
+  }
+  if (status === "queued") {
+    return "还没开始";
+  }
+  if (status === "running") {
+    return "还在跑";
+  }
+  if (status === "cancel_requested") {
+    return "正在停掉";
+  }
+  if (status === "cancelled") {
+    return "已经停掉";
+  }
+  return status || "-";
+}
+
 export function BacktestsView() {
   const [form] = Form.useForm();
   const [jobs, setJobs] = useState<BacktestJob[]>([]);
@@ -600,7 +622,7 @@ export function BacktestsView() {
                         <strong>这次回测 #{job.id}</strong>
                         <span>{String(payload.symbol ?? "-")} / {String(payload.interval ?? "-")} / {strategyLabel(String(payload.strategy_kind ?? "-"))}</span>
                       </div>
-                      <StatusTag value={job.status} />
+                      <StatusTag value={job.status} label={backtestStatusLabel(job.status)} />
                     </div>
                     <p>{buildJobReadingHint(job)}</p>
                     <div className="job-mobile-metrics">
@@ -675,7 +697,7 @@ export function BacktestsView() {
                           { title: "周期", render: (_, row) => String(row.request_payload.interval ?? "-"), width: 90 },
                           { title: "策略", render: (_, row) => strategyLabel(String(row.request_payload.strategy_kind ?? "-")), width: 160, ellipsis: true },
                           { title: "模板", render: (_, row) => String((row.request_payload.template_snapshot as { template_name?: string } | undefined)?.template_name ?? "-"), ellipsis: true },
-                          { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <StatusTag value={value} /> },
+                          { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <StatusTag value={value} label={backtestStatusLabel(value)} /> },
                           { title: "进度", dataIndex: "progress_pct", width: 90, render: (value: number) => `${value.toFixed(0)}%` },
                           { title: "什么时候提交", dataIndex: "submitted_at", width: 180 },
                           { title: "什么时候结束", dataIndex: "completed_at", width: 180 },

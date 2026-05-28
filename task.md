@@ -3576,3 +3576,33 @@
 - 已执行 `git diff --check`
 - 已执行 `cd frontend && npx playwright test tests/smoke/platform-maintenance.spec.ts`
 - 已执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页任务状态角标口径补充
+
+### 状态
+
+已完成：代码修改与本轮验证均已完成，待单独提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理最近任务卡和完整历史表格里的任务状态角标，把首屏仍然直接暴露的 `failed / cancelled / queued / running / succeeded` 英文状态收口成前面摘要区已经使用过的中文阅读口径。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 新增回测任务状态标签文案映射，把 `succeeded / failed / queued / running / cancel_requested / cancelled` 分别显示成“已经出结果 / 这次没跑成 / 还没开始 / 还在跑 / 正在停掉 / 已经停掉”。
+  - 最近任务卡和完整历史表格的状态角标改为使用这组中文标签。
+- `frontend/src/components/platform-ui.tsx`
+  - 为 `StatusTag` 增加可选 `label`，仅让回测页在不改颜色规则的前提下覆盖显示文案。
+
+### 设计取舍
+
+- 不改任务状态判断逻辑、颜色规则、动作按钮启用条件或接口请求，只处理回测页状态角标显示文案这一处表现层问题。
+- 这轮不把系统状态页等其他页面一起改成同样口径，避免扩大提交边界。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 已执行 `cd frontend && npm run test:smoke`
