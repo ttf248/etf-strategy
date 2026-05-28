@@ -698,7 +698,7 @@ export function BacktestsView() {
                         ]}
                       />
                       <Typography.Paragraph className="table-help">
-                        任务成功后会自动生成报告，可到“查看报告”页面打开。失败通常是标的数据不足、模板不匹配，或参数组合不适合当前行情。
+                        跑成后会自动生成结果，直接去结果列表打开就行。没跑成时，通常是标的数据不足、模板不匹配，或参数组合不适合当前行情。
                       </Typography.Paragraph>
                     </>
                   ),

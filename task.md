@@ -3314,3 +3314,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页完整历史底部说明口径补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理“完整历史”桌面表格底部说明，把“任务成功后会自动生成报告”这类后台链路说明收成更像“结果出来后去哪里看、没跑成时先看什么”的阅读建议。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将完整历史表格底部说明从“任务成功后会自动生成报告，可到‘查看报告’页面打开。失败通常是...”改成“跑成后会自动生成结果，直接去结果列表打开就行。没跑成时，通常是...”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不改表格数据、批量操作、列名或行内动作，只调整完整历史表格底部说明这一处文案。
+- 这轮不改摘要横幅、最近任务卡或状态提示，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
