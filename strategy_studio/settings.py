@@ -20,6 +20,7 @@ StrategyKind = Literal[
     "grid",
     "dca",
     "ma_cross",
+    "bollinger_reversion",
     "daily_rebound",
     "minute_rebound",
     "minute_rebound_with_fade_filter",
@@ -66,6 +67,13 @@ DCA_MAX_POSITION_RATIOS = (0.95,)
 DAILY_TREND_SHORT_WINDOWS = (5, 10, 20)
 DAILY_TREND_LONG_WINDOWS = (20, 30, 60)
 DAILY_TREND_SIGNAL_BUFFERS = (0.0, 0.002, 0.005)
+
+DAILY_BOLLINGER_MA_WINDOWS = (10, 20)
+DAILY_BOLLINGER_BAND_WIDTHS = (1.5, 2.0, 2.5)
+DAILY_BOLLINGER_RSI_ENTRIES = (25.0, 30.0, 35.0)
+DAILY_BOLLINGER_TAKE_PROFITS = (3.0, 5.0, 8.0)
+DAILY_BOLLINGER_STOP_LOSSES = (4.0, 6.0, 8.0)
+DAILY_BOLLINGER_MAX_HOLD_BARS = (5, 8, 10)
 
 
 @dataclass(frozen=True)

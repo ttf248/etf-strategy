@@ -23,7 +23,9 @@ type ParameterHighlight = {
 const baseParameterLabels: Record<string, string> = {
   AnchorDate: "从哪一天开始对齐",
   BaseUnits: "基础持仓份额",
+  band_width: "布林带宽度",
   benchmark: "和谁做对照",
+  BandWidth: "布林带宽度",
   Benchmark: "和谁做对照",
   commission_bps: "交易佣金",
   cooldown_bars: "停手后先等多少根 K 线",
@@ -41,6 +43,8 @@ const baseParameterLabels: Record<string, string> = {
   LongWindow: "长均线窗口",
   Market: "在哪个市场交易",
   max_position_ratio: "最大仓位",
+  MaxHoldBars: "最大持仓 K 线数",
+  ma_window: "布林带窗口",
   NetPnl: "单独验证盈亏",
   parameter_space: "可尝试的参数范围",
   PeakDate: "这轮最高点时间",
@@ -62,16 +66,20 @@ const baseParameterLabels: Record<string, string> = {
 };
 
 const eventTypeLabels: Record<string, string> = {
+  bollinger_buy: "下轨回归买入",
   dca_buy: "定投买入",
   dca_skip: "定投跳过",
   force_exit_sell: "强制离场卖出",
   grid_sell: "网格止盈卖出",
   ma_cross_buy: "均线金叉买入",
   ma_cross_sell: "均线死叉卖出",
+  max_hold_sell: "到期离场",
+  mean_revert_sell: "回到均值卖出",
   risk_cooldown: "冷却期跳过",
   risk_position_limit: "仓位上限拦截",
   risk_stop_loss: "触发停手线",
   stop_loss_sell: "止损卖出",
+  take_profit_sell: "止盈卖出",
 };
 
 const payloadFieldLabels: Record<string, string> = {
@@ -92,6 +100,7 @@ const tradeSideLabels: Record<string, string> = {
 };
 
 const tradeTypeLabels: Record<string, string> = {
+  bollinger_reversion: "布林带均值回归",
   dca_buy: "定投买入",
   force_exit_sell: "强制离场",
   grid: "网格交易",
@@ -465,6 +474,9 @@ function strategyBeginnerSummary(strategyKind: string, interval: string): string
   if (strategyKind === "ma_cross") {
     return "用短长均线的金叉和死叉跟随中期趋势，适合先判断这只标的更像趋势市还是震荡市。";
   }
+  if (strategyKind === "bollinger_reversion") {
+    return "专门等价格跌到布林带下轨附近再尝试回归，适合先判断这只标的更像震荡市还是单边市。";
+  }
   if (strategyKind === "daily_rebound") {
     return "专门找日线级别的超跌反弹，适合慢节奏观察阶段性拐点。";
   }
@@ -485,6 +497,9 @@ function rerunFocusGuide(strategyKind: string): string {
   }
   if (strategyKind === "ma_cross") {
     return "优先改短长均线窗口，以及金叉确认时的信号缓冲比例。";
+  }
+  if (strategyKind === "bollinger_reversion") {
+    return "优先改布林带窗口、带宽、RSI 入场阈值，以及止盈止损和最长持仓时长。";
   }
   if (strategyKind === "daily_rebound") {
     return "优先改入场阈值、止盈止损和最长持有时间。";

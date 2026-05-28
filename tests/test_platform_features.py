@@ -320,6 +320,32 @@ class StrategyTemplateServiceTests(unittest.TestCase):
             },
         )
 
+    def test_normalize_parameter_space_for_bollinger_reversion(self) -> None:
+        payload = normalize_parameter_space(
+            "bollinger_reversion",
+            {
+                "ma_window": [10, "20"],
+                "band_width": [1.5, "2.0"],
+                "rsi_entry": [25, "35"],
+                "take_profit_pct": [3, "5"],
+                "stop_loss_pct": [4, "6"],
+                "max_hold_bars": [5, "8"],
+            },
+            "1d",
+        )
+
+        self.assertEqual(
+            payload,
+            {
+                "ma_window": [10, 20],
+                "band_width": [1.5, 2.0],
+                "rsi_entry": [25.0, 35.0],
+                "take_profit_pct": [3.0, 5.0],
+                "stop_loss_pct": [4.0, 6.0],
+                "max_hold_bars": [5, 8],
+            },
+        )
+
     def test_resolve_backtest_request_payload_merges_template_defaults(self) -> None:
         template = SimpleNamespace(
             id=7,
@@ -374,6 +400,7 @@ class StrategyTemplateServiceTests(unittest.TestCase):
         keys = [item.template_key for item in seeds]
         self.assertEqual(len(keys), len(set(keys)))
         self.assertIn("ma_cross_1d_realistic_default", keys)
+        self.assertIn("bollinger_reversion_1d_realistic_default", keys)
 
 
 if __name__ == "__main__":

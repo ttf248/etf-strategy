@@ -12,6 +12,12 @@ from typing import Callable
 import pandas as pd
 
 from strategy_studio.settings import (
+    DAILY_BOLLINGER_BAND_WIDTHS,
+    DAILY_BOLLINGER_MA_WINDOWS,
+    DAILY_BOLLINGER_MAX_HOLD_BARS,
+    DAILY_BOLLINGER_RSI_ENTRIES,
+    DAILY_BOLLINGER_STOP_LOSSES,
+    DAILY_BOLLINGER_TAKE_PROFITS,
     DAILY_GRID_COUNTS,
     DAILY_REBOUND_DEVIATIONS,
     DAILY_REBOUND_MA_WINDOWS,
@@ -42,6 +48,7 @@ from strategy_studio.settings import (
     MINUTE_REBOUND_TAKE_PROFITS,
     ExecutionConfig,
 )
+from strategy_studio.strategy.bollinger import optimize_bollinger_reversion_parameters, run_bollinger_reversion_backtest
 from strategy_studio.strategy.dca import optimize_dca_parameters, run_dca_backtest
 from strategy_studio.strategy.grid import optimize_grid_parameters, run_grid_backtest
 from strategy_studio.strategy.index_grid import run_index_grid_backtest
@@ -145,6 +152,17 @@ def _daily_rebound_parameter_space(interval: str) -> dict[str, object]:
         "take_profit_pct": [float(item) for item in DAILY_REBOUND_TAKE_PROFITS],
         "stop_loss_atr": [float(item) for item in DAILY_REBOUND_STOP_LOSS_ATRS],
         "max_hold_bars": [int(item) for item in DAILY_REBOUND_MAX_HOLD_BARS],
+    }
+
+
+def _bollinger_reversion_parameter_space(interval: str) -> dict[str, object]:
+    return {
+        "ma_window": [int(item) for item in DAILY_BOLLINGER_MA_WINDOWS],
+        "band_width": [float(item) for item in DAILY_BOLLINGER_BAND_WIDTHS],
+        "rsi_entry": [float(item) for item in DAILY_BOLLINGER_RSI_ENTRIES],
+        "take_profit_pct": [float(item) for item in DAILY_BOLLINGER_TAKE_PROFITS],
+        "stop_loss_pct": [float(item) for item in DAILY_BOLLINGER_STOP_LOSSES],
+        "max_hold_bars": [int(item) for item in DAILY_BOLLINGER_MAX_HOLD_BARS],
     }
 
 
@@ -298,6 +316,25 @@ def _extract_ma_cross_params(summary: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _optimize_bollinger_reversion(**kwargs: object) -> tuple[pd.DataFrame, dict[str, object]]:
+    return optimize_bollinger_reversion_parameters(**kwargs)
+
+
+def _run_bollinger_reversion_once(params: dict[str, object], **kwargs: object) -> dict[str, object]:
+    return run_bollinger_reversion_backtest(params=params, **kwargs)
+
+
+def _extract_bollinger_reversion_params(summary: dict[str, object]) -> dict[str, object]:
+    return {
+        "ma_window": int(summary["ma_window"]),
+        "band_width": float(summary["band_width"]),
+        "rsi_entry": float(summary["rsi_entry"]),
+        "take_profit_pct": float(summary["take_profit_pct"]),
+        "stop_loss_pct": float(summary["stop_loss_pct"]),
+        "max_hold_bars": int(summary["max_hold_bars"]),
+    }
+
+
 STRATEGY_SPECS: dict[str, StrategySpec] = {
     "grid": StrategySpec(
         kind="grid",
@@ -344,6 +381,24 @@ STRATEGY_SPECS: dict[str, StrategySpec] = {
         optimize=_optimize_ma_cross,
         run_once=_run_ma_cross_once,
         extract_params=_extract_ma_cross_params,
+    ),
+    "bollinger_reversion": StrategySpec(
+        kind="bollinger_reversion",
+        display_name="布林带均值回归",
+        signal_family="mean_reversion",
+        supported_intervals=("1d",),
+        parameter_fields=(
+            ParameterFieldSpec("ma_window", "布林带窗口", "int"),
+            ParameterFieldSpec("band_width", "布林带宽度", "float"),
+            ParameterFieldSpec("rsi_entry", "RSI 入场", "float"),
+            ParameterFieldSpec("take_profit_pct", "止盈比例", "float"),
+            ParameterFieldSpec("stop_loss_pct", "止损比例", "float"),
+            ParameterFieldSpec("max_hold_bars", "最大持仓 Bar", "int"),
+        ),
+        default_parameter_space=_bollinger_reversion_parameter_space,
+        optimize=_optimize_bollinger_reversion,
+        run_once=_run_bollinger_reversion_once,
+        extract_params=_extract_bollinger_reversion_params,
     ),
     "daily_rebound": StrategySpec(
         kind="daily_rebound",
@@ -433,5 +488,5 @@ def strategy_display_name(strategy_kind: str) -> str:
 
 def compare_strategy_kinds(interval: str) -> list[str]:
     if interval == "1d":
-        return ["grid", "dca", "ma_cross", "daily_rebound"]
+        return ["grid", "dca", "ma_cross", "bollinger_reversion", "daily_rebound"]
     return ["grid", "minute_rebound", "minute_rebound_with_fade_filter"]

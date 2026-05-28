@@ -4,6 +4,7 @@ export const strategyOptions = [
   { label: "网格", value: "grid" },
   { label: "定投", value: "dca" },
   { label: "双均线趋势", value: "ma_cross" },
+  { label: "布林带均值回归", value: "bollinger_reversion" },
   { label: "日线超跌反弹", value: "daily_rebound" },
   { label: "分钟急跌反抽", value: "minute_rebound" },
   { label: "分钟反抽+冲高回落过滤", value: "minute_rebound_with_fade_filter" },
@@ -38,6 +39,14 @@ const strategyDefaults: Record<string, Record<string, number[]>> = {
     short_window: [5, 10, 20],
     long_window: [20, 30, 60],
     signal_buffer_pct: [0, 0.002, 0.005],
+  },
+  bollinger_reversion: {
+    ma_window: [10, 20],
+    band_width: [1.5, 2, 2.5],
+    rsi_entry: [25, 30, 35],
+    take_profit_pct: [3, 5, 8],
+    stop_loss_pct: [4, 6, 8],
+    max_hold_bars: [5, 8, 10],
   },
   daily_rebound: {
     rsi_window: [6, 8, 10, 14],
@@ -92,6 +101,14 @@ export const parameterFieldSpecsByStrategy: Record<string, ParameterFieldSpec[]>
     { key: "short_window", label: "短均线窗口", kind: "int" },
     { key: "long_window", label: "长均线窗口", kind: "int" },
     { key: "signal_buffer_pct", label: "信号缓冲比例", kind: "float" },
+  ],
+  bollinger_reversion: [
+    { key: "ma_window", label: "布林带窗口", kind: "int" },
+    { key: "band_width", label: "布林带宽度", kind: "float" },
+    { key: "rsi_entry", label: "RSI 入场", kind: "float" },
+    { key: "take_profit_pct", label: "止盈比例", kind: "float" },
+    { key: "stop_loss_pct", label: "止损比例", kind: "float" },
+    { key: "max_hold_bars", label: "最大持仓 K 线数", kind: "int" },
   ],
   daily_rebound: [
     { key: "rsi_window", label: "RSI 窗口", kind: "int" },
