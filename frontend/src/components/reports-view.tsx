@@ -27,6 +27,24 @@ type ReportSpotlight = {
 
 type QualityBucket = "all" | "steady_winner" | "beat_buy_hold" | "no_trade" | "needs_review";
 
+type SymbolFocusCard = {
+  key: string;
+  symbol: string;
+  name: string;
+  interval: string;
+  reportCount: number;
+  positiveCount: number;
+  beatBuyHoldCount: number;
+  bestReport: ReportSummary;
+  bestMetrics: ReturnType<typeof getValidationMetrics>;
+  safestReport: ReportSummary;
+  safestMetrics: ReturnType<typeof getValidationMetrics>;
+  bestSpotlight: ReportSpotlight;
+  compareIds: number[];
+  compareLabel: string;
+  summary: string;
+};
+
 function getValidationMetrics(report: ReportSummary) {
   const validation = report.summary_metrics.validation ?? {};
   const netReturn = Number(validation.NetReturnPct ?? validation.ReturnPct ?? 0);
@@ -154,6 +172,36 @@ function buildReportSpotlight(report: ReportSummary, isFavorite: boolean): Repor
     color: "red",
     reason: "该结果默认排在后面，更适合作为反向对照，用于识别应避开的配置组合。",
   };
+}
+
+function compareReportsForReview(left: ReportSummary, right: ReportSummary, favoriteReportIds: number[]): number {
+  const leftSpotlight = buildReportSpotlight(left, favoriteReportIds.includes(left.id));
+  const rightSpotlight = buildReportSpotlight(right, favoriteReportIds.includes(right.id));
+  if (leftSpotlight.rank !== rightSpotlight.rank) {
+    return leftSpotlight.rank - rightSpotlight.rank;
+  }
+  const leftMetrics = getValidationMetrics(left);
+  const rightMetrics = getValidationMetrics(right);
+  if (leftMetrics.netReturn !== rightMetrics.netReturn) {
+    return rightMetrics.netReturn - leftMetrics.netReturn;
+  }
+  if (leftMetrics.maxDrawdown !== rightMetrics.maxDrawdown) {
+    return leftMetrics.maxDrawdown - rightMetrics.maxDrawdown;
+  }
+  return right.id - left.id;
+}
+
+function buildCompareHrefForReports(reports: ReportSummary[]): string {
+  if (reports.length === 0) {
+    return "/reports";
+  }
+  const searchParams = new URLSearchParams();
+  for (const report of reports.slice(0, 4)) {
+    searchParams.append("compare", String(report.id));
+  }
+  searchParams.set("keyword", reports[0].symbol);
+  searchParams.set("interval", reports[0].interval);
+  return `/reports?${searchParams.toString()}`;
 }
 
 function parseCompareIds(values: string[]): number[] {
@@ -316,22 +364,81 @@ export function ReportsView() {
     [queryPreset, reports, selectedReportIds],
   );
   const sortedCardReports = useMemo(() => {
-    return [...filteredReports].sort((left, right) => {
-      const leftSpotlight = buildReportSpotlight(left, validFavoriteReportIds.includes(left.id));
-      const rightSpotlight = buildReportSpotlight(right, validFavoriteReportIds.includes(right.id));
-      if (leftSpotlight.rank !== rightSpotlight.rank) {
-        return leftSpotlight.rank - rightSpotlight.rank;
-      }
-      const leftMetrics = getValidationMetrics(left);
-      const rightMetrics = getValidationMetrics(right);
-      if (leftMetrics.netReturn !== rightMetrics.netReturn) {
-        return rightMetrics.netReturn - leftMetrics.netReturn;
-      }
-      if (leftMetrics.maxDrawdown !== rightMetrics.maxDrawdown) {
-        return leftMetrics.maxDrawdown - rightMetrics.maxDrawdown;
-      }
-      return right.id - left.id;
-    });
+    return [...filteredReports].sort((left, right) => compareReportsForReview(left, right, validFavoriteReportIds));
+  }, [filteredReports, validFavoriteReportIds]);
+  const symbolFocusCards = useMemo(() => {
+    const groups = new Map<string, ReportSummary[]>();
+    for (const report of filteredReports) {
+      const key = `${report.symbol}__${report.interval}`;
+      groups.set(key, [...(groups.get(key) ?? []), report]);
+    }
+
+    return Array.from(groups.entries())
+      .map(([key, groupReports]) => {
+        const sortedGroup = [...groupReports].sort((left, right) => compareReportsForReview(left, right, validFavoriteReportIds));
+        const bestReport = sortedGroup[0];
+        const bestMetrics = getValidationMetrics(bestReport);
+        const safestReport = groupReports.reduce((best, current) => {
+          if (!best) {
+            return current;
+          }
+          return getValidationMetrics(current).maxDrawdown < getValidationMetrics(best).maxDrawdown ? current : best;
+        }, groupReports[0]);
+        const safestMetrics = getValidationMetrics(safestReport);
+        const positiveCount = groupReports.filter((item) => getValidationMetrics(item).netReturn > 0).length;
+        const beatBuyHoldCount = groupReports.filter((item) => getValidationMetrics(item).outperformBuyHold).length;
+        const compareCandidates = sortedGroup.slice(0, Math.min(4, sortedGroup.length));
+        const compareLabel =
+          compareCandidates.length <= 1
+            ? "当前只有这一份结果"
+            : `已挑出 ${compareCandidates.length} 份最值得并排看的结果`;
+
+        let summary = `当前这组共有 ${groupReports.length} 份结果，先打开编号 ${bestReport.id} 作为主样本。`;
+        if (positiveCount === 0) {
+          summary = `当前这组 ${groupReports.length} 份结果里还没有正收益样本，更适合作为反向对照排查策略方向与参数假设。`;
+        } else if (beatBuyHoldCount > 0 && groupReports.length >= 3) {
+          summary = `当前这组已经有 ${beatBuyHoldCount} 份结果跑赢买入持有，适合先看最佳样本，再把同组前几份结果拉进对比区判断领先是否稳定。`;
+        } else if (groupReports.length === 1) {
+          summary = "当前这个标的和周期只生成过一份结果，还不够形成稳健判断，建议后续继续补同标的对照。";
+        } else if (positiveCount >= 2) {
+          summary = `当前这组已有 ${positiveCount} 份正收益样本，说明它已经具备继续深挖的价值，下一步更适合比较收益效率与回撤差异。`;
+        }
+
+        return {
+          key,
+          symbol: bestReport.symbol,
+          name: bestReport.name,
+          interval: bestReport.interval,
+          reportCount: groupReports.length,
+          positiveCount,
+          beatBuyHoldCount,
+          bestReport,
+          bestMetrics,
+          safestReport,
+          safestMetrics,
+          bestSpotlight: buildReportSpotlight(bestReport, validFavoriteReportIds.includes(bestReport.id)),
+          compareIds: compareCandidates.map((item) => item.id),
+          compareLabel,
+          summary,
+        } satisfies SymbolFocusCard;
+      })
+      .sort((left, right) => {
+        const spotlightRankDiff = left.bestSpotlight.rank - right.bestSpotlight.rank;
+        if (spotlightRankDiff !== 0) {
+          return spotlightRankDiff;
+        }
+        if (left.bestMetrics.netReturn !== right.bestMetrics.netReturn) {
+          return right.bestMetrics.netReturn - left.bestMetrics.netReturn;
+        }
+        if (left.beatBuyHoldCount !== right.beatBuyHoldCount) {
+          return right.beatBuyHoldCount - left.beatBuyHoldCount;
+        }
+        if (left.reportCount !== right.reportCount) {
+          return right.reportCount - left.reportCount;
+        }
+        return left.symbol.localeCompare(right.symbol);
+      })
+      .slice(0, 6);
   }, [filteredReports, validFavoriteReportIds]);
   const quickFilterStats = useMemo(
     () => ({
@@ -477,6 +584,78 @@ export function ReportsView() {
             <Button>
               <Link href={buildRerunHref(recommendedReport)}>按这套配置重跑</Link>
             </Button>
+          </div>
+        </Card>
+      ) : null}
+
+      {symbolFocusCards.length > 0 ? (
+        <Card size="small" title="同标的研究焦点" className="section-card report-compare-card">
+          <div className="detail-secondary-hint">
+            <strong>先决定“哪个标的值得继续研究”，再决定“先看哪一份报告”</strong>
+            <p>如果当前结果很多，先在这里按标的和周期归纳，通常比直接通读所有单份报告更快。每张卡都会告诉你这组里有没有正收益、有没有跑赢买入持有，以及最该并排比较的候选是谁。</p>
+          </div>
+          <div className="report-compare-stack">
+            <div className="report-compare-grid">
+              {symbolFocusCards.map((card) => (
+                <article key={card.key} className="report-compare-item">
+                  <div className="report-compare-head">
+                    <strong>{card.symbol} / {card.interval}</strong>
+                    <Tag color={card.bestSpotlight.color}>{card.bestSpotlight.label}</Tag>
+                  </div>
+                  <span>
+                    {card.name || "未命名标的"} · 当前 {card.reportCount} 份结果，正收益 {card.positiveCount} 份
+                  </span>
+                  <div className="report-compare-metrics">
+                    <span>最佳收益 <FormatPercent value={card.bestMetrics.netReturn} /></span>
+                    <span>最低回撤 {card.safestMetrics.maxDrawdown.toFixed(2)}%</span>
+                    <span>跑赢持有 {card.beatBuyHoldCount}</span>
+                  </div>
+                  <Typography.Text type="secondary">{card.summary}</Typography.Text>
+                  <Typography.Text type="secondary">{card.compareLabel}</Typography.Text>
+                  <div className="report-compare-actions">
+                    <Button size="small" type="primary">
+                      <Link href={`/reports/${card.bestReport.id}`}>先看最佳样本</Link>
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => {
+                        setKeyword(card.symbol);
+                        setInterval(card.interval);
+                        setSelectedReportIds(card.compareIds);
+                      }}
+                    >
+                      把这组放进对比区
+                    </Button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="report-compare-summary">
+              <strong>怎么使用这块</strong>
+              <p>
+                如果你当前想先找“最值得继续研究的标的”，先看这组卡片通常比逐份翻报告更快。先打开一张卡里的最佳样本，确认收益、回撤和同组位置，再决定是继续重跑这个标的，还是换到别的标的组。
+              </p>
+              <div className="report-compare-summary-actions">
+                {symbolFocusCards[0] ? (
+                  <Button type="primary">
+                    <Link href={`/reports/${symbolFocusCards[0].bestReport.id}`}>打开当前第一优先组</Link>
+                  </Button>
+                ) : null}
+                {symbolFocusCards[0] ? (
+                  <Button>
+                    <Link
+                      href={buildCompareHrefForReports(
+                        symbolFocusCards[0].compareIds
+                          .map((id) => reports.find((item) => item.id === id))
+                          .filter((item): item is ReportSummary => Boolean(item)),
+                      )}
+                    >
+                      直接进入这组对比
+                    </Link>
+                  </Button>
+                ) : null}
+              </div>
+            </div>
           </div>
         </Card>
       ) : null}
