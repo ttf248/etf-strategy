@@ -3024,3 +3024,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页最近任务卡次级动作口径补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理“最近回测任务”卡片里的两个次级动作文案，把它从任务操作按钮收成更像“现在要不要停掉这次、要不要按原配置再跑”。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将最近任务卡次级动作从“取消 / 重试”改成“先停掉这次 / 按原配置再跑”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不删除取消或重跑能力，也不改变按钮启用条件、请求逻辑或完整历史表格里的批量动作，只调整最近任务卡这两个次级动作的文案。
+- 这轮不改主按钮、摘要横幅、错误提示或完整历史入口，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`

@@ -621,10 +621,10 @@ export function BacktestsView() {
                         <Button disabled>先等结果出来</Button>
                       )}
                       <Button disabled={!["queued", "running"].includes(job.status)} onClick={() => void cancelJob(job.id)}>
-                        取消
+                        先停掉这次
                       </Button>
                       <Button disabled={job.status !== "failed"} onClick={() => void retryJob(job.id)}>
-                        重试
+                        按原配置再跑
                       </Button>
                     </div>
                   </article>
