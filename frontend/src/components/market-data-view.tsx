@@ -35,6 +35,14 @@ type StartDecisionCard = {
   description: string;
 };
 
+type SymbolIntervalCard = {
+  interval: string;
+  title: string;
+  value: string;
+  description: string;
+  ready: boolean;
+};
+
 function coverageStage(profile: CoverageProfile) {
   const hasDaily = profile.intervals.has("1d");
   const has15m = profile.intervals.has("15m");
@@ -148,6 +156,81 @@ function buildStartDecisionCards(
     description: "若当前仅研究这一只标的，补齐推荐周期即可。只有准备同步扩展更多标的时，再做全量同步。",
   };
   return [currentDecision, nextAction, syncAllDecision];
+}
+
+function buildSymbolIntervalCards(symbolIntervals: Set<string>, hasRows: boolean): SymbolIntervalCard[] {
+  const cards: Array<{
+    interval: string;
+    title: string;
+    purpose: string;
+  }> = [
+    {
+      interval: "1d",
+      title: "日线基线",
+      purpose: "用于定投、日线择时和更长区间的稳健复盘。",
+    },
+    {
+      interval: "15m",
+      title: "分钟级基线",
+      purpose: "用于默认网格和大多数分钟级基线策略。",
+    },
+    {
+      interval: "1m",
+      title: "更细粒度短线",
+      purpose: "只有需要更高频的分钟信号时才值得补。",
+    },
+  ];
+
+  return cards.map((item) => {
+    if (!hasRows) {
+      return {
+        interval: item.interval,
+        title: item.title,
+        value: "尚未准备",
+        description: item.purpose,
+        ready: false,
+      };
+    }
+    const ready = symbolIntervals.has(item.interval);
+    return {
+      interval: item.interval,
+      title: item.title,
+      value: ready ? "已覆盖" : "待补齐",
+      description: ready ? `当前已经具备 ${item.interval}，${item.purpose}` : `当前还没有 ${item.interval}，${item.purpose}`,
+      ready,
+    };
+  });
+}
+
+function buildPrimaryResearchPath(params: {
+  checkedSymbol: string;
+  hasRows: boolean;
+  intervalRecommendations: IntervalRecommendation[];
+  symbolIntervals: Set<string>;
+}): { title: string; description: string } {
+  const normalizedSymbol = params.checkedSymbol.trim().toUpperCase();
+  if (!normalizedSymbol) {
+    return {
+      title: "先输入一个目标标的，确认它是否具备最小研究样本",
+      description: "不需要先浏览全库覆盖，先把一个熟悉标的补到可研究状态更直接。",
+    };
+  }
+  if (!params.hasRows) {
+    return {
+      title: `先把 ${normalizedSymbol} 补到可研究状态`,
+      description: `当前还没有 ${normalizedSymbol} 行情。通常先补 ${params.intervalRecommendations[0]?.interval ?? "1d"}，再按研究需求补 ${params.intervalRecommendations[1]?.interval ?? "15m"}。`,
+    };
+  }
+  if (params.symbolIntervals.has("1d") && params.symbolIntervals.has("15m")) {
+    return {
+      title: `${normalizedSymbol} 已具备最常用研究样本，可直接进入回测`,
+      description: "当前更值得做的是先跑出一份结果，再根据复盘结论决定要不要补更多标的或更细周期。",
+    };
+  }
+  return {
+    title: `${normalizedSymbol} 已有部分覆盖，建议补齐常用周期后再扩大范围`,
+    description: "如果你只研究这一只标的，先把日线和 15m 补齐通常比先做全量同步更有效。",
+  };
 }
 
 export function MarketDataView() {
@@ -379,6 +462,20 @@ export function MarketDataView() {
     () => buildStartDecisionCards(checkedSymbol, symbolRows, symbolIntervals, intervalRecommendations, readySymbolCount),
     [checkedSymbol, intervalRecommendations, readySymbolCount, symbolIntervals, symbolRows],
   );
+  const symbolIntervalCards = useMemo(
+    () => buildSymbolIntervalCards(symbolIntervals, symbolRows.length > 0),
+    [symbolIntervals, symbolRows.length],
+  );
+  const primaryResearchPath = useMemo(
+    () =>
+      buildPrimaryResearchPath({
+        checkedSymbol,
+        hasRows: symbolRows.length > 0,
+        intervalRecommendations,
+        symbolIntervals,
+      }),
+    [checkedSymbol, intervalRecommendations, symbolIntervals, symbolRows.length],
+  );
 
   function applyCheckedSymbol(targetSymbol: string) {
     const normalizedSymbol = targetSymbol.trim().toUpperCase();
@@ -451,20 +548,8 @@ export function MarketDataView() {
 
       <Card size="small" className="section-card start-path-card">
         <div className="start-path-main">
-          <strong>
-            {symbolRows.length === 0
-              ? "先补齐一个可研究标的，再决定是否执行全量同步"
-              : intervalRecommendations.length === 0
-                ? "当前标的覆盖已满足主流程，无需继续查看完整覆盖表"
-                : "当前标的已可开始研究，但补齐常用周期会更稳妥"}
-          </strong>
-          <p>
-            {symbolRows.length === 0
-              ? "当前更应先将一个标的补到可研究状态，而不是先浏览完整覆盖表。通常先补 1d，再按研究需求补 15m。"
-              : intervalRecommendations.length === 0
-                ? "该标的已具备常用研究周期，可直接进入回测配置；只有需要核对更多标的时，再展开下方高级明细。"
-                : "当前标的已具备部分覆盖，可先开展研究；若需要长期复盘或分钟级基线策略，建议继续补齐推荐周期。"}
-          </p>
+          <strong>{primaryResearchPath.title}</strong>
+          <p>{primaryResearchPath.description}</p>
           <div className="start-path-guide-grid">
             {startDecisionCards.map((item) => (
               <article key={item.title} className="start-path-guide-card">
@@ -491,6 +576,68 @@ export function MarketDataView() {
               先补 {intervalRecommendations[0].interval}
             </Button>
           ) : null}
+        </div>
+      </Card>
+
+      <Card size="small" title="当前标的下一步" className="section-card">
+        <div className="data-next-step-grid">
+          <div className="data-next-step-main">
+            <div className="data-next-step-banner">
+              <strong>
+                {checkedSymbol.trim()
+                  ? `${checkedSymbol.trim().toUpperCase()} 的研究准备情况`
+                  : "先输入一个标的，页面会告诉你最短研究路径"}
+              </strong>
+              <p>
+                目标不是一次性补齐所有周期，而是先回答两个问题：这只标的现在能不能直接跑？如果不能，最先该补哪个周期？
+              </p>
+            </div>
+            <div className="data-next-step-card-grid">
+              {symbolIntervalCards.map((item) => (
+                <article key={item.interval} className={`data-next-step-card${item.ready ? " is-ready" : ""}`}>
+                  <div className="data-next-step-card-head">
+                    <Tag color={item.ready ? "green" : "default"}>{item.interval}</Tag>
+                    <span>{item.title}</span>
+                  </div>
+                  <strong>{item.value}</strong>
+                  <p>{item.description}</p>
+                  {!item.ready && checkedSymbol.trim() ? (
+                    <Button
+                      size="small"
+                      loading={syncingSymbol && syncInterval === item.interval}
+                      onClick={() => void syncSymbolForInterval(item.interval)}
+                    >
+                      补 {item.interval}
+                    </Button>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          </div>
+          <div className="data-next-step-side">
+            <div className="data-next-step-side-card">
+              <span>最短路径</span>
+              <strong>
+                {checkedSymbolLaunchHref
+                  ? "当前可以直接进入回测"
+                  : intervalRecommendations[0]
+                    ? `先补 ${intervalRecommendations[0].interval}`
+                    : "先检查一个标的"}
+              </strong>
+              <p>
+                {checkedSymbolLaunchHref
+                  ? "已经具备主流程所需覆盖，下一步应先创建回测，而不是继续停留在覆盖明细页。"
+                  : intervalRecommendations[0]
+                    ? intervalRecommendations[0].description
+                    : "输入目标标的后，系统会直接给出最先该补的周期。"}
+              </p>
+            </div>
+            <div className="data-next-step-side-card">
+              <span>何时看高级明细</span>
+              <strong>只有筛选多个标的或排查异常时再看</strong>
+              <p>如果你当前只是想把一个标的跑起来，上面的状态卡和推荐动作通常已经足够，不需要先读完整覆盖表。</p>
+            </div>
+          </div>
         </div>
       </Card>
 
@@ -526,7 +673,7 @@ export function MarketDataView() {
         )}
       </Card>
 
-      <Card size="small" title="按覆盖层级选择研究标的" className="section-card">
+      <Card size="small" title="如果你还没定标的，可先从这里开始" className="section-card">
         <div className="quality-hint-grid">
           {coverageInsights.map((item) => (
             <article key={item.key} className="quality-hint-card">
@@ -578,7 +725,7 @@ export function MarketDataView() {
       <Card size="small" title="数据覆盖高级明细" className="section-card">
         <div className="data-library-banner">
           <strong>只有在需要核对全部覆盖细节时，再展开完整明细</strong>
-          <p>大多数情况下，上方的覆盖检查、分层结果与推荐周期已足以支持下一步决策。只有在筛选多个标的、核对更新时间或排查覆盖异常时，再查看完整表格。</p>
+          <p>大多数情况下，上方的覆盖检查、当前标的下一步与推荐样本已足以支持决策。只有在筛选多个标的、核对更新时间或排查覆盖异常时，再查看完整表格。</p>
         </div>
         <div className="data-maintenance-banner">
           <div>

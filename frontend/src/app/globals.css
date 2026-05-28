@@ -2877,6 +2877,123 @@ a {
   margin-top: 14px !important;
 }
 
+.data-next-step-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 16px;
+}
+
+.data-next-step-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.data-next-step-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid rgba(29, 78, 216, 0.14);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(29, 78, 216, 0.06), rgba(15, 118, 110, 0.03));
+}
+
+.data-next-step-banner strong {
+  color: #0f172a;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.data-next-step-banner p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.data-next-step-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.data-next-step-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.data-next-step-card.is-ready {
+  border-color: rgba(19, 138, 80, 0.18);
+  background: linear-gradient(180deg, rgba(240, 253, 244, 0.9), rgba(248, 250, 252, 0.98));
+}
+
+.data-next-step-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.data-next-step-card-head span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.data-next-step-card strong {
+  color: #0f172a;
+  font-size: 20px;
+  line-height: 26px;
+}
+
+.data-next-step-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.data-next-step-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.data-next-step-side-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.data-next-step-side-card span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.data-next-step-side-card strong {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.data-next-step-side-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .coverage-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -3253,6 +3370,10 @@ a {
   }
 
   .data-check-card .ant-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .data-next-step-grid {
     grid-template-columns: 1fr;
   }
 
