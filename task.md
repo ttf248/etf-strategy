@@ -3691,3 +3691,31 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 已执行 `cd frontend && npm run test:smoke`
+
+## 首页数据更新卡口径补充
+
+### 状态
+
+已完成：代码修改与本轮验证均已完成，待单独提交。
+
+### 修改方案
+
+继续按首页局部体验边界优化，只处理摘要区里“最近数据同步”这张卡，把明显偏平台运维的说法收成更像普通用户会理解的“数据最近有没有更新”。
+
+### 修改内容
+
+- `frontend/src/components/dashboard-view.tsx`
+  - 将首页摘要卡标签从“最近数据同步”改成“数据最近更新”。
+  - 无更新记录时的兜底说明从“等待同步记录”改成“还没有更新记录”。
+
+### 设计取舍
+
+- 不改数据同步状态计算、时间展示、摘要卡数量或高级数据明细，只调整首页这一张摘要卡的文案。
+- 这轮不顺手处理其他摘要卡或系统状态页同步文案，避免扩大提交边界。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 已执行 `cd frontend && npm run test:smoke`

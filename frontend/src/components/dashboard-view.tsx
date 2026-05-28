@@ -478,7 +478,7 @@ export function DashboardView() {
         <MetricCard label="可回测标的" value={stats.instrument_count} note="已准备好的标的" />
         <MetricCard label="行情记录" value={stats.total_bars.toLocaleString()} note="用于回测的 K 线" />
         <MetricCard label="可用周期" value={stats.by_interval.map((item) => item.interval).join(" / ") || "-"} note={`${stats.by_interval.length} 类周期`} />
-        <MetricCard label="最近数据同步" value={latestSyncStatus} note={latestSync?.completed_at ?? latestSync?.interval ?? "等待同步记录"} />
+        <MetricCard label="数据最近更新" value={latestSyncStatus} note={latestSync?.completed_at ?? latestSync?.interval ?? "还没有更新记录"} />
       </div>
 
       <Card title="现在更适合先看的报告" size="small" className="section-card">
