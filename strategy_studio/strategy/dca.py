@@ -77,9 +77,6 @@ def _build_benchmark_metrics(
         "CashIdleUnits": 0,
         "CashIdleFinalEquity": total_capital,
         "CashIdleReturnPct": 0.0,
-        "BaseOnlyUnits": 0,
-        "BaseOnlyFinalEquity": total_capital,
-        "BaseOnlyReturnPct": 0.0,
         "BuyHoldUnits": buy_hold_units,
         "BuyHoldFinalEquity": buy_hold_equity,
         "BuyHoldReturnPct": (buy_hold_equity / total_capital - 1) * 100 if total_capital else 0.0,
@@ -98,7 +95,7 @@ def _period_key(timestamp: pd.Timestamp, frequency: str) -> tuple[int, int]:
 def _build_dca_schedule(index: pd.DatetimeIndex, frequency: str, day_rule: str) -> set[pd.Timestamp]:
     """按真实可交易日生成定投触发点。
 
-    当前只实现每个周期第一个交易日。这样不会假设自然日一定开市，也能兼容
+    当前只实现每个周期第一个交易日。这样不会假设自然日一定开市，也能覆盖
     港股、美股、A 股 ETF 的节假日缺口。
     """
     if day_rule != "first_trading_day":
@@ -359,7 +356,6 @@ def run_dca_backtest(
         "DcaAverageCost": float(latest_snapshot.get("EffectiveCost", 0.0)),
         **benchmark_metrics,
         "GridVsCashIdle": final_equity - float(benchmark_metrics["CashIdleFinalEquity"]),
-        "GridVsBaseOnly": final_equity - float(benchmark_metrics["BaseOnlyFinalEquity"]),
         "GridVsBuyHold": final_equity - float(benchmark_metrics["BuyHoldFinalEquity"]),
         "Score": score,
         "TriggeredEntry": buy_count > 0,

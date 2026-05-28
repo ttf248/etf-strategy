@@ -82,7 +82,7 @@ class FixedUnitGridStrategy(Strategy):
         self.high_water_mark = first_close
         self.peak_date = first_date
 
-        # 兼容旧报告字段：纯现金网格没有底仓，相关数量固定为 0。
+        # 纯现金网格没有独立底仓，因此相关数量固定为 0。
         self.base_cash_budget = 0.0
         self.reserve_cash_budget = self.total_capital
 
@@ -587,10 +587,6 @@ def _build_benchmark_metrics(
         "CashIdleUnits": 0,
         "CashIdleFinalEquity": total_capital,
         "CashIdleReturnPct": 0.0,
-        # 旧字段保留为现金闲置别名，避免历史 CSV 消费方在过渡期直接失效。
-        "BaseOnlyUnits": 0,
-        "BaseOnlyFinalEquity": total_capital,
-        "BaseOnlyReturnPct": 0.0,
         "BuyHoldUnits": buy_hold_units,
         "BuyHoldFinalEquity": buy_hold_equity,
         "BuyHoldReturnPct": (buy_hold_equity / total_capital - 1) * 100 if total_capital else 0.0,
@@ -798,7 +794,7 @@ def _run_grid_backtest_single(
     final_equity = float(stats["Equity Final [$]"])
     net_pnl = final_equity - total_capital
 
-    # summary 是项目内部统一口径的“最小汇总单元”，CSV、报告和参数搜索都依赖这些字段。
+    # summary 是项目内部统一口径的“最小汇总单元”，数据库结果、前端展示和参数搜索都依赖这些字段。
     summary = {
         "Symbol": symbol,
         "Market": market,
@@ -860,7 +856,6 @@ def _run_grid_backtest_single(
         "Benchmark": execution.benchmark,
         **benchmark_metrics,
         "GridVsCashIdle": final_equity - float(benchmark_metrics["CashIdleFinalEquity"]),
-        "GridVsBaseOnly": final_equity - float(benchmark_metrics["BaseOnlyFinalEquity"]),
         "GridVsBuyHold": final_equity - float(benchmark_metrics["BuyHoldFinalEquity"]),
         "Score": compute_score(return_pct, max_drawdown_pct, closed_grid_return_pct),
         "TriggeredEntry": bool(events["EventType"].eq("grid_buy").any()) if not events.empty else False,

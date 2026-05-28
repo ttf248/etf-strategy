@@ -162,13 +162,3 @@ def save_price_bars(
         f"收到的 output_path={Path(output_path)}、interval={interval}、merge_with_existing={merge_with_existing} 不会执行；"
         "请改用 sync-now 或平台数据覆盖页把行情直接写入数据库。"
     )
-
-
-def download_daily_bars(symbol: str, start_date: str, end_date: str, proxy: str | None = None) -> pd.DataFrame:
-    """兼容旧接口的日线下载封装。"""
-    return download_price_bars(symbol=symbol, interval="1d", start_date=start_date, end_date=end_date, proxy=proxy)
-
-
-def save_daily_bars(frame: pd.DataFrame, output_path: str | Path) -> Path:
-    """兼容旧接口的保存封装。"""
-    return save_price_bars(frame, output_path, interval="1d")

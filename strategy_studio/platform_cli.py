@@ -192,7 +192,6 @@ def _build_port_in_use_error(host: str, port: int) -> RuntimeError:
 
 def add_platform_subcommands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     init_db_parser = subparsers.add_parser("init-db", help="创建项目数据库并执行迁移")
-    init_db_parser.add_argument("--with-migration", action="store_true", default=True, help="保留兼容参数，占位表示执行迁移")
 
     sync_parser = subparsers.add_parser("sync-now", help="立即同步 Yahoo 行情到数据库")
     sync_parser.add_argument("--symbol", default=None, help="指定单个标的；不传则同步数据库中已知全部标的")

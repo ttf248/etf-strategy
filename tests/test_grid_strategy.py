@@ -370,6 +370,10 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(summary["GridUnitsPerLevel"], 3200)
         self.assertEqual(summary["GridMode"], "cash")
         self.assertEqual(summary["RequestedLeftSidePolicy"], "both")
+        self.assertNotIn("BaseOnlyUnits", summary)
+        self.assertNotIn("BaseOnlyFinalEquity", summary)
+        self.assertNotIn("BaseOnlyReturnPct", summary)
+        self.assertNotIn("GridVsBaseOnly", summary)
         self.assertIn("policy_results", result)
         self.assertFalse(events.empty)
         self.assertTrue({"grid_buy", "grid_sell"}.issubset(set(events["EventType"])))
@@ -414,6 +418,8 @@ class GridStrategyTests(unittest.TestCase):
         self.assertIn("ExecutionPrice", events.columns)
         self.assertIn("CashIdleReturnPct", summary)
         self.assertIn("BuyHoldReturnPct", summary)
+        self.assertNotIn("BaseOnlyUnits", summary)
+        self.assertNotIn("GridVsBaseOnly", summary)
 
     def test_run_grid_backtest_force_exit_sells_open_grid_and_stops(self) -> None:
         prices = [20.0, 19.0, 18.0, 16.0, 15.0, 17.0]
@@ -525,6 +531,8 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(summary["GridSellCount"], 1)
         self.assertEqual(summary["GridCyclesCompleted"], 1)
         self.assertEqual(summary["PositionUnits"], summary["BasePositionUnits"])
+        self.assertNotIn("BaseOnlyUnits", summary)
+        self.assertNotIn("GridVsBaseOnly", summary)
         self.assertIn("base_buy", set(events["EventType"]))
         self.assertIn("retrace_buy", set(events["EventType"]))
         self.assertIn("retrace_sell", set(events["EventType"]))
@@ -586,6 +594,8 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(summary["StrategyKind"], "daily_rebound")
         self.assertTrue(summary["TriggeredEntry"])
         self.assertGreaterEqual(summary["ClosedTrades"], 1)
+        self.assertNotIn("BaseOnlyUnits", summary)
+        self.assertNotIn("GridVsBaseOnly", summary)
         self.assertIn("rebound_buy", set(events["EventType"]))
         self.assertTrue({"take_profit_sell", "max_hold_sell", "stop_loss_sell"}.intersection(set(events["EventType"])))
 
@@ -622,6 +632,8 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(summary["StrategyName"], "定投")
         self.assertGreaterEqual(summary["DcaBuyCount"], 1)
         self.assertGreater(summary["DcaInvestedCash"], 0)
+        self.assertNotIn("BaseOnlyUnits", summary)
+        self.assertNotIn("GridVsBaseOnly", summary)
         self.assertIn("dca_buy", set(events["EventType"]))
         self.assertFalse(trades.empty)
         self.assertTrue((trades["Size"] < 0).all())

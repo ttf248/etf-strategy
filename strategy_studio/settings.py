@@ -67,7 +67,7 @@ DCA_MAX_POSITION_RATIOS = (0.95,)
 class ExecutionConfig:
     """单次回测的执行口径。
 
-    `research` 保持当前简化撮合，适合做历史兼容和快速方向研究。
+    `research` 保持当前简化撮合，适合快速做方向验证和参数筛选。
     `realistic` 会引入费用、滑点和基础风控字段，适合报告里更接近实盘的口径。
     """
 

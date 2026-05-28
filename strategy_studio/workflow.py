@@ -163,8 +163,8 @@ def _resolve_strategy_parameter_space(
 ) -> dict[str, list[object]]:
     """统一解析策略参数空间。
 
-    旧 CLI 仍保留 `spacings/grid_counts/take_profits` 三个显式参数，因此这里
-    对网格做一次兼容合并；其他策略统一使用注册表默认值或模板传入值。
+    网格策略既支持直接传入三组显式数组，也支持传入完整 parameter_space；
+    其他策略统一使用注册表默认值或模板传入值。
     """
     if parameter_space is not None:
         return {key: list(value) for key, value in parameter_space.items()}

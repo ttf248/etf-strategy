@@ -27,6 +27,7 @@ class PlatformFeatureTests(unittest.TestCase):
         replace_args = parser.parse_args(["api", "--replace-existing"])
 
         self.assertEqual(init_args.command, "init-db")
+        self.assertFalse(hasattr(init_args, "with_migration"))
         self.assertEqual(api_args.command, "api")
         self.assertEqual(api_args.host, "127.0.0.1")
         self.assertEqual(api_args.port, 8000)
