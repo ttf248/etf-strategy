@@ -69,11 +69,11 @@ const eventTypeLabels: Record<string, string> = {
 
 const payloadFieldLabels: Record<string, string> = {
   CashFlow: "成交金额",
-  EventType: "事件类型",
+  EventType: "这次发生了什么",
   ExecutionPrice: "估算成交价",
   Level: "网格层",
   Note: "说明",
-  Price: "触发价",
+  Price: "触发时价格",
   SlippageCost: "滑点成本",
   TransactionCost: "交易费用",
   Units: "数量",
