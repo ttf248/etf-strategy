@@ -10,7 +10,7 @@ import {
   MonitorOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
-import { Button, Drawer, Layout, Menu, Tag, Typography } from "antd";
+import { Button, Drawer, Layout, Menu, Typography } from "antd";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -44,6 +44,23 @@ type WorkflowStep = {
   summary: string;
   detail: string;
   status: "ready" | "active" | "waiting";
+};
+
+type ShellGuidance = {
+  tone: "ready" | "active" | "attention";
+  kicker: string;
+  title: string;
+  description: string;
+  primaryLabel: string;
+  primaryHref: string;
+  secondaryLabel: string;
+  secondaryHref: string;
+  recommendedKey: string;
+  signals: Array<{
+    label: string;
+    value: string;
+    detail: string;
+  }>;
 };
 
 const primaryItems = [
@@ -114,6 +131,26 @@ function formatDuration(seconds: number | null | undefined): string {
   return remainMinutes > 0 ? `${hours} 小时 ${remainMinutes} 分` : `${hours} 小时`;
 }
 
+function getValidationMetrics(report: ReportSummary | null): {
+  netReturn: number;
+  maxDrawdown: number;
+  closedTrades: number;
+  outperformBuyHold: boolean;
+} {
+  const validation = report?.summary_metrics.validation ?? {};
+  const netReturn = Number(validation.NetReturnPct ?? validation.ReturnPct ?? 0);
+  const maxDrawdown = Number(validation.MaxDrawdownPct ?? 0);
+  const closedTrades = Number(validation.ClosedTrades ?? 0);
+  const relativeValue = validation.StrategyVsBuyHold ?? validation.GridVsBuyHold;
+  const outperformBuyHold =
+    typeof validation.OutperformBuyHold === "boolean"
+      ? validation.OutperformBuyHold
+      : typeof relativeValue === "number" && Number.isFinite(relativeValue)
+        ? relativeValue > 0
+        : false;
+  return { netReturn, maxDrawdown, closedTrades, outperformBuyHold };
+}
+
 function buildShellStatusLabel(snapshot: ShellSnapshot): { title: string; description: string } {
   if (!snapshot.ready) {
     return {
@@ -155,6 +192,237 @@ function buildShellStatusLabel(snapshot: ShellSnapshot): { title: string; descri
   return {
     title: "当前仍需先补齐数据覆盖",
     description: "至少准备一个熟悉标的的 1d 或 15m，才能进入完整回测流程。",
+  };
+}
+
+function buildShellGuidance(snapshot: ShellSnapshot): ShellGuidance {
+  if (!snapshot.ready) {
+    return {
+      tone: "ready",
+      kicker: "正在整理主路径",
+      title: "先等系统读出当前研究状态",
+      description: "稍后这里会直接告诉你下一步该去哪一页，而不是让你自己判断。",
+      primaryLabel: "回到研究总览",
+      primaryHref: "/",
+      secondaryLabel: "先看创建回测",
+      secondaryHref: "/backtests",
+      recommendedKey: "/",
+      signals: [
+        { label: "数据覆盖", value: "读取中", detail: "稍后判断是否已具备可直接研究的标的。" },
+        { label: "执行状态", value: "读取中", detail: "稍后判断是否已有运行中或排队中的任务。" },
+        { label: "结果库", value: "读取中", detail: "稍后判断是否已有值得优先复盘的结果。" },
+      ],
+    };
+  }
+
+  const sortedJobs = [...snapshot.jobs].sort((left, right) => right.id - left.id);
+  const sortedReports = [...snapshot.reports].sort((left, right) => right.id - left.id);
+  const instrumentCount = snapshot.stats?.instrument_count ?? 0;
+  const latestRunningJob = sortedJobs.find((item) => item.status === "running") ?? null;
+  const latestQueuedJob = sortedJobs.find((item) => item.status === "queued") ?? null;
+  const latestFailedJob = sortedJobs.find((item) => item.status === "failed") ?? null;
+  const latestReport = sortedReports[0] ?? null;
+  const latestReportMetrics = getValidationMetrics(latestReport);
+  const latestReportGroupCount = latestReport
+    ? sortedReports.filter((item) => item.symbol === latestReport.symbol && item.interval === latestReport.interval).length
+    : 0;
+
+  if (latestRunningJob) {
+    return {
+      tone: "active",
+      kicker: "现在最该盯的是执行进度",
+      title: `先看任务 #${latestRunningJob.id} 的进度、ETA 和资源收口`,
+      description: `当前已有任务在执行中。比起再切换更多页面，先确认“进度是否推进、预计还要多久、资源有没有被收口”更重要。`,
+      primaryLabel: "进入回测页看实时进度",
+      primaryHref: "/backtests",
+      secondaryLabel: latestReport ? "顺手打开最近结果" : "查看结果库",
+      secondaryHref: latestReport ? `/reports/${latestReport.id}` : "/reports",
+      recommendedKey: "/backtests",
+      signals: [
+        {
+          label: "当前阶段",
+          value: latestRunningJob.runtime_details.stage_label ?? "执行中",
+          detail: latestRunningJob.runtime_details.stage_message ?? "任务仍在推进，无需重复提交。",
+        },
+        {
+          label: "预计剩余",
+          value: formatDuration(latestRunningJob.runtime_details.eta_seconds),
+          detail: `已运行 ${formatDuration(latestRunningJob.runtime_details.elapsed_seconds)}。`,
+        },
+        {
+          label: "资源安排",
+          value: latestRunningJob.runtime_details.resource_summary ?? "按平台预算执行",
+          detail: "平台会按 worker 并发与单任务上限自动收口资源。",
+        },
+      ],
+    };
+  }
+
+  if (latestQueuedJob) {
+    return {
+      tone: "active",
+      kicker: "现在最该盯的是排队情况",
+      title: `先等任务 #${latestQueuedJob.id} 开始，不必重复提交同类配置`,
+      description: "当前已有任务在等待执行。此时最重要的不是再提一份相似任务，而是确认队列位置和是否已经接近开始。",
+      primaryLabel: "进入回测页看排队位置",
+      primaryHref: "/backtests",
+      secondaryLabel: latestReport ? "查看最近结果" : "回到研究总览",
+      secondaryHref: latestReport ? `/reports/${latestReport.id}` : "/",
+      recommendedKey: "/backtests",
+      signals: [
+        {
+          label: "等待位置",
+          value: latestQueuedJob.runtime_details.queue_position ? `第 ${latestQueuedJob.runtime_details.queue_position} 位` : "已入队",
+          detail: latestQueuedJob.runtime_details.stage_message ?? "worker 会按当前并发上限依次领取任务。",
+        },
+        {
+          label: "等待中的任务",
+          value: `${sortedJobs.filter((item) => item.status === "queued").length} 个`,
+          detail: "已有任务在前面时，通常无需再重复提交流程相近的配置。",
+        },
+        {
+          label: "最近结果",
+          value: latestReport ? `编号 ${latestReport.id}` : "尚无结果",
+          detail: latestReport ? "等待期间可以先复盘最近一份结果，不会浪费当前排队时间。" : "当前还没有可直接复盘的结果样本。",
+        },
+      ],
+    };
+  }
+
+  if (latestFailedJob) {
+    return {
+      tone: "attention",
+      kicker: "现在最该处理的是失败任务",
+      title: `先判断任务 #${latestFailedJob.id} 为什么没跑通，再决定是否重跑`,
+      description: "当最近一条任务失败时，继续盲目提交新任务通常只会重复同样的问题。先定位是数据覆盖、模板不匹配，还是运行环境异常。",
+      primaryLabel: "进入回测页看失败任务",
+      primaryHref: "/backtests",
+      secondaryLabel: "必要时进入运行维护",
+      secondaryHref: "/platform",
+      recommendedKey: "/backtests",
+      signals: [
+        {
+          label: "失败任务",
+          value: `编号 ${latestFailedJob.id}`,
+          detail: String(latestFailedJob.request_payload.symbol ?? "未提供标的"),
+        },
+        {
+          label: "失败原因",
+          value: latestFailedJob.error_message ? "已记录错误信息" : "需进一步排查",
+          detail: latestFailedJob.error_message || "如果回测页里也看不到原因，再进入运行维护页检查服务状态。",
+        },
+        {
+          label: "下一步边界",
+          value: "先看回测页，再决定是否排障",
+          detail: "只有当错误信息不足、任务长时间卡住或服务明显异常时，才需要进入运行维护页。",
+        },
+      ],
+    };
+  }
+
+  if (instrumentCount <= 0) {
+    return {
+      tone: "attention",
+      kicker: "现在最该补的是数据样本",
+      title: "先补齐一个熟悉标的的关键周期，再进入回测主流程",
+      description: "当前还没有可直接研究的行情覆盖。先准备 1d 或 15m 的最小样本，比直接浏览模板或结果页更有效。",
+      primaryLabel: "进入数据准备页",
+      primaryHref: "/market-data",
+      secondaryLabel: "先看策略模板",
+      secondaryHref: "/templates",
+      recommendedKey: "/market-data",
+      signals: [
+        {
+          label: "可研究标的",
+          value: "0 个",
+          detail: "至少准备一个熟悉标的的关键周期，才能形成第一份有效结果。",
+        },
+        {
+          label: "当前阻塞点",
+          value: "缺少最小可研究样本",
+          detail: "此时不必先看复杂参数，先让主流程能跑通更重要。",
+        },
+        {
+          label: "建议顺序",
+          value: "准备数据 -> 运行回测",
+          detail: "先补样本，再用默认模板跑一份基线结果。",
+        },
+      ],
+    };
+  }
+
+  if (!latestReport) {
+    return {
+      tone: "ready",
+      kicker: "现在最该做的是先跑出第一份结果",
+      title: "数据已经具备，下一步直接提交一份基线回测",
+      description: "当前已有可研究标的，但还没有生成结果。最有价值的动作不是继续逛页面，而是尽快拿到第一份可复盘样本。",
+      primaryLabel: "进入回测页开始提交",
+      primaryHref: "/backtests",
+      secondaryLabel: "先挑一套模板",
+      secondaryHref: "/templates",
+      recommendedKey: "/backtests",
+      signals: [
+        {
+          label: "可研究标的",
+          value: `${instrumentCount} 个`,
+          detail: "当前已经具备进入主流程的基础条件。",
+        },
+        {
+          label: "结果库状态",
+          value: "尚无结果",
+          detail: "先形成一份基线报告，后续才有对比、复盘和调参依据。",
+        },
+        {
+          label: "建议策略",
+          value: "默认模板优先",
+          detail: "先跑通，再根据结果决定是否进入模板页改详细设置。",
+        },
+      ],
+    };
+  }
+
+  const verdictValue =
+    latestReportMetrics.closedTrades === 0
+      ? "先查为何没成交"
+      : latestReportMetrics.netReturn > 0 && latestReportMetrics.maxDrawdown <= 8
+        ? latestReportMetrics.outperformBuyHold
+          ? "已值得优先复盘"
+          : "先确认是否稳定领先"
+        : latestReportMetrics.netReturn > 0
+          ? "先判断回撤能否接受"
+          : "先作为反向对照";
+
+  return {
+    tone: "ready",
+    kicker: "现在最该做的是先判断最新结果值不值得继续",
+    title: `先看报告编号 ${latestReport.id} 的结论，再决定对比、重跑还是换方向`,
+    description: "当前已经有结果样本。下一步不应回到表单重新填，而是先确认收益、回撤、成交情况和是否跑赢买入持有，再决定是否继续投入时间。",
+    primaryLabel: "打开最新结果",
+    primaryHref: `/reports/${latestReport.id}`,
+    secondaryLabel: latestReportGroupCount > 1 ? "打开同标的结果组" : "进入结果库总览",
+    secondaryHref:
+      latestReportGroupCount > 1
+        ? `/reports?keyword=${encodeURIComponent(latestReport.symbol)}&interval=${encodeURIComponent(latestReport.interval)}`
+        : "/reports",
+    recommendedKey: "/reports",
+    signals: [
+      {
+        label: "单独验证结论",
+        value: verdictValue,
+        detail: `${latestReport.symbol} / ${latestReport.interval} / ${strategyLabel(latestReport.strategy_kind)}`,
+      },
+      {
+        label: "收益与回撤",
+        value: `${latestReportMetrics.netReturn.toFixed(2)}% / ${latestReportMetrics.maxDrawdown.toFixed(2)}%`,
+        detail: latestReportMetrics.closedTrades === 0 ? "当前这份结果还没有形成完整成交。" : `共 ${latestReportMetrics.closedTrades} 笔成交。`,
+      },
+      {
+        label: "后续路径",
+        value: latestReportGroupCount > 1 ? `同组还有 ${latestReportGroupCount - 1} 份结果` : "先看这一份是否值得扩展",
+        detail: latestReportGroupCount > 1 ? "看完结论后可直接切到同标的结果组继续横向比较。" : "如果这份结果不成立，再回到回测页或模板页调整配置。",
+      },
+    ],
   };
 }
 
@@ -283,11 +551,12 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
 
   const workflowSteps = useMemo(() => buildWorkflowSteps(snapshot), [snapshot]);
   const shellStatus = useMemo(() => buildShellStatusLabel(snapshot), [snapshot]);
+  const shellGuidance = useMemo(() => buildShellGuidance(snapshot), [snapshot]);
   const runningJobs = useMemo(() => snapshot.jobs.filter((item) => item.status === "running"), [snapshot.jobs]);
   const queuedJobs = useMemo(() => snapshot.jobs.filter((item) => item.status === "queued"), [snapshot.jobs]);
   const failedJobs = useMemo(() => snapshot.jobs.filter((item) => item.status === "failed"), [snapshot.jobs]);
   const latestRunningJob = useMemo(() => runningJobs[0] ?? queuedJobs[0] ?? null, [queuedJobs, runningJobs]);
-  const latestReport = snapshot.reports[0] ?? null;
+  const latestReport = useMemo(() => [...snapshot.reports].sort((left, right) => right.id - left.id)[0] ?? null, [snapshot.reports]);
   const instrumentCount = snapshot.stats?.instrument_count ?? 0;
 
   const renderMenu = () => (
@@ -329,19 +598,20 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
             <div className="workflow-rail-list">
               {workflowSteps.map((step, index) => {
                 const isCurrent = selectedKey === step.key;
+                const isRecommended = shellGuidance.recommendedKey === step.key;
                 return (
                   <Link
                     key={step.key}
                     href={step.href}
-                    className={`workflow-rail-item status-${step.status}${isCurrent ? " is-current" : ""}`}
+                    className={`workflow-rail-item status-${step.status}${isCurrent ? " is-current" : ""}${isRecommended ? " is-recommended" : ""}`}
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     <div className="workflow-rail-index">{index + 1}</div>
                     <div className="workflow-rail-body">
                       <div className="workflow-rail-title-row">
                         <strong>{step.title}</strong>
-                        <span className={`workflow-badge status-${step.status}`}>
-                          {step.status === "active" ? "当前重点" : step.status === "ready" ? "可直接进入" : "待准备"}
+                        <span className={`workflow-badge ${isRecommended ? "status-recommended" : `status-${step.status}`}`}>
+                          {isRecommended ? (isCurrent ? "当前最该做" : "建议下一步") : step.status === "active" ? "当前重点" : step.status === "ready" ? "可直接进入" : "待准备"}
                         </span>
                       </div>
                       <span className="workflow-rail-summary">{step.summary}</span>
@@ -410,10 +680,30 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
           </div>
         </Header>
         <div className="platform-meta-strip">
-          <Tag color={instrumentCount > 0 ? "green" : "default"}>{instrumentCount > 0 ? `数据已就绪 ${instrumentCount} 个标的` : "数据待补齐"}</Tag>
-          <Tag color={runningJobs.length > 0 ? "blue" : "default"}>{runningJobs.length > 0 ? `执行中 ${runningJobs.length}` : "当前无运行中任务"}</Tag>
-          <Tag color={queuedJobs.length > 0 ? "gold" : "default"}>{queuedJobs.length > 0 ? `排队 ${queuedJobs.length}` : "当前无排队任务"}</Tag>
-          <Tag color={latestReport ? "green" : "default"}>{latestReport ? `最近结果 #${latestReport.id}` : "尚无结果"}</Tag>
+          <div className={`research-guidance-banner tone-${shellGuidance.tone}`}>
+            <div className="research-guidance-main">
+              <span className="research-guidance-kicker">{shellGuidance.kicker}</span>
+              <strong>{shellGuidance.title}</strong>
+              <p>{shellGuidance.description}</p>
+            </div>
+            <div className="research-guidance-signals">
+              {shellGuidance.signals.map((signal) => (
+                <article key={signal.label} className="research-guidance-signal">
+                  <span>{signal.label}</span>
+                  <strong>{signal.value}</strong>
+                  <p>{signal.detail}</p>
+                </article>
+              ))}
+            </div>
+            <div className="research-guidance-actions">
+              <Button type="primary">
+                <Link href={shellGuidance.primaryHref}>{shellGuidance.primaryLabel}</Link>
+              </Button>
+              <Button>
+                <Link href={shellGuidance.secondaryHref}>{shellGuidance.secondaryLabel}</Link>
+              </Button>
+            </div>
+          </div>
         </div>
         <Content className="platform-content">
           <div className="content-frame">{children}</div>
@@ -430,6 +720,18 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
         <div className="mobile-shell-summary">
           <strong>{shellStatus.title}</strong>
           <p>{shellStatus.description}</p>
+          <div className="mobile-shell-summary-actions">
+            <Button type="primary" block>
+              <Link href={shellGuidance.primaryHref} onClick={() => setMobileMenuOpen(false)}>
+                {shellGuidance.primaryLabel}
+              </Link>
+            </Button>
+            <Button block>
+              <Link href={shellGuidance.secondaryHref} onClick={() => setMobileMenuOpen(false)}>
+                {shellGuidance.secondaryLabel}
+              </Link>
+            </Button>
+          </div>
         </div>
         <div className="workflow-rail mobile-workflow-rail">
           <div className="workflow-rail-list">
@@ -437,15 +739,23 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
               <Link
                 key={step.key}
                 href={step.href}
-                className={`workflow-rail-item status-${step.status}${selectedKey === step.key ? " is-current" : ""}`}
+                className={`workflow-rail-item status-${step.status}${selectedKey === step.key ? " is-current" : ""}${shellGuidance.recommendedKey === step.key ? " is-recommended" : ""}`}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 <div className="workflow-rail-index">{index + 1}</div>
                 <div className="workflow-rail-body">
                   <div className="workflow-rail-title-row">
                     <strong>{step.title}</strong>
-                    <span className={`workflow-badge status-${step.status}`}>
-                      {step.status === "active" ? "当前重点" : step.status === "ready" ? "可直接进入" : "待准备"}
+                    <span className={`workflow-badge ${shellGuidance.recommendedKey === step.key ? "status-recommended" : `status-${step.status}`}`}>
+                      {shellGuidance.recommendedKey === step.key
+                        ? selectedKey === step.key
+                          ? "当前最该做"
+                          : "建议下一步"
+                        : step.status === "active"
+                          ? "当前重点"
+                          : step.status === "ready"
+                            ? "可直接进入"
+                            : "待准备"}
                     </span>
                   </div>
                   <span className="workflow-rail-summary">{step.summary}</span>
