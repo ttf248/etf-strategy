@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowRightOutlined, CheckCircleOutlined, DatabaseOutlined, FileSearchOutlined, MonitorOutlined, PlayCircleOutlined } from "@ant-design/icons";
-import { Button, Card, Col, Collapse, Empty, Row, Skeleton, Space, Table, Tag, Typography } from "antd";
+import { Button, Card, Col, Collapse, Empty, Progress, Row, Skeleton, Space, Table, Tag, Typography, message } from "antd";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, type BacktestJob, type MarketDataStats, type ReportSummary } from "@/lib/api";
@@ -206,17 +206,252 @@ function buildHomeReportSpotlight(report: ReportSummary, latestSucceededReportId
   };
 }
 
+function formatDuration(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) {
+    return "暂无法估计";
+  }
+  if (seconds < 60) {
+    return `${Math.max(0, Math.round(seconds))} 秒`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainSeconds = Math.max(0, Math.round(seconds % 60));
+  if (minutes < 60) {
+    return remainSeconds > 0 ? `${minutes} 分 ${remainSeconds} 秒` : `${minutes} 分`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainMinutes = minutes % 60;
+  return remainMinutes > 0 ? `${hours} 小时 ${remainMinutes} 分` : `${hours} 小时`;
+}
+
+function dashboardBacktestStatusLabel(status: string): string {
+  if (status === "succeeded") {
+    return "已生成结果";
+  }
+  if (status === "failed") {
+    return "执行失败";
+  }
+  if (status === "queued") {
+    return "等待执行";
+  }
+  if (status === "running") {
+    return "执行中";
+  }
+  if (status === "cancel_requested") {
+    return "取消中";
+  }
+  if (status === "cancelled") {
+    return "已取消";
+  }
+  return status || "-";
+}
+
+function pickDashboardFocusJob(jobs: BacktestJob[]): BacktestJob | null {
+  const orderedJobs = [...jobs].sort((left, right) => right.id - left.id);
+  return (
+    orderedJobs.find((item) => item.status === "running") ??
+    orderedJobs.find((item) => item.status === "queued") ??
+    orderedJobs.find((item) => item.status === "cancel_requested") ??
+    orderedJobs.find((item) => item.status === "failed") ??
+    null
+  );
+}
+
+function buildDashboardJobRuntimeSummary(job: BacktestJob): { title: string; description: string } {
+  const runtime = job.runtime_details;
+  if (job.status === "queued") {
+    return {
+      title: runtime.queue_position && runtime.queue_position > 1 ? `队列第 ${runtime.queue_position} 位` : "等待进入执行",
+      description: runtime.stage_message ?? "任务已入队，等待 worker 领取。",
+    };
+  }
+  if (job.status === "running") {
+    return {
+      title: runtime.stage_label ? `当前阶段：${runtime.stage_label}` : "正在执行",
+      description: `已运行 ${formatDuration(runtime.elapsed_seconds)}，预计还需 ${formatDuration(runtime.eta_seconds)}。${runtime.stage_message ?? ""}`.trim(),
+    };
+  }
+  if (job.status === "failed") {
+    return {
+      title: "执行失败",
+      description: runtime.elapsed_seconds ? `本次任务在 ${formatDuration(runtime.elapsed_seconds)} 后失败。` : "任务未顺利完成，请先查看错误信息。",
+    };
+  }
+  if (job.status === "cancel_requested") {
+    return {
+      title: "等待取消落地",
+      description: runtime.stage_message ?? "系统会在安全检查点尽快停止当前任务。",
+    };
+  }
+  return {
+    title: runtime.stage_label ?? "任务已结束",
+    description: runtime.stage_message ?? "请根据当前状态决定是否继续处理。",
+  };
+}
+
+function buildDashboardJobReadingHint(job: BacktestJob): string {
+  const stageLabel = job.runtime_details.stage_label;
+  if (job.status === "failed") {
+    return "本次任务执行失败，建议先确认错误信息；常见原因包括数据覆盖不足、模板不匹配或参数与标的不适配。";
+  }
+  if (job.status === "queued") {
+    const queuePosition = job.runtime_details.queue_position;
+    return queuePosition && queuePosition > 1
+      ? `任务仍在排队，前面还有 ${queuePosition - 1} 个任务等待执行。通常无需重复提交。`
+      : "任务仍在排队，通常无需重复提交；待进入执行阶段后，再判断是否需要取消。";
+  }
+  if (job.status === "running") {
+    return stageLabel
+      ? `任务仍在执行中，当前阶段为“${stageLabel}”。若长时间无进展，再进入运行维护页排查。`
+      : "任务仍在执行中，建议等待结果输出；若长时间无进展，再进入运行维护页排查。";
+  }
+  if (job.status === "cancel_requested" || job.status === "cancelled") {
+    return "任务正在取消或已取消；若仍需继续验证，可直接按原配置重新提交。";
+  }
+  return "建议先确认当前状态与错误信息，再决定是重跑、取消，还是进入结果库继续复盘。";
+}
+
+function buildDashboardFocusReason(job: BacktestJob): string {
+  if (job.status === "running") {
+    return "这是当前最需要盯的一条任务，因为它正在消耗执行资源，且阶段、ETA 和资源摘要会持续变化。";
+  }
+  if (job.status === "queued") {
+    return "这是当前最需要盯的一条任务，因为它决定你接下来什么时候能看到新的结果，通常不需要再重复提交。";
+  }
+  if (job.status === "failed") {
+    return "这是当前最需要处理的一条任务，因为它直接阻断了结果生成，应先确认失败原因是否需要重跑或改配置。";
+  }
+  return "这是当前最值得优先确认的一条任务。先处理完这条，再决定是否进入完整历史或维护页。";
+}
+
+function buildDashboardJobPrimaryAction(job: BacktestJob): { label: string; href: string | null; disabled: boolean } {
+  const reportId = job.reports?.[0]?.id;
+  if (reportId) {
+    return { label: "查看结果", href: `/reports/${reportId}`, disabled: false };
+  }
+  if (job.status === "failed") {
+    return { label: "未生成结果", href: null, disabled: true };
+  }
+  return { label: "进入回测页", href: "/backtests", disabled: false };
+}
+
+function buildDashboardFocusGuides(job: BacktestJob): GuideCard[] {
+  const runtime = buildDashboardJobRuntimeSummary(job);
+  const resourceParts: string[] = [];
+  if (job.runtime_details.worker_name) {
+    resourceParts.push(`执行槽位 ${job.runtime_details.worker_name}`);
+  }
+  if (typeof job.runtime_details.requested_parallelism === "number") {
+    resourceParts.push(`请求并发 ${job.runtime_details.requested_parallelism}`);
+  }
+  if (typeof job.runtime_details.effective_parallelism === "number") {
+    resourceParts.push(`实际并发 ${job.runtime_details.effective_parallelism}`);
+  }
+  if (typeof job.runtime_details.worker_concurrency === "number") {
+    resourceParts.push(`worker 上限 ${job.runtime_details.worker_concurrency}`);
+  }
+  if (typeof job.runtime_details.max_optimization_workers === "number") {
+    resourceParts.push(`单任务上限 ${job.runtime_details.max_optimization_workers}`);
+  }
+
+  let timeValue = "等待更新";
+  if (job.status === "running") {
+    timeValue = `已运行 ${formatDuration(job.runtime_details.elapsed_seconds)} / 预计还需 ${formatDuration(job.runtime_details.eta_seconds)}`;
+  } else if (job.status === "queued") {
+    timeValue = job.runtime_details.queue_position ? `队列第 ${job.runtime_details.queue_position} 位` : "等待 worker 领取";
+  } else if (job.status === "failed") {
+    timeValue = job.runtime_details.elapsed_seconds ? `已运行 ${formatDuration(job.runtime_details.elapsed_seconds)}` : "已结束";
+  }
+
+  return [
+    {
+      title: "当前阶段",
+      value: runtime.title,
+      description: runtime.description,
+    },
+    {
+      title: "时间判断",
+      value: timeValue,
+      description: job.status === "running" ? "首页会自动刷新这里的 ETA 和已运行时间，无需反复切页确认。" : runtime.description,
+    },
+    {
+      title: "资源安排",
+      value: job.runtime_details.resource_summary ?? "按平台资源预算执行",
+      description: resourceParts.length > 0 ? resourceParts.join("，") : "平台会按 worker 并发与单任务上限自动收口资源使用。",
+    },
+    {
+      title: "下一步动作",
+      value: job.status === "failed" ? "先判定失败原因" : job.status === "queued" ? "等待进入执行" : "盯进度与 ETA",
+      description: buildDashboardJobReadingHint(job),
+    },
+  ];
+}
+
 export function DashboardView() {
   const [stats, setStats] = useState<MarketDataStats | null>(null);
   const [jobs, setJobs] = useState<BacktestJob[]>([]);
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [messageApi, contextHolder] = message.useMessage();
   const beginnerPresets = useMemo(() => (stats ? buildBeginnerPresets(stats.coverages) : []), [stats]);
 
-  useEffect(() => {
-    async function load() {
+  async function loadDashboardSnapshot(showSpinner: boolean = true) {
+    if (showSpinner) {
       setLoading(true);
+    }
+    try {
+      const [statsPayload, jobsPayload, reportsPayload] = await Promise.all([
+        apiFetch<MarketDataStats>("/api/market-data/stats"),
+        apiFetch<BacktestJob[]>("/api/backtests?limit=8"),
+        apiFetch<ReportSummary[]>("/api/reports?limit=8"),
+      ]);
+      setStats(statsPayload);
+      setJobs(jobsPayload);
+      setReports(reportsPayload);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadInitialSnapshot() {
       try {
+        const [statsPayload, jobsPayload, reportsPayload] = await Promise.all([
+          apiFetch<MarketDataStats>("/api/market-data/stats"),
+          apiFetch<BacktestJob[]>("/api/backtests?limit=8"),
+          apiFetch<ReportSummary[]>("/api/reports?limit=8"),
+        ]);
+        if (cancelled) {
+          return;
+        }
+        setStats(statsPayload);
+        setJobs(jobsPayload);
+        setReports(reportsPayload);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadInitialSnapshot();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const hasActiveJobs = useMemo(
+    () => jobs.some((item) => ["queued", "running", "cancel_requested"].includes(item.status)),
+    [jobs],
+  );
+
+  useEffect(() => {
+    if (!hasActiveJobs) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void (async () => {
         const [statsPayload, jobsPayload, reportsPayload] = await Promise.all([
           apiFetch<MarketDataStats>("/api/market-data/stats"),
           apiFetch<BacktestJob[]>("/api/backtests?limit=8"),
@@ -225,13 +460,34 @@ export function DashboardView() {
         setStats(statsPayload);
         setJobs(jobsPayload);
         setReports(reportsPayload);
-      } finally {
-        setLoading(false);
-      }
-    }
+      })();
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [hasActiveJobs]);
 
-    void load();
-  }, []);
+  async function cancelJob(jobId: number) {
+    try {
+      await apiFetch(`/api/backtests/${jobId}/cancel`, {
+        method: "POST",
+      });
+      messageApi.success(`已提交任务 #${jobId} 的取消请求`);
+      await loadDashboardSnapshot(false);
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "取消任务失败");
+    }
+  }
+
+  async function retryJob(jobId: number) {
+    try {
+      await apiFetch(`/api/backtests/${jobId}/retry`, {
+        method: "POST",
+      });
+      messageApi.success(`已按原配置重新提交任务 #${jobId}`);
+      await loadDashboardSnapshot(false);
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "重跑任务失败");
+    }
+  }
 
   if (loading && !stats) {
     return <Skeleton active paragraph={{ rows: 8 }} />;
@@ -246,6 +502,7 @@ export function DashboardView() {
   const failedJobs = jobs.filter((item) => item.status === "failed").length;
   const latestSyncStatus = latestSync?.status === "completed" ? "已完成" : latestSync?.status === "failed" ? "失败" : latestSync?.status ?? "暂无";
   const latestSucceededJob = jobs.find((item) => item.status === "succeeded") ?? null;
+  const focusJob = pickDashboardFocusJob(jobs);
   const latestSucceededReportSummary = reports.find((item) => item.job_id === latestSucceededJob?.id) ?? null;
   const latestSucceededReportId = latestSucceededJob?.reports?.[0]?.id ?? latestSucceededReportSummary?.id ?? null;
   const latestSucceededPayload = latestSucceededJob?.request_payload ?? null;
@@ -292,6 +549,7 @@ export function DashboardView() {
 
   return (
     <div className="page-stack">
+      {contextHolder}
       <section className="hero-panel beginner-hero">
         <div className="beginner-hero-copy">
           <PageHeader
@@ -338,6 +596,73 @@ export function DashboardView() {
           </Button>
         </div>
       </Card>
+
+      {focusJob ? (
+        <Card size="small" title="当前执行焦点" className="section-card">
+          <div className="job-focus-card">
+            <div className="job-focus-main">
+              <div className="job-focus-head">
+                <div>
+                  <span className="job-focus-label">首页实时执行脉冲</span>
+                  <strong>
+                    任务 #{focusJob.id} · {String(focusJob.request_payload.symbol ?? "-")} / {String(focusJob.request_payload.interval ?? "-")} / {strategyLabel(String(focusJob.request_payload.strategy_kind ?? "-"))}
+                  </strong>
+                </div>
+                <StatusTag value={focusJob.status} label={dashboardBacktestStatusLabel(focusJob.status)} />
+              </div>
+              <p className="job-focus-summary">{buildDashboardFocusReason(focusJob)}</p>
+              <div className="job-focus-progress">
+                <div className="job-focus-progress-head">
+                  <strong>当前进度 {focusJob.progress_pct.toFixed(0)}%</strong>
+                  <span>{focusJob.runtime_details.stage_label ?? "等待阶段更新"}</span>
+                </div>
+                <Progress
+                  percent={Math.round(focusJob.progress_pct)}
+                  status={focusJob.status === "failed" ? "exception" : focusJob.status === "running" ? "active" : "normal"}
+                />
+              </div>
+              <div className="job-focus-guide-grid">
+                {buildDashboardFocusGuides(focusJob).map((item) => (
+                  <article key={item.title} className="job-focus-guide-card">
+                    <span>{item.title}</span>
+                    <strong>{item.value}</strong>
+                    <p>{item.description}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+            <div className="job-focus-side">
+              <div className="job-focus-side-card">
+                <span>为什么现在看它</span>
+                <strong>{dashboardBacktestStatusLabel(focusJob.status)}</strong>
+                <p>{buildDashboardJobReadingHint(focusJob)}</p>
+              </div>
+              {focusJob.error_message ? (
+                <div className="job-focus-side-card is-danger">
+                  <span>失败或异常信息</span>
+                  <strong>需要先处理</strong>
+                  <p>{focusJob.error_message}</p>
+                </div>
+              ) : null}
+              <div className="job-focus-actions">
+                {buildDashboardJobPrimaryAction(focusJob).href ? (
+                  <Button type="primary">
+                    <Link href={buildDashboardJobPrimaryAction(focusJob).href ?? "/backtests"}>{buildDashboardJobPrimaryAction(focusJob).label}</Link>
+                  </Button>
+                ) : (
+                  <Button disabled>{buildDashboardJobPrimaryAction(focusJob).label}</Button>
+                )}
+                <Button disabled={!["queued", "running"].includes(focusJob.status)} onClick={() => void cancelJob(focusJob.id)}>
+                  取消当前任务
+                </Button>
+                <Button disabled={focusJob.status !== "failed"} onClick={() => void retryJob(focusJob.id)}>
+                  按原配置重跑
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       <Row gutter={[16, 16]}>
         <Col xs={24} md={8}>
