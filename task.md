@@ -3664,3 +3664,30 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 已执行 `cd frontend && npm run test:smoke`
+
+## 首页推荐报告卡标题顺序补充
+
+### 状态
+
+已完成：代码修改与本轮验证均已完成，待单独提交。
+
+### 修改方案
+
+继续按首页局部体验边界优化，只处理“现在更适合先看的报告”卡片标题，把“编号在前、标的在后”的后台列表排法收成更像用户读结果卡时会先看到的内容顺序。
+
+### 修改内容
+
+- `frontend/src/components/dashboard-view.tsx`
+  - 将首页推荐报告卡标题从“编号 {id} {symbol}”改成“{symbol}，编号 {id}”。
+
+### 设计取舍
+
+- 不改首页推荐排序、报告卡结构、最近一次成功路径或高级明细表格，只调整推荐报告卡标题这一处展示顺序。
+- 这轮不顺手处理首页其他编号或状态文案，避免扩大提交边界。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 已执行 `cd frontend && npm run test:smoke`

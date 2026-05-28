@@ -505,7 +505,7 @@ export function DashboardView() {
                   <article key={report.id} className="home-report-card">
                     <div className="home-report-card-head">
                       <div>
-                        <strong>编号 {report.id} {report.symbol}</strong>
+                        <strong>{report.symbol}，编号 {report.id}</strong>
                         <span>{report.name || "未命名标的"} / {report.interval} / {strategyLabel(report.strategy_kind)}</span>
                       </div>
                       <div className="home-report-card-tags">
