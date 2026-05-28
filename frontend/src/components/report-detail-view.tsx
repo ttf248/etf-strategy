@@ -749,13 +749,22 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
             </article>
           ))}
         </div>
+        <div className="parameter-advanced-hint">
+          <strong>只有在你要核对模板来源、逐项排查参数时，再展开下面这块</strong>
+          <p>如果你只是判断这份结果值不值得继续用，先看上面的四张解释卡和收益、回撤、成交情况就够了。</p>
+        </div>
         <Collapse
           className="advanced-trace-panel"
           ghost
           items={[
             {
               key: "parameters",
-              label: "补充字段：全部参数和模板来源",
+              label: (
+                <div className="advanced-trace-label">
+                  <strong>排查细节时，再看全部参数和模板来源</strong>
+                  <span>这里主要用来核对模板快照、逐字段比对和排查为什么这次结果和预期不同。</span>
+                </div>
+              ),
               children: (
                 <div className="parameter-advanced-stack">
                   <div className="parameter-advanced-section">

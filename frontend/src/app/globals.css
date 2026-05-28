@@ -2205,6 +2205,29 @@ a {
   gap: 12px;
 }
 
+.parameter-advanced-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.parameter-advanced-hint strong {
+  color: #334155;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.parameter-advanced-hint p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 19px;
+}
+
 .parameter-summary-card {
   display: flex;
   flex-direction: column;
@@ -2659,6 +2682,24 @@ a {
   padding-inline: 0 !important;
   color: var(--muted) !important;
   font-size: 13px;
+}
+
+.advanced-trace-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.advanced-trace-label strong {
+  color: #334155;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.advanced-trace-label span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 19px;
 }
 
 .advanced-trace-panel .ant-collapse-content-box {

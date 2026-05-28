@@ -2687,3 +2687,35 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 报告详情高级参数区降噪补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按局部体验边界优化报告详情页，只处理“完整参数与模板来源”折叠区的默认叙事，让它更明确地退到排查入口，而不是首屏主阅读内容。
+
+### 修改内容
+
+- `frontend/src/components/report-detail-view.tsx`
+  - 在高级折叠区前新增“只有在你要核对模板来源、逐项排查参数时，再展开下面这块”提示。
+  - 将折叠标题改成“排查细节时，再看全部参数和模板来源”，并补充一行用途说明。
+- `frontend/src/app/globals.css`
+  - 新增高级提示块和折叠标题说明样式，弱化这部分默认存在感。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不删除完整参数和模板快照能力，只调整默认叙事，让新手先看结论、收益和重跑建议，只有在排查差异时再进入逐字段视角。
+- 这轮不改折叠区内容结构、参数字段或模板快照展示，只改变入口提示和存在感，避免一次改动同时动到阅读内容和数据明细结构。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
