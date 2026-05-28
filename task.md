@@ -2995,3 +2995,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页最近任务卡主按钮口径补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理“最近回测任务”卡片里最主要的结果按钮文案，把它从“查看某个页面”收成更像“下一步先去看结果”。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将最近任务卡主按钮从“查看报告 / 查看报告列表 / 等待报告”改成“先看这份结果 / 去结果列表里找 / 先等结果出来”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不删除跳转报告的主按钮，也不改变卡片状态判断、报告链接选择或次级“取消 / 重试”动作，只调整最主要的结果按钮文案。
+- 这轮不改摘要横幅、错误提示、完整历史入口或批量处理，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`

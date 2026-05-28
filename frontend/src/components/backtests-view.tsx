@@ -611,14 +611,14 @@ export function BacktestsView() {
                     <div className="job-mobile-actions">
                       {reportId ? (
                         <Button type="primary">
-                          <Link href={`/reports/${reportId}`}>查看报告</Link>
+                          <Link href={`/reports/${reportId}`}>先看这份结果</Link>
                         </Button>
                       ) : job.status === "succeeded" ? (
                         <Button type="primary">
-                          <Link href="/reports">查看报告列表</Link>
+                          <Link href="/reports">去结果列表里找</Link>
                         </Button>
                       ) : (
-                        <Button disabled>等待报告</Button>
+                        <Button disabled>先等结果出来</Button>
                       )}
                       <Button disabled={!["queued", "running"].includes(job.status)} onClick={() => void cancelJob(job.id)}>
                         取消
