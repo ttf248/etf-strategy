@@ -308,6 +308,108 @@ function buildJobPrimaryAction(job: BacktestJob) {
   };
 }
 
+function pickFocusJob(jobs: BacktestJob[]): BacktestJob | null {
+  const orderedJobs = [...jobs].sort((left, right) => right.id - left.id);
+  return (
+    orderedJobs.find((item) => item.status === "running") ??
+    orderedJobs.find((item) => item.status === "queued") ??
+    orderedJobs.find((item) => item.status === "cancel_requested") ??
+    orderedJobs.find((item) => item.status === "failed") ??
+    orderedJobs.find((item) => item.status === "succeeded" && (item.reports?.length ?? 0) > 0) ??
+    orderedJobs[0] ??
+    null
+  );
+}
+
+function buildFocusJobReason(job: BacktestJob): string {
+  if (job.status === "running") {
+    return "这是当前最需要盯的一条任务，因为它正在消耗执行资源，且阶段、ETA 和资源摘要都会持续变化。";
+  }
+  if (job.status === "queued") {
+    return "这是当前最需要盯的一条任务，因为它决定你接下来什么时候能看到新的结果，通常不需要再重复提交。";
+  }
+  if (job.status === "failed") {
+    return "这是当前最需要处理的一条任务，因为它直接阻断了结果生成，应先确认失败原因是否需要重跑或改配置。";
+  }
+  if (job.status === "succeeded") {
+    return "这是当前最值得继续推进的一条任务，因为它已经产出结果，下一步应直接进入结果页判断策略是否有效。";
+  }
+  return "这是当前最值得优先确认的一条任务。先处理完这条，再决定是否展开完整任务历史。";
+}
+
+function buildFocusJobGuides(job: BacktestJob): GuideCard[] {
+  const runtime = buildJobRuntimeSummary(job);
+  const payload = job.request_payload;
+  const templateName = (payload.template_snapshot as { template_name?: string } | undefined)?.template_name;
+  const requestedParallelism = job.runtime_details.requested_parallelism;
+  const effectiveParallelism = job.runtime_details.effective_parallelism;
+  const workerConcurrency = job.runtime_details.worker_concurrency;
+  const maxOptimizationWorkers = job.runtime_details.max_optimization_workers;
+
+  let timeValue = "等待更新";
+  const timeDescription = runtime.description;
+  if (job.status === "running") {
+    timeValue = `已运行 ${formatDuration(job.runtime_details.elapsed_seconds)} / 预计还需 ${formatDuration(job.runtime_details.eta_seconds)}`;
+  } else if (job.status === "queued") {
+    timeValue = job.runtime_details.queue_position ? `队列第 ${job.runtime_details.queue_position} 位` : "等待 worker 领取";
+  } else if (job.status === "failed" || job.status === "succeeded") {
+    timeValue = job.runtime_details.elapsed_seconds ? `总耗时 ${formatDuration(job.runtime_details.elapsed_seconds)}` : "已结束";
+  }
+
+  const resourceParts: string[] = [];
+  if (job.runtime_details.worker_name) {
+    resourceParts.push(`执行槽位 ${job.runtime_details.worker_name}`);
+  }
+  if (typeof requestedParallelism === "number" && Number.isFinite(requestedParallelism)) {
+    resourceParts.push(`请求并发 ${requestedParallelism}`);
+  }
+  if (typeof effectiveParallelism === "number" && Number.isFinite(effectiveParallelism)) {
+    resourceParts.push(`实际并发 ${effectiveParallelism}`);
+  }
+  if (typeof workerConcurrency === "number" && Number.isFinite(workerConcurrency)) {
+    resourceParts.push(`worker 上限 ${workerConcurrency}`);
+  }
+  if (typeof maxOptimizationWorkers === "number" && Number.isFinite(maxOptimizationWorkers)) {
+    resourceParts.push(`单任务上限 ${maxOptimizationWorkers}`);
+  }
+
+  const nextAction = buildJobPrimaryAction(job);
+  let nextActionDescription = buildJobReadingHint(job);
+  if (job.status === "running" || job.status === "queued") {
+    nextActionDescription = "当前更应等待阶段推进或结果生成，而不是重复提交相同配置。只有长时间无进展时，再取消或排障。";
+  } else if (job.status === "succeeded" && nextAction.href) {
+    nextActionDescription = "结果已经可读，下一步应直接进入结果页先判断收益、回撤和是否跑赢买入持有。";
+  } else if (job.status === "failed") {
+    nextActionDescription = "先根据错误信息判断是数据覆盖不足、模板不匹配，还是参数不适配，再决定按原配置重跑还是回到配置页调整。";
+  }
+
+  return [
+    {
+      title: "当前阶段",
+      value: runtime.title,
+      description: runtime.description,
+    },
+    {
+      title: "时间判断",
+      value: timeValue,
+      description: timeDescription,
+    },
+    {
+      title: "资源安排",
+      value: job.runtime_details.resource_summary ?? "按平台资源预算执行",
+      description: resourceParts.length > 0 ? resourceParts.join("，") : "平台会按 worker 并发与单任务上限自动收口资源使用。",
+    },
+    {
+      title: "下一步动作",
+      value: nextAction.label,
+      description:
+        templateName && job.status !== "failed"
+          ? `${templateName}。${nextActionDescription}`
+          : nextActionDescription,
+    },
+  ];
+}
+
 export function BacktestsView() {
   const [form] = Form.useForm();
   const [jobs, setJobs] = useState<BacktestJob[]>([]);
@@ -341,6 +443,7 @@ export function BacktestsView() {
   const succeededJobs = useMemo(() => jobs.filter((item) => item.status === "succeeded"), [jobs]);
   const recentJobs = useMemo(() => jobs.slice(0, 6), [jobs]);
   const latestSucceededJob = useMemo(() => succeededJobs.find((item) => item.reports?.length), [succeededJobs]);
+  const focusJob = useMemo(() => pickFocusJob(jobs), [jobs]);
   const templatePickHint = useMemo(
     () => buildTemplatePickHint(recommendedTemplate, selectedStrategy, selectedInterval),
     [recommendedTemplate, selectedInterval, selectedStrategy],
@@ -852,6 +955,70 @@ export function BacktestsView() {
           <Empty description="当前还没有回测任务。提交后，执行状态与结果入口会展示在这里。" />
         ) : (
           <>
+            {focusJob ? (
+              <div className="job-focus-card">
+                <div className="job-focus-main">
+                  <div className="job-focus-head">
+                    <div>
+                      <span className="job-focus-label">当前焦点任务</span>
+                      <strong>
+                        任务 #{focusJob.id} · {String(focusJob.request_payload.symbol ?? "-")} / {String(focusJob.request_payload.interval ?? "-")} / {strategyLabel(String(focusJob.request_payload.strategy_kind ?? "-"))}
+                      </strong>
+                    </div>
+                    <StatusTag value={focusJob.status} label={backtestStatusLabel(focusJob.status)} />
+                  </div>
+                  <p className="job-focus-summary">{buildFocusJobReason(focusJob)}</p>
+                  <div className="job-focus-progress">
+                    <div className="job-focus-progress-head">
+                      <strong>当前进度 {focusJob.progress_pct.toFixed(0)}%</strong>
+                      <span>{focusJob.runtime_details.stage_label ?? "等待阶段更新"}</span>
+                    </div>
+                    <Progress
+                      percent={Math.round(focusJob.progress_pct)}
+                      status={focusJob.status === "failed" ? "exception" : focusJob.status === "succeeded" ? "success" : "active"}
+                    />
+                  </div>
+                  <div className="job-focus-guide-grid">
+                    {buildFocusJobGuides(focusJob).map((item) => (
+                      <article key={item.title} className="job-focus-guide-card">
+                        <span>{item.title}</span>
+                        <strong>{item.value}</strong>
+                        <p>{item.description}</p>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+                <div className="job-focus-side">
+                  <div className="job-focus-side-card">
+                    <span>为什么先看它</span>
+                    <strong>{backtestStatusLabel(focusJob.status)}</strong>
+                    <p>{buildJobReadingHint(focusJob)}</p>
+                  </div>
+                  {focusJob.error_message ? (
+                    <div className="job-focus-side-card is-danger">
+                      <span>失败或异常信息</span>
+                      <strong>需要先处理</strong>
+                      <p>{focusJob.error_message}</p>
+                    </div>
+                  ) : null}
+                  <div className="job-focus-actions">
+                    {buildJobPrimaryAction(focusJob).href ? (
+                      <Button type="primary">
+                        <Link href={buildJobPrimaryAction(focusJob).href ?? "/reports"}>{buildJobPrimaryAction(focusJob).label}</Link>
+                      </Button>
+                    ) : (
+                      <Button disabled>{buildJobPrimaryAction(focusJob).label}</Button>
+                    )}
+                    <Button disabled={!["queued", "running"].includes(focusJob.status)} onClick={() => void cancelJob(focusJob.id)}>
+                      取消当前焦点任务
+                    </Button>
+                    <Button disabled={focusJob.status !== "failed"} onClick={() => void retryJob(focusJob.id)}>
+                      按原配置重跑
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             <div className="job-summary-banner">
               <div className="job-summary-main">
                 <strong>先看最近几次任务，再决定要不要展开完整历史</strong>
