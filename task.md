@@ -2628,3 +2628,33 @@
 - 已执行 `cd frontend && npm run test:smoke`
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
+
+## 报告详情网格模式展示补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按最小边界总扫报告详情页高级参数区，只处理 `GridMode` 这一组标签和值映射，不扩大到其他字段。
+
+### 修改内容
+
+- `frontend/src/components/report-detail-view.tsx`
+  - 将 `GridMode` 的展示标签从“网格怎么算”改为“开始时先怎么买”。
+  - 将 `cash`、`buy_hold` 的展示值改为“先空仓，等触发再买”“先买入，再继续持有”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮文案收口背景、边界和取舍。
+
+### 设计取舍
+
+- 保留后端字段名和取值 `GridMode / cash / buy_hold` 不变，只调整前端展示文案，避免影响报告快照和接口兼容性。
+- 文案依据当前策略实现含义收口：`cash` 明确表达为“不先建底仓，等触发再买”，优先让新手理解这个字段是在说明起步持仓方式，而不是暴露内部模式名。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 已执行 `py -3.13 main.py api --host 127.0.0.1 --port 8000 --replace-existing` 后再执行 `cd frontend && npm run test:smoke`

@@ -33,7 +33,7 @@ const baseParameterLabels: Record<string, string> = {
   execution_profile: "成交假设",
   force_exit_loss_pct: "达到多大亏损时强制离场",
   GridCount: "最多开几层网格",
-  GridMode: "网格怎么算",
+  GridMode: "开始时先怎么买",
   jobs: "同时试几组参数",
   left_side_policy: "行情先走弱时怎么处理",
   lookback_days: "回看多少天历史",
@@ -118,8 +118,8 @@ const valueLabels: Record<string, Record<string, string>> = {
     cash_idle: "空仓不买",
   },
   GridMode: {
-    cash: "现金空仓",
-    buy_hold: "买入持有",
+    cash: "先空仓，等触发再买",
+    buy_hold: "先买入，再继续持有",
   },
 };
 
