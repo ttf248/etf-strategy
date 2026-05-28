@@ -76,7 +76,7 @@ function buildJobReadingHint(job: BacktestJob) {
     return "这次回测还在等待开始，先不用重复提交；等它真正开始后，再决定是否取消。";
   }
   if (job.status === "running") {
-    return "任务正在执行，先等待结果；如果长时间不动，再去系统状态页排查。";
+    return "这轮还在跑，先等结果出来；如果长时间没变化，再去系统状态页排查。";
   }
   if (job.status === "cancelled" || job.status === "cancel_requested") {
     return "这次任务已经取消。如果你还想继续验证，直接按原配置重跑就行。";
