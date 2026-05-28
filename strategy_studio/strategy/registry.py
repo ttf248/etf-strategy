@@ -18,6 +18,10 @@ from strategy_studio.settings import (
     DAILY_BOLLINGER_RSI_ENTRIES,
     DAILY_BOLLINGER_STOP_LOSSES,
     DAILY_BOLLINGER_TAKE_PROFITS,
+    DAILY_DONCHIAN_BREAKOUT_WINDOWS,
+    DAILY_DONCHIAN_CONFIRM_BUFFERS,
+    DAILY_DONCHIAN_EXIT_WINDOWS,
+    DAILY_DONCHIAN_STOP_LOSSES,
     DAILY_GRID_COUNTS,
     DAILY_REBOUND_DEVIATIONS,
     DAILY_REBOUND_MA_WINDOWS,
@@ -50,6 +54,7 @@ from strategy_studio.settings import (
 )
 from strategy_studio.strategy.bollinger import optimize_bollinger_reversion_parameters, run_bollinger_reversion_backtest
 from strategy_studio.strategy.dca import optimize_dca_parameters, run_dca_backtest
+from strategy_studio.strategy.donchian import optimize_donchian_breakout_parameters, run_donchian_breakout_backtest
 from strategy_studio.strategy.grid import optimize_grid_parameters, run_grid_backtest
 from strategy_studio.strategy.index_grid import run_index_grid_backtest
 from strategy_studio.strategy.rebound import optimize_rebound_parameters, run_rebound_backtest
@@ -201,6 +206,15 @@ def _ma_cross_parameter_space(interval: str) -> dict[str, object]:
     }
 
 
+def _donchian_breakout_parameter_space(interval: str) -> dict[str, object]:
+    return {
+        "breakout_window": [int(item) for item in DAILY_DONCHIAN_BREAKOUT_WINDOWS],
+        "exit_window": [int(item) for item in DAILY_DONCHIAN_EXIT_WINDOWS],
+        "confirm_buffer_pct": [float(item) for item in DAILY_DONCHIAN_CONFIRM_BUFFERS],
+        "stop_loss_pct": [float(item) for item in DAILY_DONCHIAN_STOP_LOSSES],
+    }
+
+
 def _empty_parameter_space(interval: str) -> dict[str, object]:
     return {}
 
@@ -316,6 +330,23 @@ def _extract_ma_cross_params(summary: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _optimize_donchian_breakout(**kwargs: object) -> tuple[pd.DataFrame, dict[str, object]]:
+    return optimize_donchian_breakout_parameters(**kwargs)
+
+
+def _run_donchian_breakout_once(params: dict[str, object], **kwargs: object) -> dict[str, object]:
+    return run_donchian_breakout_backtest(params=params, **kwargs)
+
+
+def _extract_donchian_breakout_params(summary: dict[str, object]) -> dict[str, object]:
+    return {
+        "breakout_window": int(summary["breakout_window"]),
+        "exit_window": int(summary["exit_window"]),
+        "confirm_buffer_pct": float(summary["confirm_buffer_pct"]),
+        "stop_loss_pct": float(summary["stop_loss_pct"]),
+    }
+
+
 def _optimize_bollinger_reversion(**kwargs: object) -> tuple[pd.DataFrame, dict[str, object]]:
     return optimize_bollinger_reversion_parameters(**kwargs)
 
@@ -381,6 +412,22 @@ STRATEGY_SPECS: dict[str, StrategySpec] = {
         optimize=_optimize_ma_cross,
         run_once=_run_ma_cross_once,
         extract_params=_extract_ma_cross_params,
+    ),
+    "donchian_breakout": StrategySpec(
+        kind="donchian_breakout",
+        display_name="唐奇安突破",
+        signal_family="trend",
+        supported_intervals=("1d",),
+        parameter_fields=(
+            ParameterFieldSpec("breakout_window", "突破窗口", "int"),
+            ParameterFieldSpec("exit_window", "退出窗口", "int"),
+            ParameterFieldSpec("confirm_buffer_pct", "突破确认比例", "float"),
+            ParameterFieldSpec("stop_loss_pct", "止损比例", "float"),
+        ),
+        default_parameter_space=_donchian_breakout_parameter_space,
+        optimize=_optimize_donchian_breakout,
+        run_once=_run_donchian_breakout_once,
+        extract_params=_extract_donchian_breakout_params,
     ),
     "bollinger_reversion": StrategySpec(
         kind="bollinger_reversion",
@@ -488,5 +535,5 @@ def strategy_display_name(strategy_kind: str) -> str:
 
 def compare_strategy_kinds(interval: str) -> list[str]:
     if interval == "1d":
-        return ["grid", "dca", "ma_cross", "bollinger_reversion", "daily_rebound"]
+        return ["grid", "dca", "ma_cross", "donchian_breakout", "bollinger_reversion", "daily_rebound"]
     return ["grid", "minute_rebound", "minute_rebound_with_fade_filter"]

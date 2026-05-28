@@ -4,6 +4,7 @@ export const strategyOptions = [
   { label: "网格", value: "grid" },
   { label: "定投", value: "dca" },
   { label: "双均线趋势", value: "ma_cross" },
+  { label: "唐奇安突破", value: "donchian_breakout" },
   { label: "布林带均值回归", value: "bollinger_reversion" },
   { label: "日线超跌反弹", value: "daily_rebound" },
   { label: "分钟急跌反抽", value: "minute_rebound" },
@@ -39,6 +40,12 @@ const strategyDefaults: Record<string, Record<string, number[]>> = {
     short_window: [5, 10, 20],
     long_window: [20, 30, 60],
     signal_buffer_pct: [0, 0.002, 0.005],
+  },
+  donchian_breakout: {
+    breakout_window: [20, 40, 55],
+    exit_window: [10, 20],
+    confirm_buffer_pct: [0, 0.002, 0.005],
+    stop_loss_pct: [4, 6, 8],
   },
   bollinger_reversion: {
     ma_window: [10, 20],
@@ -101,6 +108,12 @@ export const parameterFieldSpecsByStrategy: Record<string, ParameterFieldSpec[]>
     { key: "short_window", label: "短均线窗口", kind: "int" },
     { key: "long_window", label: "长均线窗口", kind: "int" },
     { key: "signal_buffer_pct", label: "信号缓冲比例", kind: "float" },
+  ],
+  donchian_breakout: [
+    { key: "breakout_window", label: "突破窗口", kind: "int" },
+    { key: "exit_window", label: "退出窗口", kind: "int" },
+    { key: "confirm_buffer_pct", label: "突破确认比例", kind: "float" },
+    { key: "stop_loss_pct", label: "止损比例", kind: "float" },
   ],
   bollinger_reversion: [
     { key: "ma_window", label: "布林带窗口", kind: "int" },

@@ -320,6 +320,28 @@ class StrategyTemplateServiceTests(unittest.TestCase):
             },
         )
 
+    def test_normalize_parameter_space_for_donchian_breakout(self) -> None:
+        payload = normalize_parameter_space(
+            "donchian_breakout",
+            {
+                "breakout_window": [20, "40"],
+                "exit_window": [10, "20"],
+                "confirm_buffer_pct": [0, "0.005"],
+                "stop_loss_pct": [4, "6"],
+            },
+            "1d",
+        )
+
+        self.assertEqual(
+            payload,
+            {
+                "breakout_window": [20, 40],
+                "exit_window": [10, 20],
+                "confirm_buffer_pct": [0.0, 0.005],
+                "stop_loss_pct": [4.0, 6.0],
+            },
+        )
+
     def test_normalize_parameter_space_for_bollinger_reversion(self) -> None:
         payload = normalize_parameter_space(
             "bollinger_reversion",
@@ -400,6 +422,7 @@ class StrategyTemplateServiceTests(unittest.TestCase):
         keys = [item.template_key for item in seeds]
         self.assertEqual(len(keys), len(set(keys)))
         self.assertIn("ma_cross_1d_realistic_default", keys)
+        self.assertIn("donchian_breakout_1d_realistic_default", keys)
         self.assertIn("bollinger_reversion_1d_realistic_default", keys)
 
 

@@ -21,6 +21,7 @@ from strategy_studio.strategy.grid import (
 from strategy_studio.strategy.dca import run_dca_backtest
 from strategy_studio.strategy.index_grid import resolve_index_grid_spec, run_index_grid_backtest
 from strategy_studio.strategy.bollinger import run_bollinger_reversion_backtest
+from strategy_studio.strategy.donchian import run_donchian_breakout_backtest
 from strategy_studio.strategy.rebound import run_rebound_backtest
 from strategy_studio.strategy.trend import run_ma_cross_backtest
 
@@ -731,6 +732,50 @@ class GridStrategyTests(unittest.TestCase):
         self.assertIn("bollinger_buy", set(events["EventType"]))
         self.assertIn("mean_revert_sell", set(events["EventType"]))
         self.assertTrue((events[events["EventType"] == "bollinger_buy"]["Units"] % 200 == 0).all())
+
+    def test_run_donchian_breakout_backtest_generates_breakout_buy_and_channel_exit(self) -> None:
+        prices = [10.0, 9.0, 8.0, 9.0, 11.0, 10.5, 8.5]
+        frame = build_test_frame(prices, start="2025-03-10")
+
+        result = run_donchian_breakout_backtest(
+            data=frame,
+            scenario_name="donchian_breakout_unit_test",
+            symbol="1810.HK",
+            market="HK",
+            lot_size=200,
+            lot_size_source="unit test",
+            params={
+                "breakout_window": 3,
+                "exit_window": 2,
+                "confirm_buffer_pct": 0.0,
+                "stop_loss_pct": 30.0,
+            },
+            execution_config=build_execution_config(
+                "research",
+                commission_bps=0,
+                slippage_bps=0,
+                max_position_ratio=0.8,
+                cooldown_bars=0,
+            ),
+        )
+
+        summary = result["summary"]
+        events = result["events"]
+        trades = result["trades"]
+
+        self.assertEqual(summary["StrategyKind"], "donchian_breakout")
+        self.assertEqual(summary["StrategyName"], "唐奇安突破")
+        self.assertTrue(summary["TriggeredEntry"])
+        self.assertEqual(summary["DonchianEntryEvents"], 1)
+        self.assertEqual(summary["DonchianExitEvents"], 1)
+        self.assertEqual(summary["PositionUnits"], 0)
+        self.assertNotIn("BaseOnlyUnits", summary)
+        self.assertNotIn("GridVsBaseOnly", summary)
+        self.assertFalse(trades.empty)
+        self.assertIn("donchian_breakout", set(trades["Tag"]))
+        self.assertIn("donchian_buy", set(events["EventType"]))
+        self.assertIn("donchian_exit_sell", set(events["EventType"]))
+        self.assertTrue((events[events["EventType"] == "donchian_buy"]["Units"] % 200 == 0).all())
 
     def test_run_minute_rebound_fade_filter_blocks_entry(self) -> None:
         dates = pd.date_range(start="2026-04-01 09:30:00", periods=8, freq="15min")

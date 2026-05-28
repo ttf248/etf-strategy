@@ -66,7 +66,7 @@ http://127.0.0.1:8000/docs
 - `parameter_space`：可选，覆盖或补充模板参数空间。
 - `execution_profile` 和费用/风控字段：可选，控制实盘化回测口径。
 
-当前内置策略类型包括 `grid`、`dca`、`ma_cross`、`bollinger_reversion`、`daily_rebound`、`minute_rebound`、`minute_rebound_with_fade_filter` 和 `minute_index_grid_retrace`。其中 `dca`、`ma_cross` 与 `bollinger_reversion` 仅支持日线周期。
+当前内置策略类型包括 `grid`、`dca`、`ma_cross`、`donchian_breakout`、`bollinger_reversion`、`daily_rebound`、`minute_rebound`、`minute_rebound_with_fade_filter` 和 `minute_index_grid_retrace`。其中 `dca`、`ma_cross`、`donchian_breakout` 与 `bollinger_reversion` 仅支持日线周期。
 
 取消任务时，`queued` 任务会直接变为 `cancelled`；`running` 任务会先变为 `cancel_requested`，由 Worker 在安全检查点停止并落为 `cancelled`。
 

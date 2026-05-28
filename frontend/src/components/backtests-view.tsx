@@ -13,6 +13,7 @@ const strategyGuide: Record<string, { scene: string; beginnerHint: string; risk:
   grid: { scene: "震荡区间内分层低买高卖", beginnerHint: "常用基线策略", risk: "单边下跌阶段回撤可能扩大" },
   dca: { scene: "长期分批建仓", beginnerHint: "适合日线基线研究", risk: "短期收益未必优于买入持有" },
   ma_cross: { scene: "跟随中期趋势做顺势进出", beginnerHint: "适合建立趋势策略基线", risk: "横盘震荡阶段可能频繁来回止损" },
+  donchian_breakout: { scene: "向上突破历史高点后顺势跟随", beginnerHint: "适合建立突破型趋势基线", risk: "假突破和震荡回撤会更频繁" },
   bollinger_reversion: { scene: "围绕布林带下轨做均值回归", beginnerHint: "适合建立震荡环境基线", risk: "单边下跌时容易抄底过早" },
   daily_rebound: { scene: "日线超跌反弹", beginnerHint: "适合验证阶段性反转", risk: "需重点关注止损与持仓时长" },
   minute_rebound: { scene: "分钟级急跌反抽", beginnerHint: "适合分钟级短线研究", risk: "对手续费与滑点更敏感" },

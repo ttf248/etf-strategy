@@ -27,11 +27,17 @@ const baseParameterLabels: Record<string, string> = {
   benchmark: "和谁做对照",
   BandWidth: "布林带宽度",
   Benchmark: "和谁做对照",
+  breakout_window: "突破窗口",
+  BreakoutWindow: "突破窗口",
   commission_bps: "交易佣金",
+  confirm_buffer_pct: "突破确认比例",
+  ConfirmBufferPct: "突破确认比例",
   cooldown_bars: "停手后先等多少根 K 线",
   EndDate: "结束时间",
   EntryDate: "入场时间",
   EntryPrice: "入场时价格",
+  exit_window: "退出窗口",
+  ExitWindow: "退出窗口",
   execution_profile: "成交假设",
   force_exit_loss_pct: "达到多大亏损时强制离场",
   GridCount: "最多开几层网格",
@@ -69,6 +75,8 @@ const eventTypeLabels: Record<string, string> = {
   bollinger_buy: "下轨回归买入",
   dca_buy: "定投买入",
   dca_skip: "定投跳过",
+  donchian_buy: "突破高点买入",
+  donchian_exit_sell: "跌回通道卖出",
   force_exit_sell: "强制离场卖出",
   grid_sell: "网格止盈卖出",
   ma_cross_buy: "均线金叉买入",
@@ -102,6 +110,7 @@ const tradeSideLabels: Record<string, string> = {
 const tradeTypeLabels: Record<string, string> = {
   bollinger_reversion: "布林带均值回归",
   dca_buy: "定投买入",
+  donchian_breakout: "唐奇安突破",
   force_exit_sell: "强制离场",
   grid: "网格交易",
   grid_sell: "网格止盈",
@@ -505,6 +514,9 @@ function strategyBeginnerSummary(strategyKind: string, interval: string): string
   if (strategyKind === "ma_cross") {
     return "用短长均线的金叉和死叉跟随中期趋势，适合先判断这只标的更像趋势市还是震荡市。";
   }
+  if (strategyKind === "donchian_breakout") {
+    return "专门等价格突破一段时间内的高点再顺势跟随，更适合判断这只标的是否具备持续性趋势。";
+  }
   if (strategyKind === "bollinger_reversion") {
     return "专门等价格跌到布林带下轨附近再尝试回归，适合先判断这只标的更像震荡市还是单边市。";
   }
@@ -528,6 +540,9 @@ function rerunFocusGuide(strategyKind: string): string {
   }
   if (strategyKind === "ma_cross") {
     return "优先改短长均线窗口，以及金叉确认时的信号缓冲比例。";
+  }
+  if (strategyKind === "donchian_breakout") {
+    return "优先改突破窗口、退出窗口、突破确认比例，以及固定止损阈值。";
   }
   if (strategyKind === "bollinger_reversion") {
     return "优先改布林带窗口、带宽、RSI 入场阈值，以及止盈止损和最长持仓时长。";

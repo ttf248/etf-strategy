@@ -74,11 +74,12 @@ const strategyGuide: Record<string, StrategyGuide> = {
   grid: { scene: "震荡行情中的分层低买高卖", level: "基础配置", audience: "分钟级基线研究", starterRank: 0 },
   dca: { scene: "长期分批建仓", level: "基础配置", audience: "长期持有对照研究", starterRank: 1 },
   ma_cross: { scene: "顺着中期趋势做金叉进、死叉出", level: "基础配置", audience: "趋势跟随基线研究", starterRank: 2 },
-  bollinger_reversion: { scene: "围绕布林带下轨做均值回归", level: "基础配置", audience: "震荡行情基线研究", starterRank: 3 },
-  daily_rebound: { scene: "日线超跌反弹", level: "中等复杂度", audience: "日线择时研究", starterRank: 4 },
-  minute_rebound: { scene: "分钟级急跌反抽", level: "进阶配置", audience: "短线反弹研究", starterRank: 5 },
-  minute_rebound_with_fade_filter: { scene: "带过滤条件的分钟反抽", level: "进阶配置", audience: "分钟信号筛选研究", starterRank: 6 },
-  minute_index_grid_retrace: { scene: "指数回落后的网格承接", level: "专项配置", audience: "指数策略专项研究", starterRank: 7 },
+  donchian_breakout: { scene: "突破历史高点后顺势持有", level: "基础配置", audience: "突破型趋势基线研究", starterRank: 3 },
+  bollinger_reversion: { scene: "围绕布林带下轨做均值回归", level: "基础配置", audience: "震荡行情基线研究", starterRank: 4 },
+  daily_rebound: { scene: "日线超跌反弹", level: "中等复杂度", audience: "日线择时研究", starterRank: 5 },
+  minute_rebound: { scene: "分钟级急跌反抽", level: "进阶配置", audience: "短线反弹研究", starterRank: 6 },
+  minute_rebound_with_fade_filter: { scene: "带过滤条件的分钟反抽", level: "进阶配置", audience: "分钟信号筛选研究", starterRank: 7 },
+  minute_index_grid_retrace: { scene: "指数回落后的网格承接", level: "专项配置", audience: "指数策略专项研究", starterRank: 8 },
 };
 
 const templateQuickPicks: TemplateQuickPick[] = [
@@ -101,6 +102,13 @@ const templateQuickPicks: TemplateQuickPick[] = [
     title: "趋势跟随基线",
     description: "优先查看双均线趋势日线模板，适合先验证顺势交易是否优于简单持有。",
     strategyKind: "ma_cross",
+    interval: "1d",
+  },
+  {
+    key: "breakout-trend",
+    title: "突破型趋势基线",
+    description: "优先查看唐奇安突破模板，适合验证价格突破高点后是否存在可持续趋势。",
+    strategyKind: "donchian_breakout",
     interval: "1d",
   },
   {
