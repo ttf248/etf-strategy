@@ -162,9 +162,26 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(args.strategy, "minute_rebound_with_fade_filter")
         self.assertTrue(args.compare_strategies)
 
-    def test_handle_download_defaults_to_intraday_and_merges_existing(self) -> None:
+    def test_handle_download_requires_explicit_output(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["download", "--symbol", "1810.HK", "--proxy", "http://127.0.0.1:7897"])
+
+        with self.assertRaisesRegex(ValueError, "不再默认落盘"):
+            handle_download(args)
+
+    def test_handle_download_exports_when_output_is_explicit(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "download",
+                "--symbol",
+                "1810.HK",
+                "--proxy",
+                "http://127.0.0.1:7897",
+                "--output",
+                str(DEFAULT_MINUTE_DATA_PATH),
+            ]
+        )
         bars = pd.DataFrame(
             {
                 "Date": ["2026-05-20"],
@@ -197,7 +214,17 @@ class GridStrategyTests(unittest.TestCase):
     def test_handle_download_allows_explicit_daily_without_range_and_merges_existing(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
-            ["download", "--symbol", "1810.HK", "--interval", "1d", "--proxy", "http://127.0.0.1:7897"]
+            [
+                "download",
+                "--symbol",
+                "1810.HK",
+                "--interval",
+                "1d",
+                "--proxy",
+                "http://127.0.0.1:7897",
+                "--output",
+                str(DEFAULT_DATA_PATH),
+            ]
         )
         bars = pd.DataFrame(
             {
@@ -228,7 +255,7 @@ class GridStrategyTests(unittest.TestCase):
         )
         mock_save.assert_called_once_with(bars, DEFAULT_DATA_PATH, interval="1d", merge_with_existing=True)
 
-    def test_handle_run_defaults_to_intraday_and_merges_before_workflow(self) -> None:
+    def test_handle_run_defaults_to_in_memory_download_and_skips_local_exports(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["run", "--symbol", "1810.HK", "--proxy", "http://127.0.0.1:7897"])
         bars = pd.DataFrame(
@@ -265,13 +292,9 @@ class GridStrategyTests(unittest.TestCase):
 
         with (
             patch("strategy_studio.cli.download_price_bars", return_value=bars) as mock_download,
-            patch("strategy_studio.cli.save_price_bars", return_value=DEFAULT_MINUTE_DATA_PATH) as mock_save,
             patch("strategy_studio.cli.run_minute_full_workflow", return_value=workflow_result) as mock_workflow,
-            patch(
-                "strategy_studio.cli.build_minute_report_markdown",
-                return_value="reports/platform/1810_hk/minute/1810_hk_15m_grid_report.md",
-            ),
-            patch("strategy_studio.cli._refresh_unified_report_index", return_value=Path("reports") / "platform" / "report_index.md"),
+            patch("strategy_studio.cli.build_minute_report_markdown") as mock_report,
+            patch("strategy_studio.cli._refresh_unified_report_index") as mock_index,
             patch("builtins.print"),
         ):
             result = handle_run(args)
@@ -285,7 +308,8 @@ class GridStrategyTests(unittest.TestCase):
             period="60d",
             proxy="http://127.0.0.1:7897",
         )
-        mock_save.assert_called_once_with(bars, DEFAULT_MINUTE_DATA_PATH, interval="15m", merge_with_existing=True)
+        mock_report.assert_not_called()
+        mock_index.assert_not_called()
         mock_workflow.assert_called_once_with(
             data_path=DEFAULT_MINUTE_DATA_PATH,
             symbol="1810.HK",
@@ -298,9 +322,12 @@ class GridStrategyTests(unittest.TestCase):
             wf_min_window_size=20,
             jobs=8,
             cache_dir=None,
+            data=ANY,
+            write_artifacts=False,
         )
         execution_config = mock_workflow.call_args.kwargs["execution_config"]
         self.assertEqual(execution_config.profile, "realistic")
+        self.assertEqual(list(mock_workflow.call_args.kwargs["data"].columns), ["Open", "High", "Low", "Close", "Volume"])
 
     def test_handle_run_local_only_skips_download_and_uses_existing_data(self) -> None:
         parser = build_parser()
@@ -333,21 +360,20 @@ class GridStrategyTests(unittest.TestCase):
             with (
                 patch("strategy_studio.cli._resolve_download_output_path", return_value=data_path),
                 patch("strategy_studio.cli.download_price_bars") as mock_download,
-                patch("strategy_studio.cli.save_price_bars") as mock_save,
                 patch("strategy_studio.cli.run_minute_full_workflow", return_value=workflow_result) as mock_workflow,
-                patch(
-                    "strategy_studio.cli.build_minute_report_markdown",
-                    return_value="reports/platform/1810_hk/minute/1810_hk_15m_grid_report.md",
-                ),
-                patch("strategy_studio.cli._refresh_unified_report_index", return_value=Path("reports") / "platform" / "report_index.md"),
+                patch("strategy_studio.cli.build_minute_report_markdown") as mock_report,
+                patch("strategy_studio.cli._refresh_unified_report_index") as mock_index,
                 patch("builtins.print"),
             ):
                 result = handle_run(args)
 
         self.assertEqual(result, 0)
         mock_download.assert_not_called()
-        mock_save.assert_not_called()
+        mock_report.assert_not_called()
+        mock_index.assert_not_called()
         self.assertEqual(mock_workflow.call_args.kwargs["data_path"], data_path)
+        self.assertIsNone(mock_workflow.call_args.kwargs["data"])
+        self.assertFalse(mock_workflow.call_args.kwargs["write_artifacts"])
 
     def test_batch_parser_reads_symbols_and_parallel_options(self) -> None:
         parser = build_parser()

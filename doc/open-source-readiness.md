@@ -31,6 +31,7 @@
 
 - 删除仓库内历史样例 CSV、参考快照和 Markdown 报告。
 - `data/processed/` 与 `reports/platform/` 明确改为运行产物目录，并在 `.gitignore` 中排除。
+- CLI 默认行为改为不自动落盘，只有显式导出时才会生成本地 CSV、汇总表和 Markdown 报告。
 - 删除不再适合开源仓库存放的大批量历史 CSV、批量报告和 `task.md`。
 
 ### 2. 补齐开源治理元信息

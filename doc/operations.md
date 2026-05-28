@@ -146,3 +146,4 @@ $env:STRATEGY_STUDIO_PROXY="http://127.0.0.1:7897"
 - 前端构建缓存。
 
 平台回测结果应留存在数据库；`reports/platform/` 仅用于 CLI 临时文件报告，默认不提交。
+如果没有显式传入 `--output`、`--output-dir` 或 `--report-dir`，CLI 默认不会在本地工作区新增 CSV、汇总表或 Markdown 报告。

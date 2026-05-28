@@ -19,7 +19,7 @@ from strategy_studio.config import DEFAULT_HK_LOT_SIZE_CACHE_PATH
 INTRADAY_INTERVAL_SUFFIXES = {"1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h"}
 DATA_INTERVAL_SUFFIXES = INTRADAY_INTERVAL_SUFFIXES | {"1d", "daily"}
 AASTOCKS_SNAPSHOT_URL = "https://product1.aastocks.com/Snapshot/WHBL/Quote.aspx"
-HK_LOT_SIZE_CACHE_PATH = DEFAULT_HK_LOT_SIZE_CACHE_PATH
+HK_LOT_SIZE_CACHE_PATH: Path | None = DEFAULT_HK_LOT_SIZE_CACHE_PATH
 _HK_LOT_SIZE_CACHE: dict[str, int] | None = None
 
 
@@ -132,7 +132,11 @@ def _load_hk_lot_size_cache(cache_path: str | Path | None = None) -> dict[str, i
     global _HK_LOT_SIZE_CACHE
     if _HK_LOT_SIZE_CACHE is not None:
         return _HK_LOT_SIZE_CACHE
-    target = Path(cache_path or HK_LOT_SIZE_CACHE_PATH)
+    target_path = cache_path if cache_path is not None else HK_LOT_SIZE_CACHE_PATH
+    if target_path is None:
+        _HK_LOT_SIZE_CACHE = {}
+        return _HK_LOT_SIZE_CACHE
+    target = Path(target_path)
     if not target.exists():
         _HK_LOT_SIZE_CACHE = {}
         return _HK_LOT_SIZE_CACHE
@@ -142,7 +146,10 @@ def _load_hk_lot_size_cache(cache_path: str | Path | None = None) -> dict[str, i
 
 
 def _save_hk_lot_size_cache(cache: dict[str, int], cache_path: str | Path | None = None) -> None:
-    target = Path(cache_path or HK_LOT_SIZE_CACHE_PATH)
+    target_path = cache_path if cache_path is not None else HK_LOT_SIZE_CACHE_PATH
+    if target_path is None:
+        return
+    target = Path(target_path)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(cache, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")
 

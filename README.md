@@ -77,7 +77,7 @@ py -3.13 main.py import-csv --source-dir data/processed
 py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
 ```
 
-生产环境请通过 `STRATEGY_STUDIO_DATABASE_URL` 覆盖默认连接。仓库不再提交样例行情和历史报告；运行时整理出的 CSV 默认写入 `data/processed/`，平台回测结果默认只写入数据库。
+生产环境请通过 `STRATEGY_STUDIO_DATABASE_URL` 覆盖默认连接。仓库不再提交样例行情和历史报告；平台回测结果默认只写入数据库，本地文件导出必须显式指定路径。
 
 ### 3. 启动平台
 
@@ -123,10 +123,10 @@ py -3.13 main.py sync-now --symbol 1810.HK --interval 15m --period 60d
 py -3.13 main.py import-csv --source-dir data/processed
 ```
 
-提交平台回测任务后由 Worker 异步执行，前端从数据库读取报告；CLI 仍可在你自己的本地 CSV 上生成临时文件报告：
+提交平台回测任务后由 Worker 异步执行，前端从数据库读取报告。只有在你显式传入导出目录时，CLI 才会生成本地临时文件：
 
 ```powershell
-py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK --interval 15m --compare-strategies --jobs auto --cache-dir outputs/cache/minute_compare
+py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK --interval 15m --compare-strategies --jobs auto --cache-dir outputs/cache/minute_compare --output-dir outputs/exports/minute_compare --report-dir reports/platform/exports/minute_compare
 ```
 
 批量研究：
@@ -156,8 +156,8 @@ tests/           unittest 测试
 
 其中：
 
-- `data/processed/`：下载、清洗和导入过程产生的运行数据，默认不提交。
-- `reports/platform/`：CLI 临时文件报告和索引目录，默认不提交。
+- `data/processed/`：手工准备后等待导入数据库的临时 CSV 目录，默认不提交。
+- `reports/platform/`：只有显式导出时才会使用的临时文件报告目录，默认不提交。
 
 ## 文档
 

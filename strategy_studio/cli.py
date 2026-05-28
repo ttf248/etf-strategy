@@ -102,14 +102,14 @@ def build_parser() -> argparse.ArgumentParser:
     download_parser.add_argument(
         "--output",
         default=None,
-        help="标准化 CSV 输出路径",
+        help="显式导出标准化 CSV 的路径；不传时请改用 sync-now 直接写数据库",
     )
 
     optimize_parser = subparsers.add_parser("optimize", help="执行样本内参数搜索")
     optimize_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
     optimize_parser.add_argument("--symbol", default=None, help="Yahoo Finance 标的代码；不传时尝试从文件名推断")
     optimize_parser.add_argument("--interval", default=DEFAULT_MINUTE_INTERVAL, help="数据周期，决定使用日线还是分钟线工作流")
-    optimize_parser.add_argument("--output-dir", default=None, help="参数搜索结果输出目录")
+    optimize_parser.add_argument("--output-dir", default=None, help="显式导出参数搜索结果目录；不传则不写本地文件")
     optimize_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
     optimize_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="样本内回看天数")
     optimize_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
@@ -142,7 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=False,
         help="单层止盈比例，例如 0.03 表示某层买入后反弹 3%% 就卖出该层",
     )
-    backtest_parser.add_argument("--output-dir", default=None, help="样本外验证输出目录")
+    backtest_parser.add_argument("--output-dir", default=None, help="显式导出样本外验证结果目录；不传则不写本地文件")
     backtest_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
     backtest_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="样本内回看天数")
     backtest_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
@@ -153,8 +153,8 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser.add_argument("--data", required=True, help="标准化行情 CSV 路径")
     report_parser.add_argument("--symbol", default=None, help="Yahoo Finance 标的代码；不传时尝试从文件名推断")
     report_parser.add_argument("--interval", default=DEFAULT_MINUTE_INTERVAL, help="数据周期，决定使用日线还是分钟线工作流")
-    report_parser.add_argument("--output-dir", default=None, help="工作流中间文件目录")
-    report_parser.add_argument("--report-dir", default=None, help="图表与 Markdown 报告输出目录")
+    report_parser.add_argument("--output-dir", default=None, help="显式导出工作流中间文件目录；不传则不写本地中间文件")
+    report_parser.add_argument("--report-dir", default=None, help="显式导出图表与 Markdown 报告目录；不传则不写本地报告")
     report_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
     report_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="样本内回看天数")
     report_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
@@ -178,8 +178,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="访问 Yahoo 必须配置的代理地址，例如 http://127.0.0.1:7897",
     )
     run_parser.add_argument("--local-only", action="store_true", help="不联网下载，直接使用本地已有 K 线 CSV")
-    run_parser.add_argument("--output-dir", default=None, help="完整工作流输出目录")
-    run_parser.add_argument("--report-dir", default=None, help="图表与 Markdown 报告输出目录")
+    run_parser.add_argument("--output-dir", default=None, help="显式导出完整工作流中间文件目录；不传则不写本地中间文件")
+    run_parser.add_argument("--report-dir", default=None, help="显式导出图表与 Markdown 报告目录；不传则不写本地报告")
     run_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="样本外起始日期")
     run_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="样本内回看天数")
     run_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
@@ -199,8 +199,8 @@ def build_parser() -> argparse.ArgumentParser:
     batch_parser.add_argument("--download", action="store_true", help="批量运行前先下载并合并行情")
     batch_parser.add_argument("--local-only", action="store_true", help="不联网下载，直接使用本地已有 K 线 CSV")
     batch_parser.add_argument("--proxy", default=os.getenv("STRATEGY_STUDIO_PROXY"), help="访问 Yahoo 必须配置的代理地址")
-    batch_parser.add_argument("--output-dir", default="outputs/batch", help="批量中间结果与汇总输出目录")
-    batch_parser.add_argument("--report-dir", default=str(DEFAULT_BATCH_REPORT_DIR), help="批量报告输出目录")
+    batch_parser.add_argument("--output-dir", default=None, help="显式导出批量中间结果与汇总目录；不传则不写本地汇总文件")
+    batch_parser.add_argument("--report-dir", default=None, help="显式导出批量报告目录；不传则不写本地报告")
     batch_parser.add_argument("--validation-start", default=DEFAULT_VALIDATION_START, help="日线样本外起始日期")
     batch_parser.add_argument("--lookback-days", type=int, default=DEFAULT_LOOKBACK_DAYS, help="日线样本内回看天数")
     batch_parser.add_argument("--validation-ratio", type=float, default=DEFAULT_VALIDATION_RATIO, help="分钟线样本外比例")
@@ -489,6 +489,8 @@ def _run_full_workflow_from_args(
     data_path: str | Path,
     args: argparse.Namespace,
     execution_config,
+    data: pd.DataFrame | None = None,
+    write_artifacts: bool = True,
 ) -> dict[str, object]:
     intraday_mode = is_intraday_interval(args.interval)
     jobs = _resolve_jobs(args.jobs)
@@ -505,6 +507,8 @@ def _run_full_workflow_from_args(
             wf_min_window_size=args.wf_min_window_size,
             jobs=jobs,
             cache_dir=args.cache_dir,
+            data=data,
+            write_artifacts=write_artifacts,
         )
     return run_full_workflow(
         data_path=data_path,
@@ -518,20 +522,55 @@ def _run_full_workflow_from_args(
         wf_min_window_size=args.wf_min_window_size,
         jobs=jobs,
         cache_dir=args.cache_dir,
+        data=data,
+        write_artifacts=write_artifacts,
     )
 
 
-def _run_comparison_workflows(data_path: str | Path, args: argparse.Namespace, execution_config) -> dict[str, dict[str, object]]:
+def _run_comparison_workflows(
+    data_path: str | Path,
+    args: argparse.Namespace,
+    execution_config,
+    data: pd.DataFrame | None = None,
+    write_artifacts: bool = True,
+) -> dict[str, dict[str, object]]:
     original_output_dir = args.output_dir
     results: dict[str, dict[str, object]] = {}
     for strategy_kind in _default_compare_strategy_kinds(args.interval):
         args.strategy = strategy_kind
         strategy_slug = strategy_kind.replace("minute_", "").replace("daily_", "")
         base_output_dir = Path(original_output_dir or (DEFAULT_MINUTE_OUTPUT_DIR if is_intraday_interval(args.interval) else DEFAULT_OUTPUT_DIR))
-        args.output_dir = str(base_output_dir / strategy_slug)
-        results[strategy_kind] = _run_full_workflow_from_args(data_path, args, execution_config)
+        args.output_dir = str(base_output_dir / strategy_slug) if write_artifacts else None
+        results[strategy_kind] = _run_full_workflow_from_args(
+            data_path,
+            args,
+            execution_config,
+            data=data,
+            write_artifacts=write_artifacts,
+        )
     args.output_dir = original_output_dir
     return results
+
+
+def _standardized_frame_to_price_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    """把标准化下载结果转换为工作流直接可用的 OHLCV DataFrame。"""
+    working = frame.copy()
+    required_columns = {"Date", "Open", "High", "Low", "Close", "Volume"}
+    missing_columns = required_columns.difference(working.columns)
+    if missing_columns:
+        raise ValueError(f"标准化行情缺少字段: {sorted(missing_columns)}")
+    working["Date"] = pd.to_datetime(working["Date"])
+    working = working.sort_values("Date").set_index("Date")
+    working = working.loc[:, ["Open", "High", "Low", "Close", "Volume"]]
+    return working.astype(
+        {
+            "Open": "float64",
+            "High": "float64",
+            "Low": "float64",
+            "Close": "float64",
+            "Volume": "int64",
+        }
+    )
 
 
 def _validate_daily_date_range(args: argparse.Namespace, command_name: str) -> None:
@@ -561,6 +600,8 @@ def handle_download(args: argparse.Namespace) -> int:
     """执行下载命令。"""
     started_at = perf_counter()
     _validate_daily_date_range(args, "download")
+    if args.output is None:
+        raise ValueError("download 命令不再默认落盘；请改用 sync-now 写数据库，或显式传入 --output 导出 CSV。")
     output = _resolve_download_output_path(args.symbol, args.interval, args.period, args.output)
     logger.info("收到 download 命令: symbol={} interval={} output={}", args.symbol, args.interval, output)
 
@@ -591,6 +632,7 @@ def handle_optimize(args: argparse.Namespace) -> int:
     started_at = perf_counter()
     logger.info("收到 optimize 命令: data={} interval={} strategy={}", args.data, args.interval, args.strategy)
     execution_config = _build_execution_from_args(args)
+    write_artifacts = bool(args.output_dir)
     if is_intraday_interval(args.interval):
         output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR / "optimize")
         result = run_minute_optimization_workflow(
@@ -605,6 +647,7 @@ def handle_optimize(args: argparse.Namespace) -> int:
             wf_min_window_size=args.wf_min_window_size,
             jobs=_resolve_jobs(args.jobs),
             cache_dir=args.cache_dir,
+            write_artifacts=write_artifacts,
         )
     else:
         output_dir = args.output_dir or str(DEFAULT_OUTPUT_DIR / "optimize")
@@ -620,9 +663,13 @@ def handle_optimize(args: argparse.Namespace) -> int:
             wf_min_window_size=args.wf_min_window_size,
             jobs=_resolve_jobs(args.jobs),
             cache_dir=args.cache_dir,
+            write_artifacts=write_artifacts,
         )
     best_summary = result["best_run"]["summary"]
-    print(f"样本内最优参数已生成: {result['results_path']}")
+    if result["results_path"]:
+        print(f"样本内最优参数已生成: {result['results_path']}")
+    else:
+        print("样本内最优参数已生成，当前未导出本地文件。")
     print(f"最优参数: {_format_best_parameter_summary(best_summary)}")
     logger.info("optimize 命令完成: results={} elapsed={:.2f}s", result["results_path"], perf_counter() - started_at)
     return 0
@@ -632,6 +679,7 @@ def handle_backtest(args: argparse.Namespace) -> int:
     """执行样本外验证。"""
     started_at = perf_counter()
     execution_config = _build_execution_from_args(args)
+    write_artifacts = bool(args.output_dir)
     if args.strategy == "minute_index_grid_retrace":
         if not is_intraday_interval(args.interval):
             raise ValueError("minute_index_grid_retrace 仅支持分钟线数据，请使用 --interval 1m。")
@@ -653,6 +701,7 @@ def handle_backtest(args: argparse.Namespace) -> int:
             validation_ratio=args.validation_ratio,
             strategy_kind=args.strategy,
             execution_config=execution_config,
+            write_artifacts=write_artifacts,
         )
     elif args.strategy == "grid":
         if args.grid_spacing is None or args.grid_count is None or args.take_profit is None:
@@ -678,6 +727,7 @@ def handle_backtest(args: argparse.Namespace) -> int:
                 interval=args.interval,
                 validation_ratio=args.validation_ratio,
                 execution_config=execution_config,
+                write_artifacts=write_artifacts,
             )
         else:
             output_dir = args.output_dir or str(DEFAULT_OUTPUT_DIR / "validation")
@@ -691,6 +741,7 @@ def handle_backtest(args: argparse.Namespace) -> int:
                 validation_start=args.validation_start,
                 lookback_days=args.lookback_days,
                 execution_config=execution_config,
+                write_artifacts=write_artifacts,
             )
     else:
         raise ValueError("backtest 命令当前仅支持 grid 和 minute_index_grid_retrace；其他策略请使用 optimize/report/run。")
@@ -710,9 +761,11 @@ def handle_run(args: argparse.Namespace) -> int:
     started_at = perf_counter()
     intraday_mode = is_intraday_interval(args.interval)
     _validate_daily_date_range(args, "run")
-    output_dir = Path(args.output_dir or (DEFAULT_MINUTE_OUTPUT_DIR if intraday_mode else DEFAULT_OUTPUT_DIR))
+    write_artifacts = bool(args.output_dir)
+    export_report = bool(args.report_dir)
+    output_dir = Path(args.output_dir) if args.output_dir else Path(DEFAULT_MINUTE_OUTPUT_DIR if intraday_mode else DEFAULT_OUTPUT_DIR)
     report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR if intraday_mode else DEFAULT_REPORT_DIR)
-    report_root = _resolve_report_root(report_dir)
+    report_root = _resolve_report_root(report_dir) if export_report else None
     data_path = _resolve_download_output_path(args.symbol, args.interval, args.period, output=None)
     logger.info(
         "收到 run 命令: symbol={} interval={} strategy={} compare={} data_path={} output_dir={} report_dir={}",
@@ -725,13 +778,14 @@ def handle_run(args: argparse.Namespace) -> int:
         report_dir,
     )
     execution_config = _build_execution_from_args(args)
+    downloaded_price_frame: pd.DataFrame | None = None
     if args.local_only:
         if not data_path.exists():
             raise FileNotFoundError(f"本地模式缺少行情文件，请先准备本地 CSV: {data_path}")
-        merged_data_path = data_path
-        logger.info("[1/3] 本地模式已开启，跳过联网下载: data_path={}", merged_data_path)
+        workflow_data_path = data_path
+        logger.info("[1/3] 本地模式已开启，跳过联网下载: data_path={}", workflow_data_path)
     else:
-        logger.info("[1/3] 开始下载并合并最新行情")
+        logger.info("[1/3] 开始下载最新行情，并直接以内存数据进入工作流")
         bars = download_price_bars(
             symbol=args.symbol,
             interval=args.interval,
@@ -740,52 +794,76 @@ def handle_run(args: argparse.Namespace) -> int:
             period=args.period if intraday_mode else None,
             proxy=args.proxy,
         )
-        merged_data_path = save_price_bars(bars, data_path, interval=args.interval, merge_with_existing=True)
-        logger.info("[1/3] 下载与落盘完成: data_path={}", merged_data_path)
+        downloaded_price_frame = _standardized_frame_to_price_frame(bars)
+        workflow_data_path = data_path
+        logger.info("[1/3] 下载完成，未写入本地文件")
 
-    # `run` 总是先把最新下载结果和本地样本合并落盘，再交给统一工作流和报告层复用。
     logger.info("[2/3] 开始执行完整回测工作流")
-    args.output_dir = str(output_dir)
+    args.output_dir = str(output_dir) if write_artifacts else None
     if args.compare_strategies:
-        comparison_results = _run_comparison_workflows(data_path, args, execution_config)
+        comparison_results = _run_comparison_workflows(
+            workflow_data_path,
+            args,
+            execution_config,
+            data=downloaded_price_frame,
+            write_artifacts=write_artifacts,
+        )
         result = comparison_results[args.strategy] if args.strategy in comparison_results else next(iter(comparison_results.values()))
         logger.info("[2/3] 多策略工作流完成: strategies={}", list(comparison_results))
     else:
-        result = _run_full_workflow_from_args(data_path, args, execution_config)
+        result = _run_full_workflow_from_args(
+            workflow_data_path,
+            args,
+            execution_config,
+            data=downloaded_price_frame,
+            write_artifacts=write_artifacts,
+        )
         comparison_results = None
         logger.info("[2/3] 完整回测工作流完成: summary={}", result["combined_summary_path"])
-    logger.info("[3/3] 开始生成正式报告")
-    if comparison_results is not None:
-        report_path = build_strategy_comparison_report(
-            strategy_results=comparison_results,
-            interval=args.interval,
-            symbol=args.symbol,
-            report_dir=report_dir,
-        )
-    elif intraday_mode:
-        report_path = build_minute_report_markdown(result, report_dir=report_dir)
+    report_path: Path | str | None = None
+    index_path: Path | None = None
+    if export_report:
+        logger.info("[3/3] 开始生成正式报告")
+        if comparison_results is not None:
+            report_path = build_strategy_comparison_report(
+                strategy_results=comparison_results,
+                interval=args.interval,
+                symbol=args.symbol,
+                report_dir=report_dir,
+            )
+        elif intraday_mode:
+            report_path = build_minute_report_markdown(result, report_dir=report_dir)
+        else:
+            report_path = build_report_markdown(result, report_dir=report_dir)
+        report_symbol = _resolve_report_symbol(args.symbol)
+        index_entries = [
+            _comparison_report_index_entry(report_path, comparison_results, args.interval, args.symbol, report_root=report_root)
+            if comparison_results is not None
+            else _single_report_index_entry(
+                report_path,
+                result,
+                symbol=report_symbol,
+                interval=args.interval,
+                strategy_kind=args.strategy,
+                report_root=report_root,
+            )
+        ]
+        index_path = _refresh_unified_report_index(index_entries, report_root=report_root)
+        logger.info("[3/3] 正式报告生成完成: report={}", report_path)
     else:
-        report_path = build_report_markdown(result, report_dir=report_dir)
-    report_symbol = _resolve_report_symbol(args.symbol)
-    index_entries = [
-        _comparison_report_index_entry(report_path, comparison_results, args.interval, args.symbol, report_root=report_root)
-        if comparison_results is not None
-        else _single_report_index_entry(
-            report_path,
-            result,
-            symbol=report_symbol,
-            interval=args.interval,
-            strategy_kind=args.strategy,
-            report_root=report_root,
-        )
-    ]
-    index_path = _refresh_unified_report_index(index_entries, report_root=report_root)
-    logger.info("[3/3] 正式报告生成完成: report={}", report_path)
+        logger.info("[3/3] 未提供 --report-dir，跳过本地报告导出")
     best_summary = result["optimization"]["best_run"]["summary"]
     validation_summary = result["validation"]["run"]["summary"]
-    print(f"完整工作流已完成，汇总文件: {result['combined_summary_path']}")
-    print(f"中文报告: {report_path}")
-    print(f"正式汇总报告: {index_path}")
+    if result["combined_summary_path"]:
+        print(f"完整工作流已完成，汇总文件: {result['combined_summary_path']}")
+    else:
+        print("完整工作流已完成，当前未导出本地中间文件。")
+    if report_path is not None:
+        print(f"中文报告: {report_path}")
+    else:
+        print("未导出本地 Markdown 报告；如需文件报告，请显式传入 --report-dir。")
+    if index_path is not None:
+        print(f"正式汇总报告: {index_path}")
     print(f"样本内最优参数: {_format_best_parameter_summary(best_summary)}")
     print(
         f"{'分钟线样本外表现' if intraday_mode else '2026 样本外表现'}: "
@@ -804,49 +882,57 @@ def handle_report(args: argparse.Namespace) -> int:
     logger.info("[1/2] 开始重跑工作流并准备报告数据")
     execution_config = _build_execution_from_args(args)
     output_dir = args.output_dir or str(DEFAULT_MINUTE_OUTPUT_DIR if is_intraday_interval(args.interval) else DEFAULT_OUTPUT_DIR)
+    write_artifacts = bool(args.output_dir)
+    export_report = bool(args.report_dir)
     report_dir = args.report_dir or str(DEFAULT_MINUTE_REPORT_DIR if is_intraday_interval(args.interval) else DEFAULT_REPORT_DIR)
-    report_root = _resolve_report_root(report_dir)
-    args.output_dir = output_dir
+    report_root = _resolve_report_root(report_dir) if export_report else None
+    args.output_dir = output_dir if write_artifacts else None
     if args.compare_strategies:
-        comparison_results = _run_comparison_workflows(args.data, args, execution_config)
+        comparison_results = _run_comparison_workflows(args.data, args, execution_config, write_artifacts=write_artifacts)
         result = comparison_results[args.strategy] if args.strategy in comparison_results else next(iter(comparison_results.values()))
     else:
         comparison_results = None
-        result = _run_full_workflow_from_args(args.data, args, execution_config)
-    logger.info("[2/2] 工作流数据准备完成，开始写正式报告")
-    if comparison_results is not None:
-        report_path = build_strategy_comparison_report(
-            strategy_results=comparison_results,
-            interval=args.interval,
-            symbol=args.symbol or DEFAULT_SYMBOL,
-            report_dir=report_dir,
-        )
-    elif is_intraday_interval(args.interval):
-        report_path = build_minute_report_markdown(result, report_dir=report_dir)
+        result = _run_full_workflow_from_args(args.data, args, execution_config, write_artifacts=write_artifacts)
+    report_path: Path | str | None = None
+    index_path: Path | None = None
+    if export_report:
+        logger.info("[2/2] 工作流数据准备完成，开始写正式报告")
+        if comparison_results is not None:
+            report_path = build_strategy_comparison_report(
+                strategy_results=comparison_results,
+                interval=args.interval,
+                symbol=args.symbol or DEFAULT_SYMBOL,
+                report_dir=report_dir,
+            )
+        elif is_intraday_interval(args.interval):
+            report_path = build_minute_report_markdown(result, report_dir=report_dir)
+        else:
+            report_path = build_report_markdown(result, report_dir=report_dir)
+        report_symbol = _resolve_report_symbol(args.symbol, args.data)
+        index_entries = [
+            _comparison_report_index_entry(
+                report_path,
+                comparison_results,
+                args.interval,
+                report_symbol,
+                report_root=report_root,
+            )
+            if comparison_results is not None
+            else _single_report_index_entry(
+                report_path,
+                result,
+                symbol=report_symbol,
+                interval=args.interval,
+                strategy_kind=args.strategy,
+                report_root=report_root,
+            )
+        ]
+        index_path = _refresh_unified_report_index(index_entries, report_root=report_root)
+        print(f"报告已生成: {report_path}")
+        print(f"正式汇总报告: {index_path}")
     else:
-        report_path = build_report_markdown(result, report_dir=report_dir)
-    report_symbol = _resolve_report_symbol(args.symbol, args.data)
-    index_entries = [
-        _comparison_report_index_entry(
-            report_path,
-            comparison_results,
-            args.interval,
-            report_symbol,
-            report_root=report_root,
-        )
-        if comparison_results is not None
-        else _single_report_index_entry(
-            report_path,
-            result,
-            symbol=report_symbol,
-            interval=args.interval,
-            strategy_kind=args.strategy,
-            report_root=report_root,
-        )
-    ]
-    index_path = _refresh_unified_report_index(index_entries, report_root=report_root)
-    print(f"报告已生成: {report_path}")
-    print(f"正式汇总报告: {index_path}")
+        logger.info("[2/2] 未提供 --report-dir，跳过本地报告导出")
+        print("工作流已完成，未导出本地 Markdown 报告。")
     logger.info("report 命令完成: report={} elapsed={:.2f}s", report_path, perf_counter() - started_at)
     return 0
 
@@ -924,8 +1010,10 @@ def handle_batch(args: argparse.Namespace) -> int:
     symbols, specs_by_symbol = _resolve_batch_symbols(args)
 
     intraday_mode = is_intraday_interval(args.interval)
-    output_root = Path(args.output_dir)
-    report_root = Path(args.report_dir)
+    write_artifacts = bool(args.output_dir)
+    export_report = bool(args.report_dir)
+    output_root = Path(args.output_dir) if args.output_dir else None
+    report_root = Path(args.report_dir) if args.report_dir else None
     execution_config = _build_execution_from_args(args)
     jobs = _resolve_jobs(args.jobs)
     rows: list[dict[str, object]] = []
@@ -937,9 +1025,10 @@ def handle_batch(args: argparse.Namespace) -> int:
         spec = specs_by_symbol[symbol]
         slug = _batch_symbol_slug(symbol)
         data_path = _resolve_download_output_path(symbol, args.interval, args.period, output=None)
-        symbol_output_dir = output_root / slug
-        symbol_report_dir = report_root / slug / ("minute" if intraday_mode else "daily")
+        symbol_output_dir = (output_root / slug) if output_root is not None else None
+        symbol_report_dir = (report_root / slug / ("minute" if intraday_mode else "daily")) if report_root is not None else None
         download_completed = False
+        downloaded_price_frame: pd.DataFrame | None = None
         try:
             if args.download:
                 logger.info("[batch] 开始下载并合并行情: symbol={} interval={}", symbol, args.interval)
@@ -951,43 +1040,51 @@ def handle_batch(args: argparse.Namespace) -> int:
                     period=args.period if intraday_mode else None,
                     proxy=args.proxy,
                 )
-                save_price_bars(bars, data_path, interval=args.interval, merge_with_existing=True)
+                downloaded_price_frame = _standardized_frame_to_price_frame(bars)
                 download_completed = True
             elif args.local_only:
                 logger.info("[batch] 本地模式已开启，跳过联网下载: symbol={} data_path={}", symbol, data_path)
-            if not data_path.exists():
+            if downloaded_price_frame is None and not data_path.exists():
                 raise FileNotFoundError(f"行情文件不存在，请先下载或传 --download: {data_path}")
 
             cache_dir = Path(args.cache_dir) / slug if args.cache_dir else None
             if args.compare_strategies:
                 batch_args = argparse.Namespace(**vars(args))
                 batch_args.symbol = symbol
-                batch_args.output_dir = str(symbol_output_dir)
+                batch_args.output_dir = str(symbol_output_dir) if symbol_output_dir is not None else None
                 batch_args.cache_dir = str(cache_dir) if cache_dir else None
-                comparison_results = _run_comparison_workflows(data_path, batch_args, execution_config)
-                result = comparison_results[args.strategy] if args.strategy in comparison_results else next(iter(comparison_results.values()))
-                report_path = build_strategy_comparison_report(
-                    strategy_results=comparison_results,
-                    interval=args.interval,
-                    symbol=symbol,
-                    report_dir=symbol_report_dir,
+                comparison_results = _run_comparison_workflows(
+                    data_path,
+                    batch_args,
+                    execution_config,
+                    data=downloaded_price_frame,
+                    write_artifacts=write_artifacts,
                 )
-                index_entries.append(
-                    _comparison_report_index_entry(
-                        report_path=report_path,
-                        comparison_results=comparison_results,
+                result = comparison_results[args.strategy] if args.strategy in comparison_results else next(iter(comparison_results.values()))
+                report_path = None
+                if export_report:
+                    report_path = build_strategy_comparison_report(
+                        strategy_results=comparison_results,
                         interval=args.interval,
                         symbol=symbol,
-                        spec=spec,
-                        report_root=report_root,
+                        report_dir=symbol_report_dir,
                     )
-                )
+                    index_entries.append(
+                        _comparison_report_index_entry(
+                            report_path=report_path,
+                            comparison_results=comparison_results,
+                            interval=args.interval,
+                            symbol=symbol,
+                            spec=spec,
+                            report_root=report_root,
+                        )
+                    )
             else:
                 if intraday_mode:
                     result = run_minute_full_workflow(
                         data_path=data_path,
                         symbol=symbol,
-                        output_dir=symbol_output_dir,
+                        output_dir=symbol_output_dir or DEFAULT_MINUTE_OUTPUT_DIR,
                         interval=args.interval,
                         validation_ratio=args.validation_ratio,
                         strategy_kind=args.strategy,
@@ -996,13 +1093,14 @@ def handle_batch(args: argparse.Namespace) -> int:
                         wf_min_window_size=args.wf_min_window_size,
                         jobs=jobs,
                         cache_dir=cache_dir,
+                        data=downloaded_price_frame,
+                        write_artifacts=write_artifacts,
                     )
-                    report_path = build_minute_report_markdown(result, report_dir=symbol_report_dir)
                 else:
                     result = run_full_workflow(
                         data_path=data_path,
                         symbol=symbol,
-                        output_dir=symbol_output_dir,
+                        output_dir=symbol_output_dir or DEFAULT_OUTPUT_DIR,
                         validation_start=args.validation_start,
                         lookback_days=args.lookback_days,
                         strategy_kind=args.strategy,
@@ -1011,19 +1109,27 @@ def handle_batch(args: argparse.Namespace) -> int:
                         wf_min_window_size=args.wf_min_window_size,
                         jobs=jobs,
                         cache_dir=cache_dir,
+                        data=downloaded_price_frame,
+                        write_artifacts=write_artifacts,
                     )
-                    report_path = build_report_markdown(result, report_dir=symbol_report_dir)
-                index_entries.append(
-                    _single_report_index_entry(
-                        report_path=report_path,
-                        workflow_result=result,
-                        symbol=symbol,
-                        interval=args.interval,
-                        strategy_kind=args.strategy,
-                        spec=spec,
-                        report_root=report_root,
+                report_path = None
+                if export_report:
+                    report_path = (
+                        build_minute_report_markdown(result, report_dir=symbol_report_dir)
+                        if intraday_mode
+                        else build_report_markdown(result, report_dir=symbol_report_dir)
                     )
-                )
+                    index_entries.append(
+                        _single_report_index_entry(
+                            report_path=report_path,
+                            workflow_result=result,
+                            symbol=symbol,
+                            interval=args.interval,
+                            strategy_kind=args.strategy,
+                            spec=spec,
+                            report_root=report_root,
+                        )
+                    )
 
             best_summary = result["optimization"]["best_run"]["summary"]
             validation_summary = result["validation"]["run"]["summary"]
@@ -1034,7 +1140,7 @@ def handle_batch(args: argparse.Namespace) -> int:
                     "Category": spec.category,
                     "Status": "ok",
                     "Interval": args.interval,
-                    "ReportPath": str(report_path),
+                    "ReportPath": str(report_path or ""),
                     "GridSpacingPct": best_summary["GridSpacingPct"],
                     "GridCount": best_summary["GridCount"],
                     "TakeProfitPct": best_summary["TakeProfitPct"],
@@ -1047,7 +1153,11 @@ def handle_batch(args: argparse.Namespace) -> int:
             logger.info("[batch] 标的完成: symbol={} report={}", symbol, report_path)
         except Exception as exc:
             report_view = "compare" if args.compare_strategies else args.strategy
-            failed_report_path = _write_failed_batch_report(symbol_report_dir, symbol, spec, args.interval, exc, report_view=report_view)
+            failed_report_path = (
+                _write_failed_batch_report(symbol_report_dir, symbol, spec, args.interval, exc, report_view=report_view)
+                if export_report
+                else None
+            )
             rows.append(
                 {
                     "Symbol": symbol,
@@ -1055,33 +1165,43 @@ def handle_batch(args: argparse.Namespace) -> int:
                     "Category": spec.category,
                     "Status": "failed",
                     "Interval": args.interval,
-                    "ReportPath": str(failed_report_path),
+                    "ReportPath": str(failed_report_path or ""),
                     "Error": str(exc),
                     "ElapsedSeconds": perf_counter() - symbol_started_at,
                 }
             )
-            index_entries.append(
-                _failed_report_index_entry(
-                    report_path=failed_report_path,
-                    symbol=symbol,
-                    interval=args.interval,
-                    report_view=report_view,
-                    error=exc,
-                    spec=spec,
-                    report_root=report_root,
+            if export_report:
+                index_entries.append(
+                    _failed_report_index_entry(
+                        report_path=failed_report_path,
+                        symbol=symbol,
+                        interval=args.interval,
+                        report_view=report_view,
+                        error=exc,
+                        spec=spec,
+                        report_root=report_root,
+                    )
                 )
-            )
             if args.download and not download_completed:
                 logger.error("[batch] 下载失败，已记录 failed 报告并继续下一个标的: symbol={} error={}", symbol, exc)
             else:
                 logger.exception("[batch] 标的失败: symbol={}", symbol)
 
-    output_root.mkdir(parents=True, exist_ok=True)
-    summary_path = output_root / "batch_summary.csv"
-    pd.DataFrame(rows).to_csv(summary_path, index=False, encoding="utf-8-sig")
-    index_path = _refresh_unified_report_index(index_entries, report_root=report_root)
+    summary_path: Path | None = None
+    index_path: Path | None = None
+    if output_root is not None:
+        output_root.mkdir(parents=True, exist_ok=True)
+        summary_path = output_root / "batch_summary.csv"
+        pd.DataFrame(rows).to_csv(summary_path, index=False, encoding="utf-8-sig")
+    if export_report and report_root is not None:
+        index_path = _refresh_unified_report_index(index_entries, report_root=report_root)
     ok_count = sum(1 for row in rows if row["Status"] == "ok")
-    print(f"批量流程完成: 成功 {ok_count}/{len(rows)}，汇总文件: {summary_path}，报告索引: {index_path}")
+    print(
+        "批量流程完成: "
+        f"成功 {ok_count}/{len(rows)}"
+        + (f"，汇总文件: {summary_path}" if summary_path is not None else "，未导出本地汇总文件")
+        + (f"，报告索引: {index_path}" if index_path is not None else "，未导出本地报告索引")
+    )
     logger.info("batch 命令完成: summary={} index={} elapsed={:.2f}s", summary_path, index_path, perf_counter() - started_at)
     return 0 if ok_count == len(rows) else 1
 

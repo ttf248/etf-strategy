@@ -14,6 +14,7 @@ from strategy_studio.services.platform import record_platform_heartbeat
 from strategy_studio.services.templates import build_seed_templates, normalize_parameter_space, resolve_backtest_request_payload
 from strategy_studio.strategy.sampling import DeclineWindow
 from strategy_studio.web.app import create_app
+import strategy_studio.data.market_rules as market_rules
 
 
 class PlatformFeatureTests(unittest.TestCase):
@@ -40,6 +41,9 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(infer_interval_from_data_path("data/processed/1810_hk_daily.csv"), "1d")
         self.assertEqual(infer_interval_from_data_path("data/processed/1810_hk_15m.csv"), "15m")
         self.assertIsNone(infer_interval_from_data_path("data/processed/xiaomi_test.csv"))
+
+    def test_hk_lot_size_cache_is_not_persisted_by_default(self) -> None:
+        self.assertIsNone(market_rules.HK_LOT_SIZE_CACHE_PATH)
 
     def test_backtest_artifacts_use_database_only_payload(self) -> None:
         payload = _normalize_artifacts(

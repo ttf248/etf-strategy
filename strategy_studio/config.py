@@ -17,7 +17,8 @@ DEFAULT_MINUTE_PERIOD = "60d"
 # 中间结果与正式报告目录分开，方便重复回测时只替换输出而不污染文档目录。
 DEFAULT_OUTPUT_DIR = Path("outputs")
 DEFAULT_MINUTE_OUTPUT_DIR = DEFAULT_OUTPUT_DIR / "minute"
-DEFAULT_HK_LOT_SIZE_CACHE_PATH = DEFAULT_OUTPUT_DIR / "cache" / "hk_lot_size_cache.json"
+# 港股每手股数默认只做内存缓存；如需调试持久化，再显式覆盖缓存路径。
+DEFAULT_HK_LOT_SIZE_CACHE_PATH: Path | None = None
 DEFAULT_REPORT_ROOT = Path("reports/platform")
 DEFAULT_REPORT_INDEX_PATH = DEFAULT_REPORT_ROOT / "report_index.md"
 DEFAULT_REPORT_REGISTRY_PATH = DEFAULT_REPORT_ROOT / "report_registry.csv"
