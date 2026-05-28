@@ -23,8 +23,8 @@ type ParameterHighlight = {
 const baseParameterLabels: Record<string, string> = {
   AnchorDate: "从哪一天开始对齐",
   BaseUnits: "基础持仓份额",
-  benchmark: "对照基准",
-  Benchmark: "对照基准",
+  benchmark: "和谁做对照",
+  Benchmark: "和谁做对照",
   commission_bps: "交易佣金",
   cooldown_bars: "停手后先等多少根 K 线",
   EndDate: "结束时间",
@@ -110,12 +110,12 @@ const valueLabels: Record<string, Record<string, string>> = {
     hold: "继续持有",
   },
   Benchmark: {
-    buy_hold: "买入持有",
-    cash_idle: "现金空仓",
+    buy_hold: "买入后一直拿着",
+    cash_idle: "空仓不买",
   },
   benchmark: {
-    buy_hold: "买入持有",
-    cash_idle: "现金空仓",
+    buy_hold: "买入后一直拿着",
+    cash_idle: "空仓不买",
   },
   GridMode: {
     cash: "现金空仓",
