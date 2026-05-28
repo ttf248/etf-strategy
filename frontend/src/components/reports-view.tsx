@@ -322,10 +322,14 @@ export function ReportsView() {
 
       <Card
         size="small"
-        title="报告对比"
+        title="需要一起比较时，再用报告对比"
         className="section-card report-compare-card"
         extra={selectedReportIds.length ? <Button size="small" onClick={() => setSelectedReportIds([])}>清空对比</Button> : null}
       >
+        <div className="detail-secondary-hint">
+          <strong>第一次来看结果时，不用先停在这里</strong>
+          <p>更自然的顺序通常是：先从下面挑 1 份最值得细看的报告打开，确认它为什么值得看；只有当你已经有两三份候选结果，才需要回到这里并排比较。</p>
+        </div>
         {queryComparedReports.length > 0 ? (
           <div className="compare-prefill-banner">
             <strong>已从详情页带入报告</strong>
@@ -337,8 +341,8 @@ export function ReportsView() {
         ) : null}
         {comparedReports.length === 0 ? (
           <div className="report-compare-empty">
-            <strong>先从下面的报告卡片挑 2 到 4 份</strong>
-            <p>先别急着看表格。先挑你最想比较的几份结果，再一起看收益、回撤和交易次数，更符合第一次复盘的阅读顺序。</p>
+            <strong>先去下面挑 1 份最值得细看的，再决定要不要回来做对比</strong>
+            <p>如果你还没打开过任何报告，先从下方卡片开始更顺手。等你已经有 2 到 4 份想并排比较的候选结果，再回到这里一起看收益、回撤和交易次数。</p>
             <div className="report-compare-empty-actions">
               {bestReport ? (
                 <Button type="primary">

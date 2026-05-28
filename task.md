@@ -2752,3 +2752,34 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 报告列表对比区降级补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+从报告详情页切回报告列表页，继续按局部体验边界优化，只处理顶部报告对比区在空态时的默认叙事，把它从首屏主动作降成“需要时再用”的次级入口。
+
+### 修改内容
+
+- `frontend/src/components/reports-view.tsx`
+  - 将对比区标题改为“需要一起比较时，再用报告对比”。
+  - 在对比区顶部新增弱提示，明确第一次看结果时不用先停在这里。
+  - 将空态文案改成“先去下面挑 1 份最值得细看的，再决定要不要回来做对比”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不删除报告对比能力、预带入逻辑、清空动作或空态快捷入口，只调整默认叙事，让用户先进入“看懂一份结果”而不是一上来操作比较器。
+- 这轮不改对比卡结构、比较逻辑、排序规则或高级表格，只改变顶部入口文案，避免一次改动同时影响报告列表的多个心智模型。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
