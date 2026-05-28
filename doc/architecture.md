@@ -54,7 +54,7 @@ Backtest  Yahoo Sync
 - `/reports`：历史报告列表。
 - `/reports/[id]`：报告详情、曲线、交易和事件。
 
-前端只通过 `NEXT_PUBLIC_API_BASE_URL` 指向后端，不直接访问数据库。
+前端浏览器端默认只请求同源 `/api/*`，由 Next 服务代理到 FastAPI；只有需要改后端目标地址时，才通过 `STRATEGY_STUDIO_API_ORIGIN` 覆盖代理目的地。前端不直接访问数据库。
 
 ## 进程模型
 

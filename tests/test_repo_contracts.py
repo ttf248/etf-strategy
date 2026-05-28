@@ -101,7 +101,7 @@ class RepoContractTests(unittest.TestCase):
         self.assertEqual(frontend_config["type"], "node-terminal")
         self.assertEqual(frontend_config["cwd"], "${workspaceFolder}/frontend")
         self.assertIn("npx next dev", frontend_config["command"])
-        self.assertEqual(frontend_config["env"]["NEXT_PUBLIC_API_BASE_URL"], "http://127.0.0.1:8000")
+        self.assertEqual(frontend_config["env"]["STRATEGY_STUDIO_API_ORIGIN"], "http://127.0.0.1:8000")
         compound_names = {item["name"] for item in launch_payload.get("compounds", [])}
         self.assertEqual(compound_names, {"启动平台后端全套", "启动平台前后端全套"})
 

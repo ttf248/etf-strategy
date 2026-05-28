@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
-
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+import { backendApiUrl } from "./support";
 
 type StrategyTemplate = {
   id: number;
@@ -8,7 +7,7 @@ type StrategyTemplate = {
 };
 
 test("模板页可以按目标筛选并加入对比", async ({ page, request }) => {
-  const templatesResponse = await request.get(`${apiBaseUrl}/api/templates`);
+  const templatesResponse = await request.get(backendApiUrl("/api/templates"));
   expect(templatesResponse.ok(), "后端 `/api/templates` 不可用，无法验证模板页路径。").toBeTruthy();
   const templates = (await templatesResponse.json()) as StrategyTemplate[];
   expect(templates.filter((item) => item.is_active).length, "当前至少需要 2 个启用模板才能验证对比区。").toBeGreaterThan(1);

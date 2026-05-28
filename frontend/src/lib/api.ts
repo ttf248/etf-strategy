@@ -120,20 +120,226 @@ export type StrategyTemplate = {
   updated_at: string;
 };
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+const API_BASE_PATH = "";
+const DEFAULT_TIMEOUT_MS = 15_000;
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `请求失败：${response.status}`);
+export class ApiError extends Error {
+  readonly status: number | null;
+  readonly path: string;
+  readonly detail: unknown;
+  readonly code: "HTTP_ERROR" | "NETWORK_ERROR" | "TIMEOUT" | "ABORTED";
+
+  constructor(params: {
+    message: string;
+    path: string;
+    code: "HTTP_ERROR" | "NETWORK_ERROR" | "TIMEOUT" | "ABORTED";
+    status?: number | null;
+    detail?: unknown;
+  }) {
+    super(params.message);
+    this.name = "ApiError";
+    this.status = params.status ?? null;
+    this.path = params.path;
+    this.detail = params.detail;
+    this.code = params.code;
   }
-  return (await response.json()) as T;
+}
+
+export type ApiRequestInit = RequestInit & {
+  timeoutMs?: number;
+  retries?: number;
+};
+
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError;
+}
+
+type ApiFetchSafeResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: ApiError };
+
+function resolveApiUrl(path: string): string {
+  if (!path.startsWith("/")) {
+    throw new Error(`API 路径必须以 "/" 开头，收到：${path}`);
+  }
+  return `${API_BASE_PATH}${path}`;
+}
+
+function shouldAttachJsonContentType(body: BodyInit | null | undefined): boolean {
+  if (!body) {
+    return false;
+  }
+  return !(body instanceof FormData) && !(body instanceof URLSearchParams);
+}
+
+function mergeRequestHeaders(init: RequestInit): Headers {
+  const headers = new Headers(init.headers ?? undefined);
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
+  }
+  if (shouldAttachJsonContentType(init.body) && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  return headers;
+}
+
+function buildApiErrorMessage(status: number, detail: unknown): string {
+  if (typeof detail === "string" && detail.trim()) {
+    return detail;
+  }
+  if (detail && typeof detail === "object" && "detail" in detail) {
+    const nestedDetail = (detail as { detail?: unknown }).detail;
+    if (typeof nestedDetail === "string" && nestedDetail.trim()) {
+      return nestedDetail;
+    }
+  }
+  if (status === 404) {
+    return "请求的资源不存在。";
+  }
+  if (status >= 500) {
+    return "后端服务暂时不可用，请稍后重试。";
+  }
+  return `请求失败：${status}`;
+}
+
+async function parseErrorDetail(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try {
+      return await response.json();
+    } catch {
+      return null;
+    }
+  }
+  try {
+    const text = await response.text();
+    return text || null;
+  } catch {
+    return null;
+  }
+}
+
+function createNetworkApiError(path: string, error: unknown): ApiError {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return new ApiError({
+      message: "请求已取消。",
+      path,
+      code: "ABORTED",
+      detail: error,
+    });
+  }
+  return new ApiError({
+    message: "无法连接后端服务，请确认本机 API 已启动。",
+    path,
+    code: "NETWORK_ERROR",
+    detail: error,
+  });
+}
+
+function createTimeoutApiError(path: string): ApiError {
+  return new ApiError({
+    message: "请求超时，请确认本机 API 服务状态或稍后重试。",
+    path,
+    code: "TIMEOUT",
+  });
+}
+
+async function runApiRequest(url: string, init: ApiRequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutMs = init.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeout = globalThis.setTimeout(() => controller.abort("timeout"), timeoutMs);
+  const headers = mergeRequestHeaders(init);
+  const upstreamSignal = init.signal;
+
+  const abortFromUpstream = () => controller.abort(upstreamSignal?.reason);
+  if (upstreamSignal) {
+    if (upstreamSignal.aborted) {
+      controller.abort(upstreamSignal.reason);
+    } else {
+      upstreamSignal.addEventListener("abort", abortFromUpstream, { once: true });
+    }
+  }
+
+  try {
+    return await fetch(url, {
+      ...init,
+      headers,
+      cache: init.cache ?? "no-store",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (controller.signal.aborted && controller.signal.reason === "timeout") {
+      throw createTimeoutApiError(url);
+    }
+    throw createNetworkApiError(url, error);
+  } finally {
+    globalThis.clearTimeout(timeout);
+    if (upstreamSignal) {
+      upstreamSignal.removeEventListener("abort", abortFromUpstream);
+    }
+  }
+}
+
+export async function apiFetch<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
+  const url = resolveApiUrl(path);
+  const method = (init.method ?? "GET").toUpperCase();
+  const retries = init.retries ?? (method === "GET" ? 1 : 0);
+
+  let lastError: ApiError | null = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await runApiRequest(url, init);
+      if (!response.ok) {
+        const detail = await parseErrorDetail(response);
+        throw new ApiError({
+          message: buildApiErrorMessage(response.status, detail),
+          path,
+          code: "HTTP_ERROR",
+          status: response.status,
+          detail,
+        });
+      }
+      return (await response.json()) as T;
+    } catch (error) {
+      const normalizedError = isApiError(error)
+        ? error
+        : new ApiError({
+            message: "请求失败，请稍后重试。",
+            path,
+            code: "NETWORK_ERROR",
+            detail: error,
+          });
+      lastError = normalizedError;
+      const shouldRetry =
+        attempt < retries &&
+        method === "GET" &&
+        (normalizedError.code === "NETWORK_ERROR" || normalizedError.code === "TIMEOUT" || normalizedError.status === 502 || normalizedError.status === 503 || normalizedError.status === 504);
+      if (!shouldRetry) {
+        throw normalizedError;
+      }
+    }
+  }
+
+  throw lastError ?? new ApiError({
+    message: "请求失败，请稍后重试。",
+    path,
+    code: "NETWORK_ERROR",
+  });
+}
+
+export async function apiFetchSafe<T>(path: string, init?: ApiRequestInit): Promise<ApiFetchSafeResult<T>> {
+  try {
+    const data = await apiFetch<T>(path, init);
+    return { ok: true, data };
+  } catch (error) {
+    const normalizedError = isApiError(error)
+      ? error
+      : new ApiError({
+          message: "请求失败，请稍后重试。",
+          path,
+          code: "NETWORK_ERROR",
+          detail: error,
+        });
+    return { ok: false, error: normalizedError };
+  }
 }

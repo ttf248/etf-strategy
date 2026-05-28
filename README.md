@@ -89,7 +89,7 @@ py -3.13 main.py worker --poll-interval 5 --max-concurrent-jobs 2 --max-optimiza
 py -3.13 main.py scheduler
 
 cd frontend
-$env:NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:8000"
+$env:STRATEGY_STUDIO_API_ORIGIN="http://127.0.0.1:8000"
 npx next dev --hostname 127.0.0.1 --port 3000
 ```
 
@@ -165,7 +165,7 @@ tests/           unittest 测试
 - `STRATEGY_STUDIO_WORKER_MAX_OPTIMIZATION_WORKERS`
 - `STRATEGY_STUDIO_PROXY`
 - `STRATEGY_STUDIO_ENABLE_PROCESS_CONTROL`
-- `NEXT_PUBLIC_API_BASE_URL`
+- `STRATEGY_STUDIO_API_ORIGIN`
 
 更多部署细节见 [部署指南](doc/deployment.md)。
 

@@ -1,6 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
-
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+import { backendApiUrl, frontendApiUrl } from "./support";
 
 type MarketCoverage = {
   symbol: string;
@@ -28,12 +27,12 @@ type LaunchPreset = {
 };
 
 async function pickLaunchPreset(request: APIRequestContext): Promise<LaunchPreset> {
-  const statsResponse = await request.get(`${apiBaseUrl}/api/market-data/stats`);
+  const statsResponse = await request.get(backendApiUrl("/api/market-data/stats"));
   expect(statsResponse.ok(), "后端 `/api/market-data/stats` 不可用，请先启动 API 并准备数据库行情。").toBeTruthy();
   const stats = (await statsResponse.json()) as MarketDataStats;
   expect(stats.instrument_count, "当前数据库没有可回测标的，请先执行 `py -3.13 main.py sync-now --symbol 1810.HK --interval 1d`，或在数据覆盖页同步首批行情。").toBeGreaterThan(0);
 
-  const templatesResponse = await request.get(`${apiBaseUrl}/api/templates?active_only=true`);
+  const templatesResponse = await request.get(backendApiUrl("/api/templates?active_only=true"));
   expect(templatesResponse.ok(), "后端 `/api/templates` 不可用，请先完成 `init-db`。").toBeTruthy();
   const templates = ((await templatesResponse.json()) as StrategyTemplate[]).filter((item) => item.is_active);
 
@@ -65,9 +64,9 @@ test("首页到回测提交主路径可用", async ({ page, request }) => {
   const preset = await pickLaunchPreset(request);
 
   await Promise.all([
-    page.waitForResponse((response) => response.url() === `${apiBaseUrl}/api/market-data/stats` && response.ok()),
-    page.waitForResponse((response) => response.url().startsWith(`${apiBaseUrl}/api/backtests?limit=`) && response.ok()),
-    page.waitForResponse((response) => response.url().startsWith(`${apiBaseUrl}/api/reports?limit=`) && response.ok()),
+    page.waitForResponse((response) => response.url() === frontendApiUrl("/api/market-data/stats") && response.ok()),
+    page.waitForResponse((response) => response.url().startsWith(frontendApiUrl("/api/backtests?limit=")) && response.ok()),
+    page.waitForResponse((response) => response.url().startsWith(frontendApiUrl("/api/reports?limit=")) && response.ok()),
     page.goto("/"),
   ]);
   await expect(page.getByRole("heading", { name: "从数据覆盖到结果复盘的策略研究工作台" })).toBeVisible();
@@ -99,7 +98,7 @@ test("首页到回测提交主路径可用", async ({ page, request }) => {
   await expect(page.getByText(preset.symbol).first()).toBeVisible();
 
   const submitResponsePromise = page.waitForResponse((response) => {
-    return response.url() === `${apiBaseUrl}/api/backtests` && response.request().method() === "POST";
+    return response.url() === frontendApiUrl("/api/backtests") && response.request().method() === "POST";
   });
   await page.getByRole("button", { name: "开始回测" }).click();
 
@@ -109,12 +108,12 @@ test("首页到回测提交主路径可用", async ({ page, request }) => {
   expect(payload.job_id).toBeGreaterThan(0);
 
   await expect(page.getByText(`任务已提交，编号 ${payload.job_id}`)).toBeVisible();
-  const jobResponse = await request.get(`${apiBaseUrl}/api/backtests/${payload.job_id}`);
+  const jobResponse = await request.get(backendApiUrl(`/api/backtests/${payload.job_id}`));
   expect(jobResponse.ok(), `无法读取新提交任务 ${payload.job_id} 的详情。`).toBeTruthy();
   const jobPayload = (await jobResponse.json()) as { id: number; request_payload: { symbol?: string } };
   expect(jobPayload.id).toBe(payload.job_id);
   expect(jobPayload.request_payload.symbol).toBe(preset.symbol);
 
-  const cancelResponse = await request.post(`${apiBaseUrl}/api/backtests/${payload.job_id}/cancel`);
+  const cancelResponse = await request.post(backendApiUrl(`/api/backtests/${payload.job_id}/cancel`));
   expect(cancelResponse.ok(), `已提交的任务 ${payload.job_id} 无法取消。`).toBeTruthy();
 });

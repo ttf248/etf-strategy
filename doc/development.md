@@ -48,6 +48,7 @@ py -3.13 main.py api --host 127.0.0.1 --port 8000 --replace-existing
 py -3.13 main.py worker --poll-interval 5
 py -3.13 main.py scheduler
 cd frontend
+$env:STRATEGY_STUDIO_API_ORIGIN="http://127.0.0.1:8000"
 npx next dev --hostname 127.0.0.1 --port 3000
 ```
 

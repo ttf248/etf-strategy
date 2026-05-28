@@ -17,15 +17,16 @@
 ## 环境变量
 
 ```powershell
-$env:NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:8000"
+$env:STRATEGY_STUDIO_API_ORIGIN="http://127.0.0.1:8000"
 ```
 
-如果不设置，前端应按代码中的默认 API 地址访问本地后端。
+如果不设置，前端会默认把同源 `/api/*` 代理到本机 `http://127.0.0.1:8000`。只有后端不跑在默认地址时，才需要显式覆盖这个变量。
 
 ## 开发
 
 ```powershell
 npm install
+$env:STRATEGY_STUDIO_API_ORIGIN="http://127.0.0.1:8000"
 npx next dev --hostname 127.0.0.1 --port 3000
 ```
 
@@ -39,6 +40,7 @@ http://127.0.0.1:3000
 
 ```powershell
 npm run lint
+$env:STRATEGY_STUDIO_API_ORIGIN="http://127.0.0.1:8000"
 npm run build
 npm run start
 ```
@@ -78,5 +80,6 @@ npm run test:smoke
 - 业务页面使用 `src/app/` 路由。
 - 可复用视图组件放在 `src/components/`。
 - API 调用封装在 `src/lib/api.ts`。
+- 浏览器端默认只请求同源 `/api/*`，由 Next 服务代理到 FastAPI。
 - 策略模板相关前端配置放在 `src/lib/strategy-template-config.ts`。
 - 页面文案保持中文，优先服务策略研究场景；系统状态和内部进程概念只放在维护入口。

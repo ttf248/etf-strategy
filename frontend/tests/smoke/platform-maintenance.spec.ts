@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
-
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+import { backendApiUrl } from "./support";
 
 type PlatformStatus = {
   api: { status: string };
@@ -14,7 +13,7 @@ function serviceOk(status: string): boolean {
 }
 
 test("维护页首屏先给出是否需要排障的判断", async ({ page, request }) => {
-  const statusResponse = await request.get(`${apiBaseUrl}/api/platform/status`);
+  const statusResponse = await request.get(backendApiUrl("/api/platform/status"));
   expect(statusResponse.ok(), "后端 `/api/platform/status` 不可用，无法验证维护页。").toBeTruthy();
   const status = (await statusResponse.json()) as PlatformStatus;
 

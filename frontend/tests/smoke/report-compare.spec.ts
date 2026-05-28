@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
-
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+import { backendApiUrl } from "./support";
 
 type ReportSummary = {
   id: number;
@@ -9,7 +8,7 @@ type ReportSummary = {
 };
 
 test("报告详情可以带着当前报告进入对比区", async ({ page, request }) => {
-  const reportsResponse = await request.get(`${apiBaseUrl}/api/reports?limit=20`);
+  const reportsResponse = await request.get(backendApiUrl("/api/reports?limit=20"));
   expect(reportsResponse.ok(), "后端 `/api/reports` 不可用，无法验证报告详情路径。").toBeTruthy();
   const reports = (await reportsResponse.json()) as ReportSummary[];
   expect(reports.length, "当前数据库没有可用报告，请先生成至少一份回测报告。").toBeGreaterThan(0);

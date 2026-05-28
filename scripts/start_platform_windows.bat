@@ -35,7 +35,7 @@ if not errorlevel 1 (
 start "Strategy Studio API" cmd /k "cd /d ""%ROOT_DIR%"" && py -3.13 main.py api --host %API_HOST% --port %API_PORT% --replace-existing"
 start "Strategy Studio Worker" cmd /k "cd /d ""%ROOT_DIR%"" && py -3.13 main.py worker --poll-interval 5"
 start "Strategy Studio Scheduler" cmd /k "cd /d ""%ROOT_DIR%"" && py -3.13 main.py scheduler %SCHEDULER_ARGS%"
-start "Strategy Studio Frontend" cmd /k "cd /d ""%ROOT_DIR%\frontend"" && set NEXT_PUBLIC_API_BASE_URL=%API_BASE_URL% && npx next dev --hostname %FRONTEND_HOST% --port %FRONTEND_PORT%"
+start "Strategy Studio Frontend" cmd /k "cd /d ""%ROOT_DIR%\frontend"" && set STRATEGY_STUDIO_API_ORIGIN=%API_BASE_URL% && npx next dev --hostname %FRONTEND_HOST% --port %FRONTEND_PORT%"
 
 echo 已发起 4 个窗口：API、Worker、Scheduler、Frontend。
 endlocal

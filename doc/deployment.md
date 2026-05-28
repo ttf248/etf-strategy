@@ -49,7 +49,7 @@ postgresql+psycopg://postgres:tian@localhost:5432/strategy_studio
 - `STRATEGY_STUDIO_FRONTEND_HOST`：前端默认主机。
 - `STRATEGY_STUDIO_FRONTEND_PORT`：前端默认端口。
 - `STRATEGY_STUDIO_PROXY`：访问 Yahoo 时使用的代理。
-- `NEXT_PUBLIC_API_BASE_URL`：前端访问 API 的基础地址。
+- `STRATEGY_STUDIO_API_ORIGIN`：前端同源 `/api/*` 代理默认转发到的 FastAPI 地址。
 
 ## 初始化数据库
 
@@ -93,7 +93,7 @@ py -3.13 main.py scheduler --proxy $env:STRATEGY_STUDIO_PROXY
 
 ```powershell
 cd frontend
-$env:NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:8000"
+$env:STRATEGY_STUDIO_API_ORIGIN="http://127.0.0.1:8000"
 npx next dev --hostname 127.0.0.1 --port 3000
 ```
 
@@ -101,7 +101,7 @@ npx next dev --hostname 127.0.0.1 --port 3000
 
 ```powershell
 cd frontend
-$env:NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:8000"
+$env:STRATEGY_STUDIO_API_ORIGIN="http://127.0.0.1:8000"
 npm run build
 npm run start
 ```

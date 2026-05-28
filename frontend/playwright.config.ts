@@ -1,7 +1,10 @@
 import { defineConfig } from "@playwright/test";
 
 const frontendPort = process.env.PLAYWRIGHT_FRONTEND_PORT ?? "3000";
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+const backendOrigin =
+  process.env.STRATEGY_STUDIO_API_ORIGIN ??
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  "http://127.0.0.1:8000";
 
 export default defineConfig({
   testDir: "./tests/smoke",
@@ -24,7 +27,7 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       ...process.env,
-      NEXT_PUBLIC_API_BASE_URL: apiBaseUrl,
+      STRATEGY_STUDIO_API_ORIGIN: backendOrigin,
     },
   },
 });
