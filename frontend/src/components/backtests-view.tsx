@@ -679,7 +679,7 @@ export function BacktestsView() {
                           { title: "进度", dataIndex: "progress_pct", width: 90, render: (value: number) => `${value.toFixed(0)}%` },
                           { title: "提交时间", dataIndex: "submitted_at", width: 180 },
                           { title: "完成时间", dataIndex: "completed_at", width: 180 },
-                          { title: "错误", dataIndex: "error_message", ellipsis: true },
+                          { title: "没跑成原因", dataIndex: "error_message", ellipsis: true },
                           {
                             title: "操作",
                             width: 150,

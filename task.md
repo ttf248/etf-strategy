@@ -3343,3 +3343,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页完整历史错误列表头口径补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理“完整历史”桌面表格里的错误列标题，把“错误”这种后台字段名收成更像“这轮没跑成的原因”。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将完整历史表格错误列从“错误”改成“没跑成原因”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不改错误内容本身，也不动表格数据、批量操作、列顺序或行内动作，只调整错误列标题这一处文案。
+- 这轮不改摘要横幅、最近任务卡或表格底部说明，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
