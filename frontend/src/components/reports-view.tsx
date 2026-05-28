@@ -350,7 +350,7 @@ export function ReportsView() {
             <div className="report-compare-empty-actions">
               {bestReport ? (
                 <Button type="primary">
-                  <Link href={`/reports/${bestReport.id}`}>先打开收益最高报告</Link>
+                  <Link href={`/reports/${bestReport.id}`}>先打开最赚钱这份</Link>
                 </Button>
               ) : null}
               {latestReport ? (

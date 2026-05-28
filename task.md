@@ -3881,3 +3881,30 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 已执行 `cd frontend && npm run test:smoke`
+
+## 报告页对比空态主按钮口径补充
+
+### 状态
+
+已完成：代码修改与本轮验证均已完成，待单独提交。
+
+### 修改方案
+
+继续按报告页局部体验边界优化，只处理对比区空态里“先打开收益最高报告”这个主按钮，把偏排行榜口吻收成更像普通用户会直接理解的结果阅读表达。
+
+### 修改内容
+
+- `frontend/src/components/reports-view.tsx`
+  - 将对比区空态主按钮从“先打开收益最高报告”改成“先打开最赚钱这份”。
+
+### 设计取舍
+
+- 不改最佳报告选择逻辑、对比空态结构、次级按钮、对比功能或报告列表排序，只调整这一处主按钮文案。
+- 这轮不顺手处理对比后总结区里的“收益最高报告”按钮，避免扩大提交边界。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 已执行 `cd frontend && npm run test:smoke`
