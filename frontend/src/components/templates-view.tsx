@@ -837,7 +837,7 @@ export function TemplatesView() {
             <Form.Item name="execution_profile" label="成交假设">
               <Select options={executionProfiles} />
             </Form.Item>
-            <Form.Item name="jobs" label="同时尝试的参数组数">
+            <Form.Item name="jobs" label="同时试几组参数">
               <InputNumber min={1} max={32} style={{ width: "100%" }} />
             </Form.Item>
             <Form.Item name="validation_start" label="从哪一天开始单独验证">

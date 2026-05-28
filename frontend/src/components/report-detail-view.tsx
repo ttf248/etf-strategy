@@ -34,7 +34,7 @@ const baseParameterLabels: Record<string, string> = {
   force_exit_loss_pct: "达到多大亏损时强制离场",
   GridCount: "网格层数",
   GridMode: "网格模式",
-  jobs: "同时尝试的参数组数",
+  jobs: "同时试几组参数",
   left_side_policy: "左侧行情时怎么处理",
   lookback_days: "回看多少天历史",
   LotSize: "每手数量",

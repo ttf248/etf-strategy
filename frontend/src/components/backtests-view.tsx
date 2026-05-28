@@ -494,7 +494,7 @@ export function BacktestsView() {
                         <Form.Item name="validation_ratio" label="最后留多少比例做验证">
                           <InputNumber min={0.05} max={0.95} step={0.05} style={{ width: "100%" }} />
                         </Form.Item>
-                        <Form.Item name="jobs" label="同时尝试的参数组数">
+                        <Form.Item name="jobs" label="同时试几组参数">
                           <InputNumber min={1} max={16} style={{ width: "100%" }} />
                         </Form.Item>
                         <Form.Item name="commission_bps" label="手续费（万分比）">
@@ -549,7 +549,7 @@ export function BacktestsView() {
             <Descriptions.Item label="周期">{selectedTemplate.interval}</Descriptions.Item>
             <Descriptions.Item label="成交假设">{executionProfileLabel(selectedTemplate.execution_profile)}</Descriptions.Item>
             <Descriptions.Item label="说明">{selectedTemplate.description || "使用模板默认参数"}</Descriptions.Item>
-            <Descriptions.Item label="同时尝试的参数组数">{selectedTemplate.jobs}</Descriptions.Item>
+            <Descriptions.Item label="同时试几组参数">{selectedTemplate.jobs}</Descriptions.Item>
             <Descriptions.Item label="默认模板">{selectedTemplate.is_default ? "是" : "否"}</Descriptions.Item>
             <Descriptions.Item label="状态">{selectedTemplate.is_active ? "启用" : "停用"}</Descriptions.Item>
           </Descriptions>
