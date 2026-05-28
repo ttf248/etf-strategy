@@ -67,7 +67,7 @@ function buildTemplateFieldValues(template: StrategyTemplate) {
 
 function buildJobReadingHint(job: BacktestJob) {
   if (job.status === "succeeded") {
-    return job.reports?.length ? "这次已经生成报告，优先打开结果看收益、回撤和交易记录。" : "任务执行完成，但报告还没挂上时，先去报告列表刷新确认。";
+    return job.reports?.length ? "这次已经生成报告，优先打开结果看收益、回撤和交易记录。" : "这轮已经跑完；如果结果还没马上出现，就去结果列表刷新确认。";
   }
   if (job.status === "failed") {
     return "这轮没跑成，先看错误提示；通常是数据不足、模板不匹配，或参数不适合当前标的。";

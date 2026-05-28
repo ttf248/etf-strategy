@@ -3459,3 +3459,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页已跑成未挂结果提示口径补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理最近任务卡 `succeeded` 但暂时没有报告链接时的阅读提示，把“任务执行完成，但报告还没挂上”这类后台链路口吻收成更贴近用户等待结果出现时的自然表达。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将成功但未挂结果提示从“任务执行完成，但报告还没挂上时，先去报告列表刷新确认。”改成“这轮已经跑完；如果结果还没马上出现，就去结果列表刷新确认。”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不改变任务状态判断逻辑，也不改 `queued / running / failed / cancelled` 其他分支，只调整成功但未挂结果这一条提示文案。
+- 这轮不改摘要横幅、完整历史表格或其他动作按钮，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
