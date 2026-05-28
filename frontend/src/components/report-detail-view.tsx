@@ -26,7 +26,7 @@ const baseParameterLabels: Record<string, string> = {
   benchmark: "对照基准",
   Benchmark: "对照基准",
   commission_bps: "交易佣金",
-  cooldown_bars: "停手冷却 K 线数",
+  cooldown_bars: "停手后先等多少根 K 线",
   EndDate: "结束时间",
   EntryDate: "入场时间",
   EntryPrice: "入场时价格",
