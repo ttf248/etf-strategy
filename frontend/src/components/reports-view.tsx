@@ -35,15 +35,15 @@ function getValidationMetrics(report: ReportSummary) {
 
 function buildVerdict(netReturn: number, maxDrawdown: number): Verdict {
   if (netReturn > 0 && maxDrawdown <= 8) {
-    return { label: "表现较稳", color: "green", description: "样本外收益为正，回撤压力相对可控。" };
+    return { label: "表现较稳", color: "green", description: "单独验证收益为正，回撤压力相对可控。" };
   }
   if (netReturn > 0) {
     return { label: "有收益但波动大", color: "gold", description: "收益为正，但需要重点检查回撤。" };
   }
   if (netReturn === 0) {
-    return { label: "没有触发交易", color: "default", description: "样本外阶段可能没有满足开仓条件。" };
+    return { label: "没有触发交易", color: "default", description: "单独验证阶段可能没有满足开仓条件。" };
   }
-  return { label: "暂不理想", color: "red", description: "样本外收益为负，建议换参数或换标的。" };
+  return { label: "暂不理想", color: "red", description: "单独验证收益为负，建议换参数或换标的。" };
 }
 
 function buildRerunHref(report: ReportSummary) {
@@ -91,7 +91,7 @@ function buildReportSpotlight(report: ReportSummary, isFavorite: boolean): Repor
       rank: 1,
       label: "适合先看",
       color: "green",
-      reason: "样本外收益为正，回撤也相对可控，适合作为第一批重点复盘的候选结果。",
+      reason: "单独验证收益为正，回撤也相对可控，适合作为第一批重点复盘的候选结果。",
     };
   }
   if (netReturn > 0) {

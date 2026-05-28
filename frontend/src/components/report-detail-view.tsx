@@ -128,14 +128,14 @@ function buildVerdict(netReturn: number, maxDrawdown: number, closedTrades: numb
     return {
       label: "没有触发交易",
       color: "default",
-      summary: "这次回测在样本外阶段没有满足策略开仓条件，不能说明策略一定无效，但需要换标的、周期或参数继续验证。",
+      summary: "这次回测在单独验证阶段没有满足策略开仓条件，不能说明策略一定无效，但需要换标的、周期或参数继续验证。",
     };
   }
   if (netReturn > 0 && maxDrawdown <= 8) {
     return {
       label: "表现较稳",
       color: "green",
-      summary: "样本外收益为正，最大回撤相对可控，可以继续和买入持有、其他策略做对比。",
+      summary: "单独验证收益为正，最大回撤相对可控，可以继续和买入持有、其他策略做对比。",
     };
   }
   if (netReturn > 0) {
@@ -148,7 +148,7 @@ function buildVerdict(netReturn: number, maxDrawdown: number, closedTrades: numb
   return {
     label: "暂不理想",
     color: "red",
-    summary: "样本外收益为负，当前标的、周期或参数组合不建议直接采用。",
+    summary: "单独验证收益为负，当前标的、周期或参数组合不建议直接采用。",
   };
 }
 
@@ -404,7 +404,7 @@ function buildCurveReading(points: CurvePoint[], netReturn: number, maxDrawdown:
     Math.abs((highestEquityPoint.equity - startPoint.equity) / Math.max(startPoint.equity, 1)) < 0.002;
 
   let headline = "先看蓝线方向，再看红线深浅";
-  let description = `样本外从 ${formatCurveTime(startPoint.curve_time)} 跑到 ${formatCurveTime(endPoint.curve_time)}，账户最终停在 ${Math.round(endPoint.equity).toLocaleString()}。`;
+  let description = `单独验证从 ${formatCurveTime(startPoint.curve_time)} 跑到 ${formatCurveTime(endPoint.curve_time)}，账户最终停在 ${Math.round(endPoint.equity).toLocaleString()}。`;
 
   if (closedTrades === 0 || flatCurve) {
     headline = "这张图几乎是一条平线，重点不是读走势，而是弄清为什么没有成交";
@@ -435,7 +435,7 @@ function buildCurveReading(points: CurvePoint[], netReturn: number, maxDrawdown:
         title: "最该留意的时点",
         value: flatCurve ? "几乎没有波动" : formatCurveTime(highestEquityPoint.curve_time),
         description: flatCurve
-          ? "高点和期末几乎重合，说明这轮样本外没有形成可分析的趋势。"
+          ? "高点和期末几乎重合，说明这轮单独验证没有形成可分析的趋势。"
           : `最高权益出现在 ${formatCurveTime(highestEquityPoint.curve_time)}；最大回撤 ${maxDrawdown.toFixed(2)}%，最深回落出现在 ${formatCurveTime(worstDrawdownPoint.curve_time)}。`,
       },
       {
@@ -523,7 +523,7 @@ function buildParameterHighlights(
   } else if (closedTrades <= 3) {
     paceDescription += " 这次触发次数不多，更适合把它当成偏谨慎的配置。";
   } else {
-    paceDescription += ` 这次样本外已经触发 ${closedTrades} 笔成交，说明它并不是只会长期空转。`;
+    paceDescription += ` 这次单独验证已经触发 ${closedTrades} 笔成交，说明它并不是只会长期空转。`;
   }
 
   let riskValue = "先看仓位和成本";
@@ -566,7 +566,7 @@ function buildParameterHighlights(
     rerunDescription = `这次已经赚到钱，但回撤有 ${maxDrawdown.toFixed(2)}%。${rerunFocusGuide(report.strategy_kind)} 如果能接受收益稍降，优先换更稳的配置。`;
   } else if (netReturn <= 0) {
     rerunValue = "先换模板或周期";
-    rerunDescription = `这次样本外收益为 ${netReturn.toFixed(2)}%。${rerunFocusGuide(report.strategy_kind)} 如果连续几次都偏弱，就优先换周期或模板而不是死磕同一组数字。`;
+    rerunDescription = `这次单独验证收益为 ${netReturn.toFixed(2)}%。${rerunFocusGuide(report.strategy_kind)} 如果连续几次都偏弱，就优先换周期或模板而不是死磕同一组数字。`;
   }
 
   return [
