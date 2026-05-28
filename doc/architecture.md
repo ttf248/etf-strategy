@@ -25,7 +25,7 @@ Backtest  Yahoo Sync
 - PostgreSQL 是平台主存储，保存行情、同步记录、回测任务、报告、交易流水和参数模板。
 - Worker 常驻轮询数据库中的回测任务，执行完成后写回报告数据。
 - Scheduler 按固定时间从 Yahoo 同步行情。
-- CLI 仍保留，适合本地研究、批量回测、CSV 导入和平台运维命令。
+- CLI 仍保留，但只负责数据库同步、数据库回测和平台运维命令。
 
 ## 后端模块
 
@@ -33,8 +33,8 @@ Backtest  Yahoo Sync
 - `strategy_studio/platform_cli.py`：平台命令入口，负责数据库初始化、API、Worker、Scheduler 和同步命令。
 - `strategy_studio/data/`：Yahoo 下载、标准化、交易单位和标的池数据。
 - `strategy_studio/strategy/`：网格、反转、指数 ETF 回落反弹等策略实现。
-- `strategy_studio/workflow.py`：样本切分、寻参、验证和结果落盘的编排层。
-- `strategy_studio/reporting.py`：图表、Markdown 报告和报告索引生成。
+- `strategy_studio/workflow.py`：样本切分、寻参、验证和结果汇总的编排层。
+- `strategy_studio/reporting.py`：研究态图表、临时 Markdown 报告与测试辅助工具。
 - `strategy_studio/db/`：SQLAlchemy 模型、数据库连接和迁移配置。
 - `strategy_studio/repositories/`：数据库读写和查询。
 - `strategy_studio/services/`：业务服务层，连接 API、仓储、策略工作流和报告落库。
@@ -72,7 +72,7 @@ Worker 和 Scheduler 会写入 `platform_heartbeats` 心跳记录，前端平台
 
 ## 数据存储原则
 
-- PostgreSQL 是长期主存储。
-- CSV 只作为历史导入、离线调试和兼容 CLI 的输入形式。
-- `outputs/` 与 `reports/platform/` 只保留运行产物或兼容占位属性，不应作为平台主数据源。
-- 自动生成报告可以保存为文件，但平台报告的可查询信息以数据库中的结构化记录为准。
+- PostgreSQL 是正式行情、任务和报告的唯一长期主存储。
+- 平台标准流程不再依赖本地 CSV 输入，也不再生成仓库内正式 Markdown 报告。
+- `outputs/` 仅允许承载测试隔离或临时研究产物，不应作为平台主数据源。
+- 前端、API 和 Worker 查询的报告事实以数据库中的结构化记录为准。

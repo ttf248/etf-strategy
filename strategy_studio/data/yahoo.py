@@ -13,8 +13,6 @@ import pandas as pd
 import yfinance as yf
 from loguru import logger
 
-from strategy_studio.config import DEFAULT_RUNTIME_DATA_DIR
-
 
 STANDARD_COLUMNS = ["Date", "Open", "High", "Low", "Close", "Volume"]
 INTRADAY_INTERVALS = {"1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h"}
@@ -83,13 +81,6 @@ def _load_from_yfinance(
 
     data = yf.download(symbol, **download_kwargs)
     return normalize_ohlcv(data, interval=interval)
-
-
-def build_default_output_path(symbol: str, interval: str) -> Path:
-    """根据标的和周期生成默认输出路径。"""
-    normalized_symbol = symbol.lower().replace(".", "_")
-    normalized_interval = interval.lower().replace(" ", "")
-    return DEFAULT_RUNTIME_DATA_DIR / f"{normalized_symbol}_{normalized_interval}.csv"
 
 
 def is_intraday_interval(interval: str) -> bool:
@@ -165,20 +156,12 @@ def save_price_bars(
     interval: str = "1d",
     merge_with_existing: bool = False,
 ) -> Path:
-    """保存标准化数据到 CSV。
-
-    分钟线默认支持和本地历史做增量合并；
-    日线也允许在已有全历史样本上继续并入新的重叠或新增日期。
-    """
-    target = Path(output_path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    output_frame = frame.loc[:, STANDARD_COLUMNS].copy()
-    if merge_with_existing and target.exists():
-        existing = pd.read_csv(target, encoding="utf-8-sig")
-        output_frame = merge_price_bars(existing, output_frame, interval=interval)
-    output_frame.to_csv(target, index=False, encoding="utf-8-sig")
-    logger.info("标准化数据已写入 {}", target)
-    return target
+    """数据库优先模式下拒绝把正式行情写到本地 CSV。"""
+    raise RuntimeError(
+        "当前仓库已切换到数据库优先模式，不再支持把正式行情写入本地 CSV。"
+        f"收到的 output_path={Path(output_path)}、interval={interval}、merge_with_existing={merge_with_existing} 不会执行；"
+        "请改用 sync-now 或平台数据覆盖页把行情直接写入数据库。"
+    )
 
 
 def download_daily_bars(symbol: str, start_date: str, end_date: str, proxy: str | None = None) -> pd.DataFrame:

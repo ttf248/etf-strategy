@@ -1,13 +1,12 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import ANY, Mock, patch
+from unittest.mock import Mock, patch
 
 import pandas as pd
 
 import strategy_studio.data.market_rules as market_rules
-from strategy_studio.cli import build_parser, handle_batch, handle_download, handle_run
-from strategy_studio.config import DEFAULT_DATA_PATH, DEFAULT_MINUTE_DATA_PATH, DEFAULT_MINUTE_OUTPUT_DIR
+from strategy_studio.cli import build_parser, handle_batch, handle_run
 from strategy_studio.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
 from strategy_studio.reporting import (
     build_minute_report_markdown,
@@ -51,31 +50,11 @@ def build_test_frame(close_prices: list[float], start: str = "2025-09-01") -> pd
 class GridStrategyTests(unittest.TestCase):
     """覆盖 CLI 解析、样本切分和固定股数网格的核心口径。"""
 
-    def test_download_parser_reads_intraday_parameters(self) -> None:
+    def test_legacy_download_command_is_removed(self) -> None:
         parser = build_parser()
 
-        args = parser.parse_args(
-            [
-                "download",
-                "--symbol",
-                "1810.HK",
-                "--start",
-                "2026-04-01",
-                "--end",
-                "2026-05-21",
-                "--interval",
-                "15m",
-                "--period",
-                "60d",
-            ]
-        )
-
-        self.assertEqual(args.command, "download")
-        self.assertEqual(args.symbol, "1810.HK")
-        self.assertEqual(args.interval, "15m")
-        self.assertEqual(args.period, "60d")
-        self.assertEqual(args.period, "60d")
-        self.assertIsNone(args.output)
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["download", "--symbol", "1810.HK"])
 
     def test_run_parser_reads_intraday_parameters(self) -> None:
         parser = build_parser()
@@ -95,285 +74,74 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(args.command, "run")
         self.assertEqual(args.interval, "15m")
         self.assertEqual(args.period, "60d")
-        self.assertIsNone(args.start)
-        self.assertIsNone(args.end)
         self.assertEqual(args.execution_profile, "realistic")
 
-    def test_run_parser_reads_local_only_mode(self) -> None:
+    def test_run_parser_no_longer_accepts_local_only_mode(self) -> None:
         parser = build_parser()
 
-        args = parser.parse_args(["run", "--symbol", "1810.HK", "--local-only"])
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["run", "--symbol", "1810.HK", "--local-only"])
 
-        self.assertTrue(args.local_only)
-
-    def test_backtest_parser_reads_cash_grid_policy_arguments(self) -> None:
+    def test_legacy_backtest_command_is_removed(self) -> None:
         parser = build_parser()
 
-        args = parser.parse_args(
-            [
-                "backtest",
-                "--data",
-                "data/processed/1810_hk_daily.csv",
-                "--grid-spacing",
-                "0.05",
-                "--grid-count",
-                "3",
-                "--take-profit",
-                "0.04",
-                "--grid-mode",
-                "cash",
-                "--left-side-policy",
-                "force_exit",
-                "--force-exit-loss-pct",
-                "0.03",
-            ]
-        )
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["backtest", "--symbol", "1810.HK"])
 
-        execution = build_execution_config(
-            args.execution_profile,
-            grid_mode=args.grid_mode,
-            left_side_policy=args.left_side_policy,
-            force_exit_loss_pct=args.force_exit_loss_pct,
-        )
-
-        self.assertEqual(args.grid_mode, "cash")
-        self.assertEqual(args.left_side_policy, "force_exit")
-        self.assertAlmostEqual(args.force_exit_loss_pct, 0.03)
-        self.assertEqual(execution.grid_mode, "cash")
-        self.assertEqual(execution.left_side_policy, "force_exit")
-        self.assertAlmostEqual(execution.force_exit_loss_pct, 0.03)
-
-    def test_report_parser_reads_strategy_compare_arguments(self) -> None:
+    def test_legacy_report_command_is_removed(self) -> None:
         parser = build_parser()
 
-        args = parser.parse_args(
-            [
-                "report",
-                "--data",
-                "data/processed/1810_hk_15m.csv",
-                "--interval",
-                "15m",
-                "--strategy",
-                "minute_rebound_with_fade_filter",
-                "--compare-strategies",
-            ]
-        )
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["report", "--symbol", "1810.HK"])
 
-        self.assertEqual(args.strategy, "minute_rebound_with_fade_filter")
-        self.assertTrue(args.compare_strategies)
-
-    def test_handle_download_requires_explicit_output(self) -> None:
-        parser = build_parser()
-        args = parser.parse_args(["download", "--symbol", "1810.HK", "--proxy", "http://127.0.0.1:7897"])
-
-        with self.assertRaisesRegex(ValueError, "不再默认落盘"):
-            handle_download(args)
-
-    def test_handle_download_exports_when_output_is_explicit(self) -> None:
-        parser = build_parser()
-        args = parser.parse_args(
-            [
-                "download",
-                "--symbol",
-                "1810.HK",
-                "--proxy",
-                "http://127.0.0.1:7897",
-                "--output",
-                str(DEFAULT_MINUTE_DATA_PATH),
-            ]
-        )
-        bars = pd.DataFrame(
-            {
-                "Date": ["2026-05-20"],
-                "Open": [10.0],
-                "High": [10.2],
-                "Low": [9.8],
-                "Close": [10.1],
-                "Volume": [100],
-            }
-        )
-
-        with (
-            patch("strategy_studio.cli.download_price_bars", return_value=bars) as mock_download,
-            patch("strategy_studio.cli.save_price_bars", return_value=DEFAULT_MINUTE_DATA_PATH) as mock_save,
-            patch("builtins.print"),
-        ):
-            result = handle_download(args)
-
-        self.assertEqual(result, 0)
-        mock_download.assert_called_once_with(
-            symbol="1810.HK",
-            interval="15m",
-            start_date=None,
-            end_date=None,
-            period="60d",
-            proxy="http://127.0.0.1:7897",
-        )
-        mock_save.assert_called_once_with(bars, DEFAULT_MINUTE_DATA_PATH, interval="15m", merge_with_existing=True)
-
-    def test_handle_download_allows_explicit_daily_without_range_and_merges_existing(self) -> None:
-        parser = build_parser()
-        args = parser.parse_args(
-            [
-                "download",
-                "--symbol",
-                "1810.HK",
-                "--interval",
-                "1d",
-                "--proxy",
-                "http://127.0.0.1:7897",
-                "--output",
-                str(DEFAULT_DATA_PATH),
-            ]
-        )
-        bars = pd.DataFrame(
-            {
-                "Date": ["2026-05-20"],
-                "Open": [10.0],
-                "High": [10.2],
-                "Low": [9.8],
-                "Close": [10.1],
-                "Volume": [100],
-            }
-        )
-
-        with (
-            patch("strategy_studio.cli.download_price_bars", return_value=bars) as mock_download,
-            patch("strategy_studio.cli.save_price_bars", return_value=DEFAULT_DATA_PATH) as mock_save,
-            patch("builtins.print"),
-        ):
-            result = handle_download(args)
-
-        self.assertEqual(result, 0)
-        mock_download.assert_called_once_with(
-            symbol="1810.HK",
-            interval="1d",
-            start_date=None,
-            end_date=None,
-            period=None,
-            proxy="http://127.0.0.1:7897",
-        )
-        mock_save.assert_called_once_with(bars, DEFAULT_DATA_PATH, interval="1d", merge_with_existing=True)
-
-    def test_handle_run_defaults_to_in_memory_download_and_skips_local_exports(self) -> None:
+    def test_handle_run_syncs_database_and_executes_job(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["run", "--symbol", "1810.HK", "--proxy", "http://127.0.0.1:7897"])
-        bars = pd.DataFrame(
-            {
-                "Date": ["2026-05-20"],
-                "Open": [10.0],
-                "High": [10.2],
-                "Low": [9.8],
-                "Close": [10.1],
-                "Volume": [100],
-            }
-        )
-        workflow_result = {
-            "combined_summary_path": "outputs/combined_summary.csv",
-            "optimization": {
-                "best_run": {
-                    "summary": {
-                        "GridSpacingPct": 7.0,
-                        "GridCount": 5,
-                        "TakeProfitPct": 3.0,
-                    }
-                }
-            },
-            "validation": {
-                "run": {
-                    "summary": {
-                        "ReturnPct": 1.2,
-                        "MaxDrawdownPct": 4.5,
-                        "CostReductionPct": 2.3,
-                    }
-                }
-            },
-        }
 
         with (
-            patch("strategy_studio.cli.download_price_bars", return_value=bars) as mock_download,
-            patch("strategy_studio.cli.run_minute_full_workflow", return_value=workflow_result) as mock_workflow,
-            patch("strategy_studio.cli.build_minute_report_markdown") as mock_report,
-            patch("strategy_studio.cli._refresh_unified_report_index") as mock_index,
+            patch("strategy_studio.cli.sync_market_data", return_value={"run_id": 11, "bars_inserted": 120, "bars_updated": 8}) as mock_sync,
+            patch("strategy_studio.cli.submit_backtest", return_value={"job_id": 7, "status": "queued"}) as mock_submit,
+            patch("strategy_studio.cli.execute_next_job", return_value=7) as mock_execute,
+            patch(
+                "strategy_studio.cli.fetch_job",
+                return_value={
+                    "id": 7,
+                    "status": "succeeded",
+                    "job_type": "backtest",
+                    "request_payload": {"symbol": "1810.HK"},
+                    "progress_pct": 100.0,
+                    "submitted_at": "2026-05-28 10:00:00",
+                    "started_at": "2026-05-28 10:00:01",
+                    "completed_at": "2026-05-28 10:00:02",
+                    "error_message": "",
+                    "reports": [{"id": 19}],
+                },
+            ) as mock_fetch,
             patch("builtins.print"),
         ):
             result = handle_run(args)
 
         self.assertEqual(result, 0)
-        mock_download.assert_called_once_with(
+        mock_sync.assert_called_once_with(
             symbol="1810.HK",
             interval="15m",
-            start_date=None,
-            end_date=None,
             period="60d",
             proxy="http://127.0.0.1:7897",
         )
-        mock_report.assert_not_called()
-        mock_index.assert_not_called()
-        mock_workflow.assert_called_once_with(
-            data_path=DEFAULT_MINUTE_DATA_PATH,
-            symbol="1810.HK",
-            output_dir=str(DEFAULT_MINUTE_OUTPUT_DIR),
-            interval="15m",
-            validation_ratio=0.25,
-            strategy_kind="grid",
-            execution_config=ANY,
-            wf_window_count=3,
-            wf_min_window_size=20,
-            jobs=8,
-            cache_dir=None,
-            data=ANY,
-            write_artifacts=False,
-        )
-        execution_config = mock_workflow.call_args.kwargs["execution_config"]
-        self.assertEqual(execution_config.profile, "realistic")
-        self.assertEqual(list(mock_workflow.call_args.kwargs["data"].columns), ["Open", "High", "Low", "Close", "Volume"])
+        mock_submit.assert_called_once()
+        request = mock_submit.call_args.args[0]
+        self.assertEqual(request.symbol, "1810.HK")
+        self.assertEqual(request.interval, "15m")
+        self.assertEqual(request.strategy_kind, "grid")
+        self.assertEqual(request.jobs, 8)
+        mock_execute.assert_called_once_with(preferred_job_id=7)
+        mock_fetch.assert_called_once_with(7)
 
-    def test_handle_run_local_only_skips_download_and_uses_existing_data(self) -> None:
+    def test_run_parser_no_longer_accepts_compare_strategy_mode(self) -> None:
         parser = build_parser()
-        workflow_result = {
-            "combined_summary_path": "outputs/combined_summary.csv",
-            "optimization": {
-                "best_run": {
-                    "summary": {
-                        "GridSpacingPct": 7.0,
-                        "GridCount": 5,
-                        "TakeProfitPct": 3.0,
-                    }
-                }
-            },
-            "validation": {
-                "run": {
-                    "summary": {
-                        "ReturnPct": 1.2,
-                        "MaxDrawdownPct": 4.5,
-                        "CostReductionPct": 2.3,
-                    }
-                }
-            },
-        }
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            data_path = Path(temp_dir) / "1810_hk_15m.csv"
-            data_path.write_text("Date,Open,High,Low,Close,Volume\n2026-05-20 09:30:00,1,1,1,1,1\n", encoding="utf-8")
-            args = parser.parse_args(["run", "--symbol", "1810.HK", "--interval", "15m", "--local-only"])
-            with (
-                patch("strategy_studio.cli._resolve_download_output_path", return_value=data_path),
-                patch("strategy_studio.cli.download_price_bars") as mock_download,
-                patch("strategy_studio.cli.run_minute_full_workflow", return_value=workflow_result) as mock_workflow,
-                patch("strategy_studio.cli.build_minute_report_markdown") as mock_report,
-                patch("strategy_studio.cli._refresh_unified_report_index") as mock_index,
-                patch("builtins.print"),
-            ):
-                result = handle_run(args)
-
-        self.assertEqual(result, 0)
-        mock_download.assert_not_called()
-        mock_report.assert_not_called()
-        mock_index.assert_not_called()
-        self.assertEqual(mock_workflow.call_args.kwargs["data_path"], data_path)
-        self.assertIsNone(mock_workflow.call_args.kwargs["data"])
-        self.assertFalse(mock_workflow.call_args.kwargs["write_artifacts"])
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["run", "--symbol", "1810.HK", "--interval", "15m", "--compare-strategies"])
 
     def test_batch_parser_reads_symbols_and_parallel_options(self) -> None:
         parser = build_parser()
@@ -387,15 +155,12 @@ class GridStrategyTests(unittest.TestCase):
                 "1d",
                 "--jobs",
                 "auto",
-                "--cache-dir",
-                "outputs/cache",
             ]
         )
 
         self.assertEqual(args.command, "batch")
         self.assertEqual(args.symbols, "1810.HK,SPY")
         self.assertEqual(args.jobs, "auto")
-        self.assertEqual(args.cache_dir, "outputs/cache")
         self.assertEqual(args.execution_profile, "realistic")
 
     def test_batch_parser_reads_symbol_set_and_defaults_to_intraday(self) -> None:
@@ -410,12 +175,11 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(args.period, "60d")
         self.assertEqual(args.jobs, "8")
 
-    def test_batch_parser_reads_local_only_mode(self) -> None:
+    def test_batch_parser_no_longer_accepts_local_only_mode(self) -> None:
         parser = build_parser()
 
-        args = parser.parse_args(["batch", "--symbol-set", "hstech_plus_513050", "--local-only"])
-
-        self.assertTrue(args.local_only)
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["batch", "--symbol-set", "hstech_plus_513050", "--local-only"])
 
     def test_batch_parser_reads_hstech_symbol_set(self) -> None:
         parser = build_parser()
@@ -426,254 +190,75 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(args.symbol_set, "hstech_plus_513050")
         self.assertEqual(args.interval, "1d")
 
-    def test_batch_parser_reads_compare_strategy_arguments(self) -> None:
+    def test_batch_parser_no_longer_accepts_compare_strategy_arguments(self) -> None:
         parser = build_parser()
 
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["batch", "--symbols", "1810.HK", "--compare-strategies"])
+
+    def test_handle_batch_submits_database_jobs_without_local_files(self) -> None:
+        parser = build_parser()
         args = parser.parse_args(
             [
                 "batch",
                 "--symbols",
                 "1810.HK",
                 "--interval",
-                "15m",
-                "--strategy",
-                "minute_rebound",
-                "--compare-strategies",
+                "1d",
+                "--download",
+                "--proxy",
+                "http://127.0.0.1:7897",
             ]
         )
-
-        self.assertEqual(args.strategy, "minute_rebound")
-        self.assertTrue(args.compare_strategies)
-
-    def test_handle_batch_writes_summary_for_existing_data(self) -> None:
-        parser = build_parser()
-        workflow_result = {
-            "combined_summary_path": "outputs/batch/1810_hk/combined_summary.csv",
-            "optimization": {
-                "best_run": {
-                    "summary": {
-                        "GridSpacingPct": 4.0,
-                        "GridCount": 6,
-                        "TakeProfitPct": 3.0,
-                        "ReturnPct": -1.0,
-                        "NetReturnPct": -1.2,
-                    }
-                }
-            },
-            "validation": {
-                "run": {
-                    "summary": {
-                        "ReturnPct": -2.0,
-                        "NetReturnPct": -2.3,
-                        "MaxDrawdownPct": 5.0,
-                    }
-                }
-            },
-        }
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            data_path = Path(temp_dir) / "00001_hk_daily.csv"
-            data_path.write_text("Date,Open,High,Low,Close,Volume\n2026-05-20,1,1,1,1,1\n", encoding="utf-8")
-            args = parser.parse_args(
-                [
-                    "batch",
-                    "--symbols",
-                    "1810.HK",
-                    "--interval",
-                    "1d",
-                    "--output-dir",
-                    str(Path(temp_dir) / "out"),
-                    "--report-dir",
-                    str(Path(temp_dir) / "reports"),
-                ]
-            )
-            with (
-                patch("strategy_studio.cli._resolve_download_output_path", return_value=data_path),
-                patch("strategy_studio.cli.run_full_workflow", return_value=workflow_result) as mock_workflow,
-                patch(
-                    "strategy_studio.cli.build_report_markdown",
-                    return_value=Path(temp_dir) / "reports" / "1810_hk" / "daily" / "1810_hk_grid_report.md",
-                ),
-                patch("builtins.print"),
-            ):
-                result = handle_batch(args)
-
-            summary_path = Path(temp_dir) / "out" / "batch_summary.csv"
-            summary = pd.read_csv(summary_path, encoding="utf-8-sig")
-            index_path = Path(temp_dir) / "reports" / "report_index.md"
-            index_content = index_path.read_text(encoding="utf-8")
+        with (
+            patch("strategy_studio.cli.sync_market_data", return_value={"run_id": 31, "bars_inserted": 90, "bars_updated": 6}) as mock_sync,
+            patch("strategy_studio.cli.submit_backtest", return_value={"job_id": 12, "status": "queued"}) as mock_submit,
+            patch("strategy_studio.cli.execute_next_job", return_value=12) as mock_execute,
+            patch(
+                "strategy_studio.cli.fetch_job",
+                return_value={
+                    "id": 12,
+                    "status": "succeeded",
+                    "job_type": "backtest",
+                    "request_payload": {"symbol": "1810.HK"},
+                    "progress_pct": 100.0,
+                    "submitted_at": "2026-05-28 10:00:00",
+                    "started_at": "2026-05-28 10:00:01",
+                    "completed_at": "2026-05-28 10:00:02",
+                    "error_message": "",
+                    "reports": [{"id": 28}],
+                },
+            ) as mock_fetch,
+            patch("builtins.print"),
+        ):
+            result = handle_batch(args)
 
         self.assertEqual(result, 0)
-        self.assertEqual(summary.iloc[0]["Status"], "ok")
-        self.assertIn("1810.HK", index_content)
-        self.assertIn("| grid | 网格 |", index_content)
-        mock_workflow.assert_called_once()
-        self.assertEqual(mock_workflow.call_args.kwargs["jobs"], 8)
-        self.assertEqual(mock_workflow.call_args.kwargs["execution_config"].profile, "realistic")
+        mock_sync.assert_called_once_with(
+            symbol="1810.HK",
+            interval="1d",
+            proxy="http://127.0.0.1:7897",
+            period=None,
+        )
+        mock_submit.assert_called_once()
+        request = mock_submit.call_args.args[0]
+        self.assertEqual(request.symbol, "1810.HK")
+        self.assertEqual(request.interval, "1d")
+        self.assertEqual(request.jobs, 8)
+        mock_execute.assert_called_once_with(preferred_job_id=12)
+        mock_fetch.assert_called_once_with(12)
 
-    def test_handle_batch_compare_updates_unified_report_index(self) -> None:
+    def test_batch_parser_no_longer_accepts_output_dir_arguments(self) -> None:
         parser = build_parser()
-        comparison_results = {
-            "grid": {
-                "optimization": {
-                    "best_run": {
-                        "summary": {
-                            "StrategyKind": "grid",
-                            "GridSpacingPct": 4.0,
-                            "GridCount": 6,
-                            "TakeProfitPct": 3.0,
-                            "ReturnPct": -1.0,
-                            "NetReturnPct": -1.2,
-                        }
-                    }
-                },
-                "validation": {
-                    "run": {
-                        "summary": {
-                            "StrategyKind": "grid",
-                            "ReturnPct": -2.0,
-                            "NetReturnPct": -2.3,
-                            "MaxDrawdownPct": 5.0,
-                        }
-                    }
-                },
-            },
-            "minute_rebound": {
-                "optimization": {
-                    "best_run": {
-                        "summary": {
-                            "StrategyKind": "minute_rebound",
-                            "GridSpacingPct": 0.0,
-                            "GridCount": 0,
-                            "TakeProfitPct": 0.0,
-                            "ReturnPct": 1.0,
-                            "NetReturnPct": 0.8,
-                        }
-                    }
-                },
-                "validation": {
-                    "run": {
-                        "summary": {
-                            "StrategyKind": "minute_rebound",
-                            "ReturnPct": 1.2,
-                            "NetReturnPct": 1.1,
-                            "MaxDrawdownPct": 2.5,
-                        }
-                    }
-                },
-            },
-        }
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            data_path = Path(temp_dir) / "00001_hk_daily.csv"
-            data_path.write_text("Date,Open,High,Low,Close,Volume\n2026-05-20,1,1,1,1,1\n", encoding="utf-8")
-            args = parser.parse_args(
-                [
-                    "batch",
-                    "--symbols",
-                    "1810.HK",
-                    "--interval",
-                    "15m",
-                    "--strategy",
-                    "minute_rebound",
-                    "--compare-strategies",
-                    "--output-dir",
-                    str(Path(temp_dir) / "out"),
-                    "--report-dir",
-                    str(Path(temp_dir) / "reports"),
-                ]
-            )
-            with (
-                patch("strategy_studio.cli._resolve_download_output_path", return_value=data_path),
-                patch("strategy_studio.cli._run_comparison_workflows", return_value=comparison_results),
-                patch(
-                    "strategy_studio.cli.build_strategy_comparison_report",
-                    return_value=Path(temp_dir) / "reports" / "1810_hk" / "minute" / "1810_hk_15m_strategy_compare_report.md",
-                ),
-                patch("builtins.print"),
-            ):
-                result = handle_batch(args)
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["batch", "--symbols", "1810.HK", "--interval", "1d", "--output-dir", "outputs/batch"])
 
-            index_path = Path(temp_dir) / "reports" / "report_index.md"
-            index_content = index_path.read_text(encoding="utf-8")
-
-        self.assertEqual(result, 0)
-        self.assertIn("1810.HK", index_content)
-        self.assertIn("| compare | 多策略对比 |", index_content)
-        self.assertIn("推荐 分钟急跌反抽", index_content)
-
-    def test_handle_batch_uses_batch_symbol_spec_in_unified_report_index(self) -> None:
+    def test_batch_parser_no_longer_accepts_compare_strategy_file_mode(self) -> None:
         parser = build_parser()
-        workflow_result = {
-            "combined_summary_path": "outputs/batch/00001_hk/combined_summary.csv",
-            "optimization": {
-                "best_run": {
-                    "summary": {
-                        "GridSpacingPct": 2.0,
-                        "GridCount": 4,
-                        "TakeProfitPct": 1.0,
-                        "ReturnPct": 6.0,
-                        "NetReturnPct": 6.2,
-                    }
-                }
-            },
-            "validation": {
-                "run": {
-                    "summary": {
-                        "ReturnPct": 6.5,
-                        "NetReturnPct": 6.8,
-                        "MaxDrawdownPct": 3.2,
-                    }
-                }
-            },
-        }
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            data_path = Path(temp_dir) / "00001_hk_daily.csv"
-            data_path.write_text("Date,Open,High,Low,Close,Volume\n2026-05-20,1,1,1,1,1\n", encoding="utf-8")
-            args = parser.parse_args(
-                [
-                    "batch",
-                    "--symbol-set",
-                    "hstech_plus_513050",
-                    "--interval",
-                    "1d",
-                    "--output-dir",
-                    str(Path(temp_dir) / "out"),
-                    "--report-dir",
-                    str(Path(temp_dir) / "reports"),
-                ]
-            )
-            with (
-                patch(
-                    "strategy_studio.cli._resolve_batch_symbols",
-                    return_value=(
-                        ["0001.HK"],
-                        {
-                            "0001.HK": SymbolSpec(
-                                "0001.HK",
-                                "长和",
-                                "港股通沪股票",
-                                "上交所港股通沪名单，数据截至 2026-05-21",
-                            )
-                        },
-                    ),
-                ),
-                patch("strategy_studio.cli._resolve_download_output_path", return_value=data_path),
-                patch("strategy_studio.cli.run_full_workflow", return_value=workflow_result),
-                patch(
-                    "strategy_studio.cli.build_report_markdown",
-                    return_value=Path(temp_dir) / "reports" / "00001_hk" / "daily" / "00001_hk_grid_report.md",
-                ),
-                patch("builtins.print"),
-            ):
-                result = handle_batch(args)
-
-            registry = load_report_registry(report_root=Path(temp_dir) / "reports")
-
-        self.assertEqual(result, 0)
-        self.assertEqual(registry.iloc[0]["Category"], "港股通沪股票")
-        self.assertIn("上交所港股通沪名单", registry.iloc[0]["Source"])
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["batch", "--symbols", "1810.HK", "--interval", "15m", "--compare-strategies"])
 
     def test_register_report_index_entries_prefers_new_record_over_legacy(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -757,105 +342,30 @@ class GridStrategyTests(unittest.TestCase):
         self.assertIn("00002.HK", index_content)
         self.assertNotIn("**00002.HK**", index_content)
 
-    def test_handle_batch_records_failed_report_when_download_fails(self) -> None:
+    def test_handle_batch_returns_failed_when_database_sync_fails(self) -> None:
         parser = build_parser()
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            args = parser.parse_args(
-                [
-                    "batch",
-                    "--symbols",
-                    "1810.HK",
-                    "--download",
-                    "--proxy",
-                    "http://127.0.0.1:7897",
-                    "--output-dir",
-                    str(Path(temp_dir) / "out"),
-                    "--report-dir",
-                    str(Path(temp_dir) / "reports"),
-                ]
-            )
-            with (
-                patch("strategy_studio.cli.download_price_bars", side_effect=ValueError("Yahoo 行情下载失败")) as mock_download,
-                patch(
-                    "strategy_studio.cli._write_failed_batch_report",
-                    return_value=Path(temp_dir) / "reports" / "1810_hk" / "minute" / "1810_hk_15m_grid_report.md",
-                ) as mock_failed_report,
-                patch("builtins.print"),
-            ):
-                result = handle_batch(args)
+        args = parser.parse_args(["batch", "--symbols", "1810.HK", "--download", "--proxy", "http://127.0.0.1:7897"])
+        with (
+            patch("strategy_studio.cli.sync_market_data", side_effect=ValueError("Yahoo 行情下载失败")) as mock_sync,
+            patch("builtins.print"),
+        ):
+            result = handle_batch(args)
 
-        mock_download.assert_called_once()
-        mock_failed_report.assert_called_once()
+        mock_sync.assert_called_once()
         self.assertEqual(result, 1)
 
-    def test_handle_batch_rejects_local_only_with_download(self) -> None:
-        parser = build_parser()
-        args = parser.parse_args(
-            ["batch", "--symbols", "1810.HK", "--interval", "15m", "--download", "--local-only"]
-        )
-
-        with self.assertRaisesRegex(ValueError, "--local-only 不能和 --download 同时使用"):
-            handle_batch(args)
-
-    def test_backtest_parser_reads_grid_parameters(self) -> None:
+    def test_batch_parser_no_longer_accepts_local_only_with_download(self) -> None:
         parser = build_parser()
 
-        args = parser.parse_args(
-            [
-                "backtest",
-                "--data",
-                "data/processed/1810_hk_daily.csv",
-                "--symbol",
-                "1810.HK",
-                "--grid-spacing",
-                "0.06",
-                "--grid-count",
-                "7",
-                "--take-profit",
-                "0.03",
-            ]
-        )
-
-        self.assertEqual(args.command, "backtest")
-        self.assertEqual(args.data, "data/processed/1810_hk_daily.csv")
-        self.assertEqual(args.symbol, "1810.HK")
-        self.assertAlmostEqual(args.grid_spacing, 0.06)
-        self.assertEqual(args.grid_count, 7)
-        self.assertAlmostEqual(args.take_profit, 0.03)
-        self.assertEqual(args.validation_start, "2026-01-01")
-        self.assertEqual(args.lookback_days, 120)
-        self.assertEqual(args.execution_profile, "realistic")
-        self.assertIsNone(args.commission_bps)
-        self.assertIsNone(args.slippage_bps)
-
-    def test_backtest_parser_accepts_index_grid_retrace_without_grid_arguments(self) -> None:
-        parser = build_parser()
-
-        args = parser.parse_args(
-            [
-                "backtest",
-                "--data",
-                "data/processed/159941_sz_1m.csv",
-                "--symbol",
-                "159941.SZ",
-                "--interval",
-                "1m",
-                "--strategy",
-                "minute_index_grid_retrace",
-            ]
-        )
-
-        self.assertEqual(args.strategy, "minute_index_grid_retrace")
-        self.assertIsNone(args.grid_spacing)
-        self.assertIsNone(args.grid_count)
-        self.assertIsNone(args.take_profit)
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["batch", "--symbols", "1810.HK", "--interval", "15m", "--download", "--local-only"])
 
     def test_infer_symbol_from_data_path(self) -> None:
-        self.assertEqual(infer_symbol_from_data_path("data/processed/1810_hk_daily.csv"), "1810.HK")
-        self.assertEqual(infer_symbol_from_data_path("data/processed/513050_ss_15m.csv"), "513050.SS")
-        self.assertEqual(infer_symbol_from_data_path("data/processed/spy_1d.csv"), "SPY")
-        self.assertEqual(infer_symbol_from_data_path("data/processed/brk-b_15m.csv"), "BRK-B")
+        self.assertEqual(infer_symbol_from_data_path("scratch/1810_hk_daily.csv"), "1810.HK")
+        self.assertEqual(infer_symbol_from_data_path("scratch/513050_ss_15m.csv"), "513050.SS")
+        self.assertEqual(infer_symbol_from_data_path("scratch/spy_1d.csv"), "SPY")
+        self.assertEqual(infer_symbol_from_data_path("scratch/brk-b_15m.csv"), "BRK-B")
 
     def test_resolve_lot_size_rule_for_us_symbol(self) -> None:
         rule = resolve_lot_size_rule("SPY")

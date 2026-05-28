@@ -58,7 +58,7 @@ py -3.13 main.py init-db
 py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
 ```
 
-`init-db` 会创建项目数据库并执行 Alembic 迁移。当前标准流程建议直接使用 `sync-now` 从 Yahoo 同步首批行情到 PostgreSQL；旧的本地 CSV 导入链路仅作兼容占位，不再作为推荐路径。
+`init-db` 会创建项目数据库并执行 Alembic 迁移。当前标准流程建议直接使用 `sync-now` 从 Yahoo 同步首批行情到 PostgreSQL；CLI 与平台默认都以数据库作为唯一正式数据入口。
 
 ## 启动后端
 

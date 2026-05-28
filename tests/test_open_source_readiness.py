@@ -47,12 +47,12 @@ class OpenSourceReadinessTests(unittest.TestCase):
             encoding="utf-8",
         ).stdout.splitlines()
         disallowed_prefixes = [
-            "data/processed/",
-            "reports/platform/",
+            "data/",
+            "reports/",
         ]
         allowed_exact = {
-            "data/processed/.gitkeep",
-            "reports/platform/.gitkeep",
+            "data/README.md",
+            "reports/README.md",
         }
         for tracked_file in tracked_files:
             self.assertNotEqual(tracked_file, "task.md", msg="task.md 不应继续纳入版本控制")
@@ -73,14 +73,12 @@ class OpenSourceReadinessTests(unittest.TestCase):
             sorted([item for item in tracked_files if item.startswith("data/")]),
             [
                 "data/README.md",
-                "data/processed/.gitkeep",
             ],
         )
         self.assertEqual(
             sorted([item for item in tracked_files if item.startswith("reports/")]),
             [
                 "reports/README.md",
-                "reports/platform/.gitkeep",
             ],
         )
 

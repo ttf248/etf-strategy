@@ -82,7 +82,7 @@ def resolve_symbol_spec(symbol: str) -> SymbolSpec:
         return specs[normalized]
     if normalized == DEFAULT_SYMBOL:
         return SymbolSpec(symbol=normalized, name=normalized, category="默认标的", source="项目默认标的")
-    return SymbolSpec(symbol=normalized, name=normalized, category="自定义标的", source="命令行或本地报告")
+    return SymbolSpec(symbol=normalized, name=normalized, category="自定义标的", source="命令行或临时报告")
 
 
 def _report_index_key(entry: dict[str, object]) -> str:
@@ -167,55 +167,14 @@ def register_report_index_entries(
     return registry_path
 
 
-def _parse_legacy_batch_index(report_root: str | Path = DEFAULT_REPORT_ROOT) -> list[dict[str, object]]:
-    """兼容历史 hstech_15m_report_index.md，迁移后可直接删除旧文件。"""
-    legacy_path = Path(report_root) / "hstech_15m_report_index.md"
-    if not legacy_path.exists():
-        return []
-    entries: list[dict[str, object]] = []
-    for line in legacy_path.read_text(encoding="utf-8").splitlines():
-        if not line.startswith("| "):
-            continue
-        if "分类" in line or " --- " in line:
-            continue
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) != 9:
-            continue
-        category, symbol, name, interval, validation_return, max_drawdown, status, note, report_cell = cells
-        link_match = re.search(r"\(([^)]+)\)", report_cell)
-        report_path = link_match.group(1) if link_match else ""
-        spec = resolve_symbol_spec(symbol)
-        entries.append(
-            {
-                "Symbol": symbol,
-                "Name": name or spec.name,
-                "Category": category or spec.category,
-                "Source": spec.source,
-                "Interval": interval,
-                "ReportView": "grid",
-                "StrategyKind": "grid",
-                "StrategyName": "网格",
-                "Status": status,
-                "ValidationNetReturnPct": validation_return.replace("%", "") if validation_return != "-" else "",
-                "ValidationMaxDrawdownPct": max_drawdown.replace("%", "") if max_drawdown != "-" else "",
-                "Note": note,
-                "Error": note if status != "ok" else "",
-                "ReportPath": report_path,
-                "GeneratedAt": "legacy",
-            }
-        )
-    return entries
-
-
 def bootstrap_report_registry(report_root: str | Path = DEFAULT_REPORT_ROOT) -> Path:
-    """用历史批量索引初始化统一注册表。"""
+    """确保统一注册表文件存在。"""
     registry = load_report_registry(report_root)
-    if not registry.empty:
-        return _registry_path(report_root)
-    legacy_entries = _parse_legacy_batch_index(report_root)
-    if not legacy_entries:
-        return _registry_path(report_root)
-    return register_report_index_entries(legacy_entries, report_root=report_root)
+    if registry.empty:
+        registry_path = _registry_path(report_root)
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        registry.to_csv(registry_path, index=False, encoding="utf-8-sig")
+    return _registry_path(report_root)
 
 
 def build_report_index_entry(

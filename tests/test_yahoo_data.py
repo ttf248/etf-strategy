@@ -50,17 +50,7 @@ class YahooDataTests(unittest.TestCase):
         self.assertEqual(duplicate_row["Volume"], 999)
         self.assertAlmostEqual(float(duplicate_row["Close"]), 10.45)
 
-    def test_save_price_bars_merges_with_existing_file(self) -> None:
-        existing = pd.DataFrame(
-            {
-                "Date": ["2026-05-20", "2026-05-21"],
-                "Open": [10.0, 10.5],
-                "High": [10.2, 10.7],
-                "Low": [9.8, 10.3],
-                "Close": [10.1, 10.6],
-                "Volume": [100, 200],
-            }
-        )
+    def test_save_price_bars_rejects_local_csv_persistence(self) -> None:
         incoming = pd.DataFrame(
             {
                 "Date": ["2026-05-21", "2026-05-22"],
@@ -74,15 +64,8 @@ class YahooDataTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             target = Path(temp_dir) / "daily.csv"
-            existing.to_csv(target, index=False, encoding="utf-8-sig")
-
-            save_price_bars(incoming, target, interval="1d", merge_with_existing=True)
-            merged = pd.read_csv(target, encoding="utf-8-sig")
-
-        self.assertEqual(list(merged["Date"]), ["2026-05-20", "2026-05-21", "2026-05-22"])
-        duplicate_row = merged.loc[merged["Date"] == "2026-05-21"].iloc[0]
-        self.assertEqual(int(duplicate_row["Volume"]), 999)
-        self.assertAlmostEqual(float(duplicate_row["Close"]), 11.1)
+            with self.assertRaisesRegex(RuntimeError, "数据库优先模式"):
+                save_price_bars(incoming, target, interval="1d", merge_with_existing=True)
 
     def test_download_price_bars_uses_max_period_for_daily_without_range(self) -> None:
         captured: dict[str, object] = {}

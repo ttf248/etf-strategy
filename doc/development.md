@@ -27,10 +27,10 @@ admin user: postgres
 
 密码和连接串可以通过 `STRATEGY_STUDIO_DATABASE_URL` 覆盖。
 
-本地导入目录与运行产物分离：
+本地工作区不再承载正式行情文件或正式报告文件：
 
-- `data/processed/`：历史兼容目录，当前只保留空目录占位，默认不提交。
-- `reports/platform/`：历史兼容目录，当前只保留空目录占位，默认不提交。
+- `data/` 仅保留边界说明。
+- `reports/` 仅保留边界说明。
 
 ## 开发启动
 

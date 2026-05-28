@@ -2,16 +2,16 @@
 
 Strategy Studio 是一个中文优先的开源策略研究平台，用于从 Yahoo Finance 获取行情、长期存储 K 线、提交异步回测任务，并在 Web 前端按新手流程创建回测、查看报告和准备数据。
 
-当前架构由 Python 研究引擎、FastAPI 后端、PostgreSQL、Worker、Scheduler 和 Next.js 前端组成。CLI 仍然保留，用于离线研究、批量回测、CSV 导入和运维命令。
+当前架构由 Python 研究引擎、FastAPI 后端、PostgreSQL、Worker、Scheduler 和 Next.js 前端组成。CLI 仍然保留，但只承担数据库同步、数据库回测与运维命令。
 
 ## 功能概览
 
-- 行情数据：Yahoo 下载、本地 CSV 导入、PostgreSQL 长期存储。
+- 行情数据：Yahoo 同步、PostgreSQL 长期存储。
 - 回测执行：API 入队，Worker 异步执行，报告结构化落库。
 - 参数模板：在数据库中管理策略、周期、执行口径和寻参空间。
 - 多策略研究：网格、定投、日线反弹、分钟反抽和指数回落网格共用同一套工作流。
 - Web 前端：研究总览、创建回测、查看报告、数据覆盖、策略模板和系统状态；数据覆盖页会直接推荐适合建立基线样本的标的和应补周期，报告详情可直接带去对比同标的结果，模板页也能按研究目标筛选和对比后再开跑。
-- CLI 研究：保留下载、寻参、验证、报告和批量研究入口。
+- CLI 研究：保留数据库同步、数据库回测和批量任务入口。
 - 仓库边界：历史行情、历史 Markdown 报告和平台回测结果不再随仓库提交，数据库是唯一长期事实来源。
 
 ## 架构
@@ -116,13 +116,7 @@ py -3.13 main.py sync-now --symbol 1810.HK --interval 15m --period 60d
 批量研究：
 
 ```powershell
-py -3.13 main.py batch --symbol-set hstech_plus_513050 --interval 1d --download --proxy http://127.0.0.1:7897 --jobs auto --cache-dir outputs/cache/hstech_daily
-```
-
-离线批量重跑：
-
-```powershell
-py -3.13 main.py batch --symbol-set hstech_plus_513050 --interval 15m --local-only --cache-dir outputs/cache/hstech_15m
+py -3.13 main.py batch --symbol-set hstech_plus_513050 --interval 1d --download --proxy http://127.0.0.1:7897 --jobs auto
 ```
 
 ## 项目结构
@@ -131,8 +125,8 @@ py -3.13 main.py batch --symbol-set hstech_plus_513050 --interval 15m --local-on
 strategy_studio/    Python 后端、策略、数据、服务和运行时
 frontend/        Next.js 前端控制台
 alembic/         PostgreSQL 迁移
-data/            数据目录占位与边界说明
-reports/         报告目录占位与边界说明
+data/            数据边界说明
+reports/         报告边界说明
 outputs/         运行中间产物，默认不提交
 doc/             长期维护文档
 tests/           unittest 测试
@@ -140,8 +134,8 @@ tests/           unittest 测试
 
 其中：
 
-- `data/processed/`：历史兼容目录，当前只保留空目录占位，默认不提交任何数据文件。
-- `reports/platform/`：历史兼容目录，当前只保留空目录占位，默认不提交任何本地报告文件。
+- `data/`：只保留边界说明，不存放正式行情数据。
+- `reports/`：只保留边界说明，不存放正式回测报告。
 
 ## 文档
 

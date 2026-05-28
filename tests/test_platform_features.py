@@ -7,7 +7,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from strategy_studio.cli import build_parser
-from strategy_studio.platform_cli import handle_api, handle_import_csv
+from strategy_studio.platform_cli import handle_api
 from strategy_studio.services.backtests import _normalize_artifacts
 from strategy_studio.services.market_data import infer_interval_from_data_path
 from strategy_studio.services.platform import record_platform_heartbeat
@@ -24,29 +24,20 @@ class PlatformFeatureTests(unittest.TestCase):
         parser = build_parser()
 
         init_args = parser.parse_args(["init-db"])
-        import_args = parser.parse_args(["import-csv", "--source-dir", "data/processed"])
         api_args = parser.parse_args(["api", "--host", "127.0.0.1", "--port", "8000"])
         replace_args = parser.parse_args(["api", "--replace-existing"])
 
         self.assertEqual(init_args.command, "init-db")
-        self.assertEqual(import_args.command, "import-csv")
-        self.assertEqual(import_args.source_dir, "data/processed")
         self.assertEqual(api_args.command, "api")
         self.assertEqual(api_args.host, "127.0.0.1")
         self.assertEqual(api_args.port, 8000)
         self.assertTrue(replace_args.replace_existing)
         self.assertEqual(parser.parse_args(["scheduler"]).command, "scheduler")
 
-    def test_import_csv_command_is_kept_only_as_compatibility_stub(self) -> None:
-        args = SimpleNamespace(source_dir="data/processed")
-
-        with self.assertRaisesRegex(RuntimeError, "数据库优先模式"):
-            handle_import_csv(args)
-
     def test_infer_interval_from_data_path_supports_daily_alias(self) -> None:
-        self.assertEqual(infer_interval_from_data_path("data/processed/1810_hk_daily.csv"), "1d")
-        self.assertEqual(infer_interval_from_data_path("data/processed/1810_hk_15m.csv"), "15m")
-        self.assertIsNone(infer_interval_from_data_path("data/processed/xiaomi_test.csv"))
+        self.assertEqual(infer_interval_from_data_path("scratch/1810_hk_daily.csv"), "1d")
+        self.assertEqual(infer_interval_from_data_path("scratch/1810_hk_15m.csv"), "15m")
+        self.assertIsNone(infer_interval_from_data_path("scratch/xiaomi_test.csv"))
 
     def test_hk_lot_size_cache_is_not_persisted_by_default(self) -> None:
         self.assertIsNone(market_rules.HK_LOT_SIZE_CACHE_PATH)

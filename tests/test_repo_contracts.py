@@ -3,19 +3,13 @@ import re
 import unittest
 from pathlib import Path
 
-from strategy_studio.config import DEFAULT_DATA_PATH, DEFAULT_MINUTE_DATA_PATH
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 
 
 class RepoContractTests(unittest.TestCase):
-    """覆盖默认路径、Markdown 链接和仓库入口这些仓库级契约。"""
-
-    def test_default_runtime_paths_point_to_untracked_processed_dir(self) -> None:
-        self.assertEqual(DEFAULT_DATA_PATH.parent.as_posix(), "data/processed")
-        self.assertEqual(DEFAULT_MINUTE_DATA_PATH.parent.as_posix(), "data/processed")
+    """覆盖 Markdown 链接和仓库入口这些仓库级契约。"""
 
     def test_document_links_resolve_to_existing_files(self) -> None:
         markdown_files = [
