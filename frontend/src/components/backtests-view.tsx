@@ -583,7 +583,7 @@ export function BacktestsView() {
                   </Button>
                 ) : null}
                 <Button>
-                  <Link href="/reports">去看报告列表</Link>
+                  <Link href="/reports">去结果列表继续挑</Link>
                 </Button>
               </div>
             </div>
