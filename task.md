@@ -3488,3 +3488,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页完整历史提交时间列表头口径补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理“完整历史”桌面表格里的提交时间列表头，把“提交时间”这类后台字段名收成更像用户在核对记录时会直接问的问题。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将完整历史表格提交时间列从“提交时间”改成“什么时候提交”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不改时间值本身，也不动完成时间列、动作按钮或其他列，只调整提交时间列表头这一处文案。
+- 这轮不改摘要横幅、最近任务卡或状态提示，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
