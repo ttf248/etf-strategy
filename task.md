@@ -2966,3 +2966,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页最近任务摘要状态口径补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理“最近回测任务”摘要横幅里的四个状态统计文案，把它从后台状态计数收成更像“现在应该关注哪类任务”。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将“处理中 / 等待开始 / 失败 / 已完成”改成“还在跑的 / 还没开始的 / 这次没跑成的 / 已经出结果的”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不删除状态统计，也不改变任务分类、筛选或刷新逻辑，只调整最近任务摘要里的四个统计口径。
+- 这轮不改最近任务卡按钮、错误提示、完整历史入口或批量处理，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`

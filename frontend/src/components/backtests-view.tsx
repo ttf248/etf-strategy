@@ -571,10 +571,10 @@ export function BacktestsView() {
                 <p>新手更需要先确认“有没有成功生成报告、失败是不是同一个原因、现在还有没有任务在跑”，而不是直接翻完整任务表。刚提交成功时，只看最近任务里的第一条就够了。</p>
               </div>
               <div className="job-summary-metrics">
-                <span>处理中 {runningJobs.length}</span>
-                <span>等待开始 {queuedJobs.length}</span>
-                <span>失败 {failedJobs.length}</span>
-                <span>已完成 {succeededJobs.length}</span>
+                <span>还在跑的 {runningJobs.length}</span>
+                <span>还没开始的 {queuedJobs.length}</span>
+                <span>这次没跑成的 {failedJobs.length}</span>
+                <span>已经出结果的 {succeededJobs.length}</span>
               </div>
               <div className="job-summary-actions">
                 {latestSucceededJob?.reports?.[0]?.id ? (
