@@ -20,10 +20,10 @@ const strategyGuide: Record<string, { scene: string; beginnerHint: string; risk:
 
 function executionProfileLabel(profile: string): string {
   if (profile === "realistic") {
-    return "实盘口径";
+    return "更接近真实交易";
   }
   if (profile === "research") {
-    return "研究口径";
+    return "先看理想情况";
   }
   return profile;
 }
@@ -486,7 +486,7 @@ export function BacktestsView() {
                     children: (
                       <div className="template-form-grid">
                         <Form.Item name="execution_profile" label="成交假设">
-                          <Select options={[{ label: "实盘口径", value: "realistic" }, { label: "研究口径", value: "research" }]} />
+                          <Select options={[{ label: "更接近真实交易", value: "realistic" }, { label: "先看理想情况", value: "research" }]} />
                         </Form.Item>
                         <Form.Item name="lookback_days" label="先回看多少天历史">
                           <InputNumber min={1} style={{ width: "100%" }} />

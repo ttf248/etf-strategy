@@ -62,8 +62,8 @@ type TemplateRecommendationSpotlight = {
 };
 
 const executionProfiles = [
-  { label: "实盘口径", value: "realistic" },
-  { label: "研究口径", value: "research" },
+  { label: "更接近真实交易", value: "realistic" },
+  { label: "先看理想情况", value: "research" },
 ];
 
 function executionProfileLabel(profile: string): string {

@@ -97,8 +97,8 @@ const valueLabels: Record<string, Record<string, string>> = {
   },
   execution_profile: {
     conservative: "保守成交",
-    realistic: "实盘口径",
-    research: "研究口径",
+    realistic: "更接近真实交易",
+    research: "先看理想情况",
   },
   frequency: {
     monthly: "每月",
