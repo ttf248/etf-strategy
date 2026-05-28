@@ -35,15 +35,15 @@ function getValidationMetrics(report: ReportSummary) {
 
 function buildVerdict(netReturn: number, maxDrawdown: number): Verdict {
   if (netReturn > 0 && maxDrawdown <= 8) {
-    return { label: "表现较稳", color: "green", description: "单独验证收益为正，回撤压力相对可控。" };
+    return { label: "收益与风险较平衡", color: "green", description: "单独验证收益为正，且回撤暴露相对可控。" };
   }
   if (netReturn > 0) {
-    return { label: "有收益但波动大", color: "gold", description: "收益为正，但需要重点检查回撤。" };
+    return { label: "正收益但波动较高", color: "gold", description: "收益为正，但应重点检查回撤暴露。" };
   }
   if (netReturn === 0) {
-    return { label: "没有触发交易", color: "default", description: "单独验证阶段可能没有满足开仓条件。" };
+    return { label: "未形成交易", color: "default", description: "单独验证阶段可能未满足开仓条件。" };
   }
-  return { label: "暂不理想", color: "red", description: "单独验证收益为负，建议换参数或换标的。" };
+  return { label: "当前样本下表现偏弱", color: "red", description: "单独验证收益为负，建议调整参数、周期或标的。" };
 }
 
 function buildRerunHref(report: ReportSummary) {
@@ -57,15 +57,15 @@ function buildRerunHref(report: ReportSummary) {
 function buildCardHint(report: ReportSummary) {
   const { netReturn, maxDrawdown, closedTrades } = getValidationMetrics(report);
   if (closedTrades === 0) {
-    return "这份结果更适合先判断为什么没成交，再决定换标的还是换周期。";
+    return "该结果更适合先判断触发条件为何未满足，再决定调整标的还是周期。";
   }
   if (netReturn > 0 && maxDrawdown <= 8) {
-    return "这份结果适合优先细看，再和同标的其他报告做稳健性对比。";
+    return "该结果适合优先复盘，再与同标的其他报告做稳健性比较。";
   }
   if (netReturn > 0) {
-    return "这份结果有收益，但要先看回撤和净值曲线是否在你的承受范围内。";
+    return "该结果取得正收益，但应先确认回撤与净值波动是否在可接受范围内。";
   }
-  return "这份结果更适合当作反面对照，重跑时优先换模板、参数或周期。";
+  return "该结果更适合作为反向对照，重跑时应优先调整模板、参数或周期。";
 }
 
 function buildReportSpotlight(report: ReportSummary, isFavorite: boolean): ReportSpotlight {
@@ -73,40 +73,40 @@ function buildReportSpotlight(report: ReportSummary, isFavorite: boolean): Repor
   if (isFavorite) {
     return {
       rank: 0,
-      label: "已收藏，优先回看",
+      label: "已收藏，优先复盘",
       color: "gold",
-      reason: "你已经手动收藏了这份结果，所以默认排在最前，方便反复比较、复盘和重跑。",
+      reason: "你已手动收藏该结果，因此默认排在最前，便于持续比较、复盘和重跑。",
     };
   }
   if (closedTrades === 0) {
     return {
       rank: 3,
-      label: "先查为什么没成交",
+      label: "优先检查触发条件",
       color: "default",
-      reason: "这类结果会排在正收益报告后面，先确认是不是条件过严，再决定要不要换标的、周期或模板。",
+      reason: "这类结果排在正收益样本之后，建议先确认是否因条件过严导致未触发，再决定是否调整标的、周期或模板。",
     };
   }
   if (netReturn > 0 && maxDrawdown <= 8) {
     return {
       rank: 1,
-      label: "适合先看",
+      label: "优先复盘",
       color: "green",
-      reason: "单独验证收益为正，回撤也相对可控，适合作为第一批重点复盘的候选结果。",
+      reason: "单独验证收益为正且回撤相对可控，适合作为第一批重点复盘样本。",
     };
   }
   if (netReturn > 0) {
     return {
       rank: 2,
-      label: "重点看波动",
+      label: "关注波动暴露",
       color: "gold",
-      reason: "虽然收益为正，但波动和回撤更大，所以排在更稳的正收益结果后面，先判断你能否接受。",
+      reason: "虽然收益为正，但波动和回撤更高，因此排在更稳健的正收益结果之后，需先判断能否接受。",
     };
   }
   return {
     rank: 4,
-    label: "适合做反面对照",
+    label: "作为反向对照",
     color: "red",
-    reason: "这份结果默认排在后面，更适合拿来和前面的候选结果做反面对照，判断该避开什么配置。",
+    reason: "该结果默认排在后面，更适合作为反向对照，用于识别应避开的配置组合。",
   };
 }
 
@@ -303,59 +303,59 @@ export function ReportsView() {
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="查看报告"
-        title="查看回测报告"
-        description="先看结论和风险，再打开详情看净值曲线、交易记录和参数。"
+        eyebrow="结果库"
+        title="回测结果库"
+        description="先判断验证结论与风险收益特征，再进入详情查看净值曲线、交易记录和参数快照。"
       />
 
       <div className="detail-secondary-hint">
-        <strong>这些数字只是帮你先扫一眼当前结果库里大概有什么</strong>
-        <p>如果你只想先找一份最值得细看的报告，不用先把这几张卡都看懂。更自然的顺序通常是先看下面的卡片，再回头用这些数字确认当前结果池的大致分布。</p>
+        <strong>这些指标用于快速了解当前结果池分布</strong>
+        <p>如果当前目标是先定位最值得复盘的报告，无需逐项理解这些指标；更自然的顺序通常是先浏览下方卡片，再回头用指标确认整体分布。</p>
       </div>
       <div className="summary-grid">
-        <MetricCard label="现在这批里有" value={filteredReports.length} note="按现在筛选条件算" />
-        <MetricCard label="先看赚钱的" value={positiveReports} note="更适合优先细看" />
-        <MetricCard label="先留着回看的" value={favoriteReports.length} note="保存在当前浏览器" />
+        <MetricCard label="当前结果数" value={filteredReports.length} note="按当前筛选条件计算" />
+        <MetricCard label="正收益样本" value={positiveReports} note="更适合优先复盘" />
+        <MetricCard label="已收藏报告" value={favoriteReports.length} note="保存在当前浏览器" />
         <MetricCard
-          label="这批里最赚钱的"
+          label="当前最高收益"
           value={bestReport ? <FormatPercent value={getValidationMetrics(bestReport).netReturn} /> : "-"}
           note={bestReport ? `${bestReport.symbol} / ${bestReport.interval}` : "暂无报告"}
         />
-        <MetricCard label="刚出来这份" value={latestReport?.symbol ?? "-"} note={latestReport?.created_at ?? "暂无报告"} />
+        <MetricCard label="最近生成" value={latestReport?.symbol ?? "-"} note={latestReport?.created_at ?? "暂无报告"} />
       </div>
 
       <Card
         size="small"
-        title="需要一起比较时，再用报告对比"
+        title="报告对比"
         className="section-card report-compare-card"
         extra={selectedReportIds.length ? <Button size="small" onClick={() => setSelectedReportIds([])}>清空对比</Button> : null}
       >
         <div className="detail-secondary-hint">
-          <strong>第一次来看结果时，不用先停在这里</strong>
-          <p>更自然的顺序通常是：先从下面挑 1 份最值得细看的报告打开，确认它为什么值得看；只有当你已经有两三份候选结果，才需要回到这里并排比较。</p>
+          <strong>建议在形成多个候选结果后再进入对比区</strong>
+          <p>更自然的顺序通常是：先从下方挑选一份值得复盘的报告打开，确认其结论与风险，再回到这里做并排比较。</p>
         </div>
         {queryComparedReports.length > 0 ? (
           <div className="compare-prefill-banner">
             <strong>已从详情页带入报告</strong>
             <span>
               {queryComparedReports.map((item) => `编号 ${item.id} ${item.symbol}`).join("、")} 已经加入对比区。
-              {selectedReportIds.length < 2 ? " 再勾选 1 到 3 份报告，就能直接比较收益、回撤和交易次数。" : " 现在已经可以直接查看对比结果。"}
+              {selectedReportIds.length < 2 ? " 再选择 1 到 3 份报告，即可直接比较收益、回撤和交易次数。" : " 当前已经可以直接查看对比结果。"}
             </span>
           </div>
         ) : null}
         {comparedReports.length === 0 ? (
           <div className="report-compare-empty">
-            <strong>先去下面挑 1 份最值得细看的，再决定要不要回来做对比</strong>
-            <p>如果你还没打开过任何报告，先从下方卡片开始更顺手。等你已经有 2 到 4 份想并排比较的候选结果，再回到这里一起看收益、回撤和交易次数。</p>
+            <strong>先从下方选择候选结果，再决定是否进入对比</strong>
+            <p>如果你还没有打开过任何报告，建议先从下方卡片开始。待形成 2 到 4 份候选结果后，再回到这里比较收益、回撤和交易次数。</p>
             <div className="report-compare-empty-actions">
               {bestReport ? (
                 <Button type="primary">
-                  <Link href={`/reports/${bestReport.id}`}>先打开最赚钱这份</Link>
+                  <Link href={`/reports/${bestReport.id}`}>查看最高收益报告</Link>
                 </Button>
               ) : null}
               {latestReport ? (
                 <Button>
-                  <Link href={`/reports/${latestReport.id}`}>打开最近生成报告</Link>
+                  <Link href={`/reports/${latestReport.id}`}>查看最近生成报告</Link>
                 </Button>
               ) : null}
             </div>
@@ -382,7 +382,7 @@ export function ReportsView() {
                     </div>
                     <div className="report-compare-actions">
                       <Button size="small" type="primary">
-                        <Link href={`/reports/${report.id}`}>看详情</Link>
+                        <Link href={`/reports/${report.id}`}>查看详情</Link>
                       </Button>
                       <Button size="small">
                         <Link href={buildRerunHref(report)}>按此配置重跑</Link>
@@ -393,24 +393,24 @@ export function ReportsView() {
               })}
             </div>
             <div className="report-compare-summary">
-              <strong>对比后下一步</strong>
+              <strong>对比结论</strong>
               <p>
                 {comparedReports.length === 1
-                  ? `当前只带入了编号 ${comparedReports[0].id} ${comparedReports[0].symbol}，先再选 1 到 3 份报告，才能真正比较哪套策略更稳或更赚钱。`
+                  ? `当前仅带入编号 ${comparedReports[0].id} ${comparedReports[0].symbol}。继续加入 1 到 3 份报告后，才能比较不同配置的稳健性与收益效率。`
                   : bestComparedReport
                   ? `收益最高的是编号 ${bestComparedReport.id} ${bestComparedReport.symbol}。`
-                  : "先选出你最关心的那份报告。"}
+                  : "请先选择当前最关注的报告。"}
                 {comparedReports.length > 1 && safestComparedReport
                   ? ` 回撤最小的是编号 ${safestComparedReport.id} ${safestComparedReport.symbol}。`
                   : ""}
                 {comparedReports.length > 1
-                  ? " 如果你更看重赚钱效率，先打开收益最高那份；如果你更看重稳健，先看回撤最小那份，再决定要不要重跑。"
+                  ? " 如果更看重收益效率，可优先打开收益最高的样本；如果更看重稳健性，可先查看回撤最小的样本，再决定是否重跑。"
                   : ""}
               </p>
               <div className="report-compare-summary-actions">
                 {comparedReports.length > 1 && bestComparedReport ? (
                   <Button type="primary">
-                    <Link href={`/reports/${bestComparedReport.id}`}>打开收益最高报告</Link>
+                    <Link href={`/reports/${bestComparedReport.id}`}>查看最高收益报告</Link>
                   </Button>
                 ) : null}
                 {comparedReports.length > 1 && safestComparedReport ? (
@@ -424,34 +424,34 @@ export function ReportsView() {
         )}
       </Card>
 
-      <Card size="small" title="先挑几份值得细看的报告" className="section-card">
+      <Card size="small" title="结果列表" className="section-card">
         <div className="table-toolbar">
           <Space wrap>
-            <Input placeholder="先找某个标的或名称" value={keyword} onChange={(event) => setKeyword(event.target.value)} style={{ width: 240 }} />
-            <Select allowClear placeholder="只看某个周期" value={interval} onChange={setInterval} options={intervalOptions} style={{ width: 150 }} />
+            <Input placeholder="按标的或名称筛选" value={keyword} onChange={(event) => setKeyword(event.target.value)} style={{ width: 240 }} />
+            <Select allowClear placeholder="按周期筛选" value={interval} onChange={setInterval} options={intervalOptions} style={{ width: 150 }} />
             <Button
               icon={showFavoritesOnly ? <StarFilled /> : <StarOutlined />}
               type={showFavoritesOnly ? "primary" : "default"}
               onClick={() => setShowFavoritesOnly((current) => !current)}
             >
-              {showFavoritesOnly ? "正在只看标记过的" : "只看我标记过的"}
+              {showFavoritesOnly ? "仅显示收藏报告" : "只看收藏报告"}
             </Button>
           </Space>
-          <ToolbarCount>现在这批里有 {filteredReports.length} 份，已标记 {favoriteReports.length} 份</ToolbarCount>
+          <ToolbarCount>当前结果 {filteredReports.length} 份，已收藏 {favoriteReports.length} 份</ToolbarCount>
         </div>
         {filteredReports.length === 0 ? (
           <Empty description={showFavoritesOnly ? "暂无收藏报告" : "暂无报告"} />
         ) : (
           <>
             <div className="report-library-banner">
-              <strong>报告默认不是按时间堆叠，而是按更适合先看的顺序排好</strong>
-              <p>排序顺序固定为：先看收藏，再看回撤更可控的正收益结果，然后看高波动正收益、没成交结果，最后再看反面对照。只有当你需要同时勾选几份报告，或者细看全部字段时，再展开下面的高级表格视图。</p>
+              <strong>报告默认按复盘优先级排序，而非简单按时间堆叠</strong>
+              <p>排序顺序固定为：收藏报告优先，其次是回撤更可控的正收益结果，然后是高波动正收益、未触发交易结果，最后是反向对照。只有在需要同时勾选多份报告或查看完整字段时，再展开下方高级表格。</p>
               <div className="report-reading-order-tags">
-                <span>1. 先看收藏</span>
+                <span>1. 收藏报告</span>
                 <span>2. 稳健正收益</span>
                 <span>3. 高波动正收益</span>
-                <span>4. 没成交结果</span>
-                <span>5. 反面对照</span>
+                <span>4. 未触发交易</span>
+                <span>5. 反向对照</span>
               </div>
             </div>
             <div className="report-mobile-list">
@@ -487,26 +487,26 @@ export function ReportsView() {
                       <span>交易 {closedTrades}</span>
                     </div>
                     <Button type="primary" block>
-                      <Link href={`/reports/${report.id}`}>先打开细看</Link>
+                      <Link href={`/reports/${report.id}`}>查看详情</Link>
                     </Button>
                     <div className="report-mobile-actions">
                       <Button block onClick={() => toggleCompare(report.id)}>
-                        {isCompared ? "已放进对比" : "先放进对比"}
+                        {isCompared ? "已加入对比" : "加入对比"}
                       </Button>
                       <Button block icon={isFavorite ? <StarFilled /> : <StarOutlined />} onClick={() => toggleFavorite(report.id)}>
-                        {isFavorite ? "取消标记" : "先标记起来"}
+                        {isFavorite ? "取消收藏" : "加入收藏"}
                       </Button>
                     </div>
                     <Button block>
-                      <Link href={buildRerunHref(report)}>看完后按此配置重跑</Link>
+                      <Link href={buildRerunHref(report)}>按该配置重跑</Link>
                     </Button>
                   </article>
                 );
               })}
             </div>
             <div className="detail-secondary-hint">
-              <strong>只有在你想逐列核对、同时勾选几份结果时，再展开下面这张完整表</strong>
-              <p>如果你只是第一次浏览这批结果，前面的卡片通常更够用。完整表格更适合对照字段、批量勾选和细查生成时间之类的排查动作。</p>
+              <strong>只有在需要逐列核对或同时勾选多份结果时，再展开下面的完整表</strong>
+              <p>如果当前只是浏览这批结果，前面的卡片通常已经足够。完整表格更适合对照字段、批量勾选和核查生成时间等细节。</p>
             </div>
             <Collapse
               className="advanced-table-panel"
@@ -517,7 +517,7 @@ export function ReportsView() {
                   label: (
                     <div className="advanced-trace-label">
                       <strong>需要逐列核对时，再看完整表格</strong>
-                      <span>这里更适合多选比较、按列查看全部字段，或确认每份结果的生成时间、策略和编号。</span>
+                      <span>这里更适合多选比较、按列查看全部字段，或确认每份结果的生成时间、策略与编号。</span>
                     </div>
                   ),
                   children: (
@@ -558,7 +558,7 @@ export function ReportsView() {
                           render: (_, row) => `${getValidationMetrics(row).maxDrawdown.toFixed(2)}%`,
                         },
                         {
-                          title: "为什么先看",
+                          title: "优先级说明",
                           width: 240,
                           render: (_, row) => {
                             const spotlight = buildReportSpotlight(row, validFavoriteReportIds.includes(row.id));

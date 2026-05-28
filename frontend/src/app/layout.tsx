@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "ETF Strategy Backtest Lab",
-  description: "面向新手用户的 ETF 策略回测平台",
+  description: "面向策略研究与回测复盘的 ETF 平台",
 };
 
 export default function RootLayout({

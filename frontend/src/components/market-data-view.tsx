@@ -77,75 +77,75 @@ function buildStartDecisionCards(
 
   if (!normalizedSymbol) {
     currentDecision = {
-      title: "当前判断",
-      value: "先检查一个标的",
-      description: "先输入一个你想测的标的代码，页面才会告诉你当前该补什么，不需要先看全部覆盖表。",
+      title: "当前状态",
+      value: "待确认目标标的",
+      description: "输入目标标的代码后，页面会给出覆盖情况与补数建议，无需先浏览完整覆盖表。",
     };
     nextAction = {
-      title: "现在最该做",
-      value: "先看现成示例",
-      description: "如果你只想跑通第一轮，优先用页面里的现成示例标的，再决定要不要检查自己的目标标的。",
+      title: "建议动作",
+      value: "查看推荐样本",
+      description: "若暂时没有明确标的，可先使用页面中的推荐样本，再决定是否检查自定义目标。",
     };
     syncAllDecision = {
-      title: "什么时候才同步全部",
-      value: "现在先不用",
-      description: "第一次试跑不需要先做全量建库。只有你准备批量扩充标的池时，才需要补全部标的某个周期。",
+      title: "全量同步时机",
+      value: "当前通常无需执行",
+      description: "建立初始研究样本不需要先做全量建库。只有准备批量扩充标的池时，才需要补全部标的某个周期。",
     };
     return [currentDecision, nextAction, syncAllDecision];
   }
 
   if (!hasRows) {
     currentDecision = {
-      title: "当前判断",
-      value: `${normalizedSymbol} 还没数据`,
-      description: "当前还没有这个标的的行情，先把它补到可用，再考虑其他标的和更多周期。",
+      title: "当前状态",
+      value: `${normalizedSymbol} 尚无覆盖`,
+      description: "当前还没有该标的行情，建议先补齐可用覆盖，再考虑其他标的与更多周期。",
     };
     nextAction = {
-      title: "现在最该做",
+      title: "建议动作",
       value: intervalRecommendations[0]?.title ?? "先补日线",
-      description: intervalRecommendations[0]?.description ?? "第一次通常先补 1d，再按需要补 15m。",
+      description: intervalRecommendations[0]?.description ?? "通常先补 1d，再按研究需求补 15m。",
     };
     syncAllDecision = {
-      title: "什么时候才同步全部",
-      value: "先别同步全部",
-      description: "先把当前标的补到能回测，比先补全库更直接。只有当前标的已经够用、你还要扩大范围时，再做全量同步。",
+      title: "全量同步时机",
+      value: "当前不建议全量同步",
+      description: "先将当前标的补到可研究状态，比先补全库更直接。只有当前标的已满足需求且准备扩大范围时，再做全量同步。",
     };
     return [currentDecision, nextAction, syncAllDecision];
   }
 
   if (hasDaily && has15m) {
     currentDecision = {
-      title: "当前判断",
-      value: `${normalizedSymbol} 已可直接首跑`,
-      description: "这个标的已经同时具备 1d 和 15m，足够支撑大多数新手第一轮回测。",
+      title: "当前状态",
+      value: `${normalizedSymbol} 可直接进入研究`,
+      description: "该标的已同时具备 1d 与 15m 覆盖，足以支撑大多数基线回测场景。",
     };
     nextAction = {
-      title: "现在最该做",
-      value: "直接去创建回测",
-      description: "现在更应该先跑出一份报告，再根据结果决定要不要补更多标的或更多周期。",
+      title: "建议动作",
+      value: "进入回测配置",
+      description: "当前应优先形成一份结果，再根据复盘结论决定是否补充更多标的或更多周期。",
     };
     syncAllDecision = {
-      title: "什么时候才同步全部",
-      value: readySymbolCount > 0 ? "只有想扩大标的池时再做" : "暂时不用",
-      description: "全量同步只在你准备批量筛更多标的、或者库里可直接首跑的标的太少时才有必要。当前这个标的已经够开始。",
+      title: "全量同步时机",
+      value: readySymbolCount > 0 ? "扩充标的池时再执行" : "当前无需执行",
+      description: "只有准备批量筛选更多标的，或当前可直接研究的标的过少时，才有必要做全量同步。当前该标的已可直接开始。",
     };
     return [currentDecision, nextAction, syncAllDecision];
   }
 
   currentDecision = {
-    title: "当前判断",
-    value: `${normalizedSymbol} 还能继续补`,
-    description: "这个标的已经有部分数据，可以开始一些策略，但还没覆盖到最常用的新手组合。",
+    title: "当前状态",
+    value: `${normalizedSymbol} 覆盖仍可补强`,
+    description: "该标的已具备部分数据，可支持部分策略，但尚未覆盖最常用的基线组合。",
   };
   nextAction = {
-    title: "现在最该做",
+    title: "建议动作",
     value: intervalRecommendations[0]?.title ?? "先补推荐周期",
-    description: intervalRecommendations[0]?.description ?? "先把常用周期补齐，再回到创建回测页。",
+    description: intervalRecommendations[0]?.description ?? "先补齐常用周期，再返回回测配置页。",
   };
   syncAllDecision = {
-    title: "什么时候才同步全部",
-    value: "当前仍以补这个标的为先",
-    description: "如果你只是想验证这一只标的，先补推荐周期就够了。只有你准备同时研究更多标的时，再做全量同步。",
+    title: "全量同步时机",
+    value: "当前仍应优先补齐单标的覆盖",
+    description: "若当前仅研究这一只标的，补齐推荐周期即可。只有准备同步扩展更多标的时，再做全量同步。",
   };
   return [currentDecision, nextAction, syncAllDecision];
 }
@@ -262,9 +262,9 @@ export function MarketDataView() {
       {
         key: "ready",
         value: `${readyProfiles.length} 个`,
-        title: "可直接首跑",
-        description: "同时具备 1d 和 15m，最适合第一次完整试跑。",
-        recommendation: "优先从这类里挑一个开始，不需要先做额外补数。",
+        title: "可直接开展研究",
+        description: "同时具备 1d 和 15m，适合作为标准研究样本。",
+        recommendation: "优先从这类标的中选择，不需要额外补数。",
         examples: readyProfiles.slice(0, 3),
       },
       {
@@ -302,17 +302,17 @@ export function MarketDataView() {
 
   const readiness = useMemo(() => {
     if (!checkedSymbol.trim()) {
-      return { label: "输入标的开始检查", color: "default", description: "例如 1810.HK、0700.HK、513050.SS。" };
+      return { label: "待输入标的", color: "default", description: "例如 1810.HK、0700.HK、513050.SS。" };
     }
     if (symbolRows.length === 0) {
-      return { label: "暂未找到数据", color: "red", description: "当前还没有这个标的的行情。可以先检查代码格式，再同步数据。" };
+      return { label: "未找到覆盖", color: "red", description: "当前还没有该标的行情。可先确认代码格式，再执行同步。" };
     }
     const daily = symbolIntervals.has("1d");
     const intraday = Array.from(symbolIntervals).some((item) => item !== "1d");
     if (daily && intraday) {
-      return { label: "适合开始回测", color: "green", description: "该标的同时有日线和分钟线数据，可以创建回测。" };
+      return { label: "覆盖可用", color: "green", description: "该标的已同时具备日线和分钟级数据，可直接创建回测。" };
     }
-    return { label: "可回测但数据有限", color: "gold", description: "该标的已有部分周期数据，建议确认策略所需周期是否存在。" };
+    return { label: "覆盖有限", color: "gold", description: "该标的已有部分周期数据，建议先确认策略所需周期是否齐备。" };
   }, [checkedSymbol, symbolRows, symbolIntervals]);
 
   const intervalRecommendations = useMemo<IntervalRecommendation[]>(() => {
@@ -324,12 +324,12 @@ export function MarketDataView() {
         {
           interval: "1d",
           title: "先补日线",
-          description: "第一次建库先补 1d，最适合做长期回测、定投和基础可用性检查。",
+          description: "建议先补 1d，用于长期回测、定投研究和基础可用性检查。",
         },
         {
           interval: "15m",
           title: "再补 15m",
-          description: "如果你准备跑网格或短周期反弹策略，再补 15m 就能开始大部分分钟研究。",
+          description: "若计划运行网格或短周期反弹策略，再补 15m 即可覆盖大部分分钟级研究。",
         },
       ];
     }
@@ -346,7 +346,7 @@ export function MarketDataView() {
       recommendations.push({
         interval: "15m",
         title: "补 15m",
-        description: "补 15m 后可以直接跑默认分钟网格和大多数新手第一轮短线策略。",
+        description: "补齐 15m 后，可直接覆盖默认分钟网格与大多数分钟级基线策略。",
       });
     }
     if (symbolIntervals.has("15m") && !symbolIntervals.has("1m")) {
@@ -399,15 +399,15 @@ export function MarketDataView() {
     <div className="page-stack">
       {contextHolder}
       <PageHeader
-        eyebrow="数据准备"
-        title="数据准备"
-        description="先检查一个标的是否已有可回测行情。缺数据时再同步，不需要先研究完整数据明细。"
+        eyebrow="数据覆盖"
+        title="数据覆盖检查"
+        description="先确认目标标的是否具备可研究行情覆盖；缺少关键周期时再同步，无需先浏览全部明细。"
       />
 
       <Card size="small" className="section-card data-check-card">
         <div className="data-check-main">
-          <Typography.Title level={4}>检查标的是否能回测</Typography.Title>
-          <Typography.Paragraph>输入 Yahoo 标的代码，系统会告诉你当前有哪些周期、覆盖到哪一天。</Typography.Paragraph>
+          <Typography.Title level={4}>检查标的覆盖情况</Typography.Title>
+          <Typography.Paragraph>输入 Yahoo 标的代码，系统会展示当前可用周期以及覆盖截止时间。</Typography.Paragraph>
           <Space.Compact className="data-check-input">
             <Input
               value={checkInput}
@@ -444,7 +444,7 @@ export function MarketDataView() {
             <Button loading={syncingSymbol} onClick={() => void syncCheckedSymbol()}>
               同步当前标的 {syncInterval}
             </Button>
-            <small>不会补数据时，优先按上面的推荐周期同步；第一次短线研究建议先补 15m。</small>
+            <small>若不确定补数顺序，优先按上方推荐周期执行；分钟级基线研究通常先补 15m。</small>
           </div>
         </div>
       </Card>
@@ -453,17 +453,17 @@ export function MarketDataView() {
         <div className="start-path-main">
           <strong>
             {symbolRows.length === 0
-              ? "先补一个能用的标的，再决定要不要同步全部数据"
+              ? "先补齐一个可研究标的，再决定是否执行全量同步"
               : intervalRecommendations.length === 0
-                ? "当前这个标的已经够开始，不需要继续翻完整覆盖表"
-                : "这个标的可以先开始，但补齐常用周期会更稳妥"}
+                ? "当前标的覆盖已满足主流程，无需继续查看完整覆盖表"
+                : "当前标的已可开始研究，但补齐常用周期会更稳妥"}
           </strong>
           <p>
             {symbolRows.length === 0
-              ? "你现在更需要先把一个标的补到可用，而不是先看完整覆盖表。第一次通常先补 1d，再按需要补 15m。"
+              ? "当前更应先将一个标的补到可研究状态，而不是先浏览完整覆盖表。通常先补 1d，再按研究需求补 15m。"
               : intervalRecommendations.length === 0
-                ? "这个标的已经具备当前常用周期，可以直接去创建回测；只有想核对更多标的时，再展开下面的高级明细。"
-                : "当前标的已经有部分数据，可以先开始回测；如果你准备长期复盘或默认分钟策略，再把缺的推荐周期补齐。"}
+                ? "该标的已具备常用研究周期，可直接进入回测配置；只有需要核对更多标的时，再展开下方高级明细。"
+                : "当前标的已具备部分覆盖，可先开展研究；若需要长期复盘或分钟级基线策略，建议继续补齐推荐周期。"}
           </p>
           <div className="start-path-guide-grid">
             {startDecisionCards.map((item) => (
@@ -478,12 +478,12 @@ export function MarketDataView() {
         <div className="start-path-actions">
           {checkedSymbolLaunchHref ? (
             <Button type="primary">
-              <Link href={checkedSymbolLaunchHref}>用当前标的开始回测</Link>
+              <Link href={checkedSymbolLaunchHref}>基于当前标的创建回测</Link>
             </Button>
           ) : null}
           {beginnerPresets[0] ? (
             <Button>
-              <Link href={buildBacktestPresetHref(beginnerPresets[0])}>先用现成示例标的开始</Link>
+              <Link href={buildBacktestPresetHref(beginnerPresets[0])}>使用推荐样本创建回测</Link>
             </Button>
           ) : null}
           {intervalRecommendations[0] ? (
@@ -494,9 +494,9 @@ export function MarketDataView() {
         </div>
       </Card>
 
-      <Card size="small" title="新手建议先用这些标的" className="section-card">
+      <Card size="small" title="推荐研究样本" className="section-card">
         {beginnerPresets.length === 0 ? (
-          <Typography.Text type="secondary">当前还没有同时适合首跑的示例标的。可以先在上方输入一个标的检查，再补 1d 或 15m。</Typography.Text>
+          <Typography.Text type="secondary">当前尚无可直接使用的推荐样本。可先在上方检查目标标的，并补齐 1d 或 15m。</Typography.Text>
         ) : (
           <div className="beginner-preset-grid">
             {beginnerPresets.map((preset) => (
@@ -515,9 +515,9 @@ export function MarketDataView() {
                   ))}
                 </div>
                 <div className="beginner-preset-actions">
-                  <Button onClick={() => applyCheckedSymbol(preset.symbol)}>先检查这个标的</Button>
+                  <Button onClick={() => applyCheckedSymbol(preset.symbol)}>检查该标的</Button>
                   <Button type="primary">
-                    <Link href={buildBacktestPresetHref(preset)}>直接去回测</Link>
+                    <Link href={buildBacktestPresetHref(preset)}>直接创建回测</Link>
                   </Button>
                 </div>
               </article>
@@ -526,7 +526,7 @@ export function MarketDataView() {
         )}
       </Card>
 
-      <Card size="small" title="先按准备程度选一个标的，不需要先翻完整覆盖表" className="section-card">
+      <Card size="small" title="按覆盖层级选择研究标的" className="section-card">
         <div className="quality-hint-grid">
           {coverageInsights.map((item) => (
             <article key={item.key} className="quality-hint-card">
@@ -549,12 +549,12 @@ export function MarketDataView() {
           ))}
         </div>
         <Typography.Paragraph className="quality-hint-note">
-          第一次试跑不需要先把全部标的都同步完。优先选一个同时有 1d 和 15m 的标的，跑通回测流程后，再逐步补更多周期和更多标的。只有当你需要核对全部覆盖细节时，再展开下面的高级明细。
+          无需先将全部标的同步完毕。优先选择同时具备 1d 和 15m 的标的建立研究样本，待主流程验证完成后，再逐步扩展更多周期与更多标的。只有需要核对全部覆盖细节时，再展开下方高级明细。
         </Typography.Paragraph>
       </Card>
 
       {symbolRows.length > 0 ? (
-        <Card size="small" title="这个标的已有数据" className="section-card">
+        <Card size="small" title="当前标的覆盖明细" className="section-card">
           <div className="coverage-card-grid">
             {symbolRows.map((item) => (
               <div key={`${item.symbol}-${item.interval}`} className="coverage-card">
@@ -568,27 +568,27 @@ export function MarketDataView() {
       ) : null}
 
       <div className="summary-grid">
-        <MetricCard label="已准备标的" value={stats.instrument_count} note="可以在创建回测时选择" />
-        <MetricCard label="行情记录" value={stats.total_bars.toLocaleString()} note="已准备的 K 线" />
+        <MetricCard label="已覆盖标的" value={stats.instrument_count} note="可直接进入研究流程" />
+        <MetricCard label="行情记录" value={stats.total_bars.toLocaleString()} note="当前已入库 K 线" />
         {stats.by_interval.map((item) => (
-          <MetricCard key={item.interval} label={`${item.interval} 数据`} value={item.bar_count.toLocaleString()} note="该周期可用于对应策略" />
+          <MetricCard key={item.interval} label={`${item.interval} 覆盖`} value={item.bar_count.toLocaleString()} note="可用于对应研究周期" />
         ))}
       </div>
 
       <Card size="small" title="数据覆盖高级明细" className="section-card">
         <div className="data-library-banner">
-          <strong>只有在你需要核对全部覆盖细节时，再展开完整明细</strong>
-          <p>大多数时候，上面的检查结果、准备程度分层和推荐周期已经足够决定下一步。只有当你要筛多个标的、核对更新时间或排查覆盖异常时，再看完整表格。</p>
+          <strong>只有在需要核对全部覆盖细节时，再展开完整明细</strong>
+          <p>大多数情况下，上方的覆盖检查、分层结果与推荐周期已足以支持下一步决策。只有在筛选多个标的、核对更新时间或排查覆盖异常时，再查看完整表格。</p>
         </div>
         <div className="data-maintenance-banner">
           <div>
-            <strong>高级补数：只有准备扩大量级时，再补全部标的某个周期</strong>
-            <p>如果你现在只是想跑通一个标的，不需要点这里。全量补数更适合“准备扩大标的池”或“当前可直接首跑的标的太少”的场景。</p>
+            <strong>高级补数：仅在准备扩充标的池时，再补全部标的某个周期</strong>
+            <p>如果当前只需建立单标的研究样本，通常无需执行这里的操作。全量补数更适合扩大标的池或当前可直接研究标的过少的场景。</p>
           </div>
           <Space wrap>
             <Select value={syncInterval} options={intervalOptions} onChange={setSyncInterval} style={{ width: 120 }} />
             <Button loading={syncing} onClick={() => void syncAll()}>
-              补全部标的当前周期
+              同步全部标的当前周期
             </Button>
           </Space>
         </div>
@@ -598,7 +598,7 @@ export function MarketDataView() {
           items={[
             {
               key: "coverage-table",
-              label: "高级明细：全部标的覆盖、筛选和更新时间",
+              label: "高级明细：全部标的覆盖、筛选与更新时间",
               children: (
                 <>
                   <div className="table-toolbar">

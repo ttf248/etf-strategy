@@ -62,8 +62,8 @@ type TemplateRecommendationSpotlight = {
 };
 
 const executionProfiles = [
-  { label: "更接近真实交易", value: "realistic" },
-  { label: "先看理想情况", value: "research" },
+  { label: "真实成交口径", value: "realistic" },
+  { label: "理想成交口径", value: "research" },
 ];
 
 function executionProfileLabel(profile: string): string {
@@ -71,40 +71,40 @@ function executionProfileLabel(profile: string): string {
 }
 
 const strategyGuide: Record<string, StrategyGuide> = {
-  grid: { scene: "震荡行情，低买高卖", level: "新手可先用", audience: "第一次短线试跑", starterRank: 0 },
-  dca: { scene: "长期分批买入", level: "最容易理解", audience: "想先看长期持有", starterRank: 1 },
-  daily_rebound: { scene: "日线超跌反弹", level: "需要看回撤", audience: "想验证日线择时", starterRank: 2 },
-  minute_rebound: { scene: "分钟级急跌反抽", level: "偏进阶", audience: "已经能接受短线波动", starterRank: 3 },
-  minute_rebound_with_fade_filter: { scene: "带过滤的分钟反抽", level: "偏进阶", audience: "想进一步过滤噪音", starterRank: 4 },
-  minute_index_grid_retrace: { scene: "指数回落后的网格", level: "偏进阶", audience: "专项指数策略研究", starterRank: 5 },
+  grid: { scene: "震荡行情中的分层低买高卖", level: "基础配置", audience: "分钟级基线研究", starterRank: 0 },
+  dca: { scene: "长期分批建仓", level: "基础配置", audience: "长期持有对照研究", starterRank: 1 },
+  daily_rebound: { scene: "日线超跌反弹", level: "中等复杂度", audience: "日线择时研究", starterRank: 2 },
+  minute_rebound: { scene: "分钟级急跌反抽", level: "进阶配置", audience: "短线反弹研究", starterRank: 3 },
+  minute_rebound_with_fade_filter: { scene: "带过滤条件的分钟反抽", level: "进阶配置", audience: "分钟信号筛选研究", starterRank: 4 },
+  minute_index_grid_retrace: { scene: "指数回落后的网格承接", level: "专项配置", audience: "指数策略专项研究", starterRank: 5 },
 };
 
 const templateQuickPicks: TemplateQuickPick[] = [
   {
     key: "starter",
-    title: "第一次先跑一轮",
-    description: "优先看 15m 网格默认模板，先把回测流程和报告阅读跑通。",
+    title: "建立分钟级基线",
+    description: "优先查看 15m 网格默认模板，用于建立标准分钟级回测样本。",
     strategyKind: "grid",
     interval: "15m",
   },
   {
     key: "long-term",
-    title: "想看长期持有",
-    description: "先看日线定投模板，最接近日常理解，也最容易和买入持有对照。",
+    title: "长期持有对照",
+    description: "优先查看日线定投模板，便于与买入持有做长期对照。",
     strategyKind: "dca",
     interval: "1d",
   },
   {
     key: "daily-timing",
-    title: "想试日线择时",
-    description: "先看日线超跌反弹模板，重点比较收益和回撤是否值得承担。",
+    title: "日线择时验证",
+    description: "优先查看日线超跌反弹模板，重点比较收益效率与回撤代价。",
     strategyKind: "daily_rebound",
     interval: "1d",
   },
   {
     key: "intraday",
-    title: "已经会看分钟波动",
-    description: "再看分钟反抽类模板，适合已经理解滑点、回撤和频繁交易的人。",
+    title: "分钟级进阶研究",
+    description: "查看分钟反抽类模板，适合需要同时评估滑点、回撤与交易频率的场景。",
     strategyKind: "minute_rebound",
     interval: "15m",
   },
@@ -150,29 +150,29 @@ function buildTemplateRecommendationSpotlight(template: StrategyTemplate): Templ
   };
   if (template.is_default) {
     return {
-      label: "默认推荐，优先先试",
+      label: "默认模板",
       color: "gold",
-      reason: "这类模板默认排在最前，适合先把回测流程和报告阅读跑通，再决定要不要改详细设置。",
+      reason: "这类模板默认排在最前，适合作为标准研究配置，便于先形成结果再决定是否细化设置。",
     };
   }
   if (guide.starterRank <= 1) {
     return {
-      label: "适合先上手",
+      label: "适合基线研究",
       color: "green",
-      reason: `这类模板更容易理解，适合 ${guide.audience}，通常比分钟进阶模板更适合作为第一批候选。`,
+      reason: `这类模板更适合作为 ${guide.audience} 的初始候选，通常比分钟级进阶模板更适合建立基线。`,
     };
   }
   if (template.interval === "1d") {
     return {
-      label: "适合先看长期节奏",
+      label: "适合日线研究",
       color: "blue",
-      reason: "这类模板更适合先理解长期持有或日线节奏，再决定要不要进一步尝试分钟级策略。",
+      reason: "这类模板更适合先理解长期持有或日线节奏，再决定是否扩展到分钟级策略。",
     };
   }
   return {
-    label: "更适合进阶再试",
+    label: "适合专项或进阶研究",
     color: "purple",
-    reason: "这类模板通常需要你已经接受更高波动、更多参数或更频繁的交易节奏，所以默认排在后面。",
+    reason: "这类模板通常伴随更高波动、更多参数或更频繁的交易节奏，因此默认排在后面。",
   };
 }
 
@@ -402,21 +402,21 @@ export function TemplatesView() {
       <PageHeader
         eyebrow="策略模板"
         title="策略模板"
-        description="模板是预设好的回测参数。第一次使用建议直接选默认模板，不需要先理解每一个参数。"
+        description="模板用于固化回测参数与执行口径。默认建议优先选择标准模板，再按研究结论决定是否细化参数。"
       />
 
       <div className="template-guide-grid">
         <Card size="small">
-          <strong>新手怎么选</strong>
-          <span>先选择名称里带“默认模板”的项目，跑通后再对比其他策略。</span>
+          <strong>优先级</strong>
+          <span>建议优先选择名称带“默认模板”的项目，先建立基线结果，再比较其他策略。</span>
         </Card>
         <Card size="small">
-          <strong>什么时候需要改模板</strong>
-          <span>只有当默认参数不适合你的标的、周期或手续费假设时，才需要编辑。</span>
+          <strong>编辑时机</strong>
+          <span>只有当默认参数不适合当前标的、周期或费用假设时，才需要编辑模板。</span>
         </Card>
         <Card size="small">
-          <strong>模板会被保存快照</strong>
-          <span>提交回测时会记录当时参数，后续改模板不会影响历史报告。</span>
+          <strong>快照机制</strong>
+          <span>提交回测时会记录当时参数，后续修改模板不会影响历史报告。</span>
         </Card>
       </div>
 
@@ -424,29 +424,29 @@ export function TemplatesView() {
         <div className="start-path-main">
           <strong>
             {defaultRecommendedTemplate
-              ? "先从推荐模板里挑一个开始，不要一上来新建自定义模板"
-              : "当前没有可直接使用的模板，先到维护区启用一个默认模板"}
+              ? "建议先从推荐模板中选择基线配置，而不是立即新建自定义模板"
+              : "当前没有可直接使用的模板，建议先在维护区启用一个默认模板"}
           </strong>
           <p>
             {defaultRecommendedTemplate
-              ? "新手更需要先把回测流程和报告阅读跑通，而不是先改参数。只有当默认模板明显不适合你的标的、周期或手续费假设时，再去编辑或新建模板。"
-              : "如果当前没有启用模板，先在下方维护区启用默认模板，或者在确实需要时新建自定义模板。"}
+              ? "当前更应先建立一份可复盘的基线结果，而不是立即展开参数维护。只有当默认模板与标的、周期或费用假设明显不匹配时，再编辑或新建模板。"
+              : "如果当前没有启用模板，建议先在下方维护区启用默认模板，或在确有需求时新建自定义模板。"}
           </p>
           <div className="start-path-guide-grid">
             <article className="start-path-guide-card">
-              <span>现在最该做</span>
-              <strong>{defaultRecommendedTemplate ? "先用默认模板去回测" : "先启用一个默认模板"}</strong>
-              <p>{defaultRecommendedTemplate ? "先把主路径跑通，再回来比较别的模板。" : "当前还没有可直接使用的模板，先保证至少有一个启用模板可选。"}</p>
+              <span>建议动作</span>
+              <strong>{defaultRecommendedTemplate ? "基于默认模板创建回测" : "先启用一个默认模板"}</strong>
+              <p>{defaultRecommendedTemplate ? "先形成基线结果，再回到模板库比较其他配置。" : "当前还没有可直接使用的模板，建议先保证至少有一个启用模板可选。"}</p>
             </article>
             <article className="start-path-guide-card">
-              <span>为什么不先新建</span>
-              <strong>先确认默认模板哪里不够用</strong>
-              <p>只有当默认模板明显不适合你的标的、周期或手续费假设时，新建或编辑自定义模板才有明确价值。</p>
+              <span>编辑前提</span>
+              <strong>先确认默认模板的偏差来源</strong>
+              <p>只有当默认模板明显不适合当前标的、周期或费用假设时，新建或编辑自定义模板才具备明确价值。</p>
             </article>
             <article className="start-path-guide-card">
-              <span>什么时候进维护区</span>
-              <strong>需要维护时再进去</strong>
-              <p>例如当前没有启用模板、默认模板不适合当前场景，或者你确实要新增自己的参数范围。</p>
+              <span>维护区用途</span>
+              <strong>仅在需要维护时进入</strong>
+              <p>例如当前没有启用模板、默认模板不适合当前场景，或确实需要新增自定义参数范围。</p>
             </article>
           </div>
         </div>
@@ -460,24 +460,24 @@ export function TemplatesView() {
                   templateId: defaultRecommendedTemplate.id,
                 })}
               >
-                先用默认模板去回测
+                用默认模板创建回测
               </Link>
             </Button>
           ) : null}
-          <Button onClick={() => applyQuickPick(templateQuickPicks[0])}>只看第一次先跑一轮</Button>
+          <Button onClick={() => applyQuickPick(templateQuickPicks[0])}>只看基线研究模板</Button>
           {!defaultRecommendedTemplate ? (
-            <Button onClick={openCreateDrawer}>确实需要时再新建自定义模板</Button>
+            <Button onClick={openCreateDrawer}>新建自定义模板</Button>
           ) : null}
         </div>
       </Card>
 
-      <Card title="按你的目标找模板" size="small" className="section-card">
+      <Card title="按研究目标筛选模板" size="small" className="section-card">
         <div className="template-persona-grid">
           {templateQuickPicks.map((pick) => (
             <article key={pick.key} className="template-persona-card">
               <strong>{pick.title}</strong>
               <span>{pick.description}</span>
-              <Button onClick={() => applyQuickPick(pick)}>只看这类模板</Button>
+              <Button onClick={() => applyQuickPick(pick)}>筛选该类模板</Button>
             </article>
           ))}
         </div>
@@ -485,15 +485,15 @@ export function TemplatesView() {
 
       <Card title="推荐模板" size="small" className="section-card">
         {recommendedTemplates.length === 0 ? (
-          <Typography.Text type="secondary">当前没有启用的模板。先展开下方维护区，启用一个默认模板或新建自定义模板，再回到这里选择。</Typography.Text>
+          <Typography.Text type="secondary">当前没有启用模板。请先在下方维护区启用默认模板或新建自定义模板，再回到这里选择。</Typography.Text>
         ) : (
           <>
             <div className="template-order-banner">
-              <strong>这些模板默认已经按更适合先试的顺序排好</strong>
-              <p>排序顺序固定为：先看默认模板，再看更容易上手的长期或基础模板，最后再看分钟进阶和专项模板。这样能避免你一上来就掉进详细设置和复杂节奏里。</p>
+              <strong>这些模板已按研究优先级排序</strong>
+              <p>排序顺序固定为：默认模板优先，其次是更适合建立基线的长期或基础模板，最后是分钟级进阶与专项模板，便于逐步扩展研究复杂度。</p>
               <div className="template-order-tags">
                 <span>1. 默认模板</span>
-                <span>2. 更易上手</span>
+                <span>2. 基线研究</span>
                 <span>3. 长期或基础节奏</span>
                 <span>4. 分钟进阶与专项</span>
               </div>
@@ -526,10 +526,10 @@ export function TemplatesView() {
                     </div>
                     <div className="template-recommend-actions">
                       <Button type="primary">
-                        <Link href={buildBacktestLaunchHref({ interval: template.interval, strategyKind: template.strategy_kind, templateId: template.id })}>用这个模板去回测</Link>
+                        <Link href={buildBacktestLaunchHref({ interval: template.interval, strategyKind: template.strategy_kind, templateId: template.id })}>基于该模板创建回测</Link>
                       </Button>
                       <Button onClick={() => toggleCompare(template.id)}>{selectedTemplateIds.includes(template.id) ? "已加入对比" : "加入对比"}</Button>
-                      <Button onClick={() => openEditDrawer(template)}>看详细设置</Button>
+                      <Button onClick={() => openEditDrawer(template)}>查看详细设置</Button>
                     </div>
                   </article>
                 );
@@ -546,7 +546,7 @@ export function TemplatesView() {
         extra={selectedTemplateIds.length > 0 ? <Button size="small" onClick={() => setSelectedTemplateIds([])}>清空对比</Button> : null}
       >
         {comparedTemplates.length === 0 ? (
-          <Typography.Text type="secondary">先从推荐模板或完整列表里选 2 到 4 个模板，对比“适合谁用、周期、难度和下一步建议”。</Typography.Text>
+          <Typography.Text type="secondary">请先从推荐模板或完整列表中选择 2 到 4 个模板，对比适用场景、周期、复杂度与后续动作。</Typography.Text>
         ) : (
           <div className="template-compare-stack">
             <div className="template-compare-grid">
@@ -572,28 +572,28 @@ export function TemplatesView() {
                     <p>{template.description || guide.scene}</p>
                     <div className="template-compare-actions">
                       <Button size="small" type="primary">
-                        <Link href={buildBacktestLaunchHref({ interval: template.interval, strategyKind: template.strategy_kind, templateId: template.id })}>用这个去回测</Link>
+                        <Link href={buildBacktestLaunchHref({ interval: template.interval, strategyKind: template.strategy_kind, templateId: template.id })}>创建回测</Link>
                       </Button>
-                      <Button size="small" onClick={() => openEditDrawer(template)}>看详细设置</Button>
+                      <Button size="small" onClick={() => openEditDrawer(template)}>查看详细设置</Button>
                     </div>
                   </article>
                 );
               })}
             </div>
             <div className="template-compare-summary">
-              <strong>对比后怎么选</strong>
+              <strong>对比结论</strong>
               <p>
                 {comparedTemplates.length === 1
-                  ? `当前只选了 ${comparedTemplates[0].template_name}。再加 1 到 3 个模板，才能更清楚地比较谁更适合第一次试跑、谁更适合长期或分钟策略。`
+                  ? `当前仅选择了 ${comparedTemplates[0].template_name}。继续加入 1 到 3 个模板后，才能更清晰地比较不同研究方向与复杂度。`
                   : ""}
                 {comparedTemplates.length > 1 && easiestComparedTemplate
-                  ? `如果你是第一次跑回测，优先试 ${easiestComparedTemplate.template_name}。`
+                  ? `若当前目标是建立基线结果，可优先采用 ${easiestComparedTemplate.template_name}。`
                   : ""}
                 {comparedTemplates.length > 1 && longTermComparedTemplate
-                  ? ` 如果你更想看长期持有或日线节奏，可以先试 ${longTermComparedTemplate.template_name}。`
+                  ? ` 如果更关注长期持有或日线节奏，可优先采用 ${longTermComparedTemplate.template_name}。`
                   : ""}
                 {comparedTemplates.length > 1 && intradayComparedTemplate
-                  ? ` 如果你已经接受分钟波动，再看 ${intradayComparedTemplate.template_name} 这类短周期模板。`
+                  ? ` 如果研究重点已转向分钟级波动，可继续查看 ${intradayComparedTemplate.template_name} 这类短周期模板。`
                   : ""}
               </p>
               <div className="template-compare-summary-actions">
@@ -606,12 +606,12 @@ export function TemplatesView() {
                         templateId: easiestComparedTemplate.id,
                       })}
                     >
-                      先用最容易上手的模板
+                      使用当前优先模板
                     </Link>
                   </Button>
                 ) : null}
                 {easiestComparedTemplate ? (
-                  <Button onClick={() => openEditDrawer(easiestComparedTemplate)}>看这份模板的详细设置</Button>
+                  <Button onClick={() => openEditDrawer(easiestComparedTemplate)}>查看该模板的详细设置</Button>
                 ) : null}
               </div>
             </div>
@@ -621,24 +621,24 @@ export function TemplatesView() {
 
       <Card size="small" title="模板维护与自定义" className="section-card">
         <div className="template-management-banner">
-          <strong>只有在你需要维护模板时，再展开完整列表并调整详细设置</strong>
-          <p>日常使用优先在上面的推荐模板和对比区做选择。启用模板、新建模板、查看完整列表和调整详细设置都保留在这里，但不再作为首屏主路径。</p>
+          <strong>只有在需要维护模板时，再展开完整列表并调整详细设置</strong>
+          <p>日常使用优先在上方推荐模板和对比区做选择。启用模板、新建模板、查看完整列表和调整详细设置都保留在这里，但不再作为首屏主路径。</p>
         </div>
         <div className="template-management-grid">
           <article className="template-management-card">
-            <span>什么时候要进这里</span>
+            <span>进入时机</span>
             <strong>当前没有可直接用的模板</strong>
-            <p>如果推荐区为空，或者你要跑的策略/周期没有启用模板，才需要先来这里启用或新建。</p>
+            <p>如果推荐区为空，或当前策略/周期没有启用模板，才需要先在这里启用或新建。</p>
           </article>
           <article className="template-management-card">
-            <span>什么时候值得编辑</span>
+            <span>编辑条件</span>
             <strong>默认模板不适合你的实际条件</strong>
-            <p>例如手续费、滑点、仓位或参数范围明显不符合你的标的和交易方式，这时再改详细设置更有意义。</p>
+            <p>例如手续费、滑点、仓位或参数范围明显不符合当前标的与交易方式时，再修改详细设置更有意义。</p>
           </article>
           <article className="template-management-card">
-            <span>什么时候不用碰</span>
-            <strong>只想先跑通和读懂报告时</strong>
-            <p>如果你当前只是第一次试跑，优先回到上面的推荐模板和对比区，不需要先维护完整列表。</p>
+            <span>无需进入的情况</span>
+            <strong>只需建立基线结果时</strong>
+            <p>如果当前目标只是形成一份可复盘结果，优先回到上方推荐模板与对比区，无需先维护完整列表。</p>
           </article>
         </div>
         <Collapse
@@ -806,7 +806,7 @@ export function TemplatesView() {
         onClose={() => setDrawerOpen(false)}
       >
         <Card size="small" className="advanced-editor-note">
-          这里是详细设置区。新手用户通常不需要修改模板，直接在“创建回测”页选择默认模板即可。
+          这里是详细设置区。若当前只需建立基线结果，通常无需修改模板，直接在“创建回测”页选择默认模板即可。
         </Card>
         <Form
           form={form}

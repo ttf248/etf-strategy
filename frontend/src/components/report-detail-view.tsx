@@ -97,8 +97,8 @@ const valueLabels: Record<string, Record<string, string>> = {
   },
   execution_profile: {
     conservative: "保守成交",
-    realistic: "更接近真实交易",
-    research: "先看理想情况",
+    realistic: "真实成交口径",
+    research: "理想成交口径",
   },
   frequency: {
     monthly: "每月",
@@ -128,25 +128,25 @@ function buildVerdict(netReturn: number, maxDrawdown: number, closedTrades: numb
     return {
       label: "没有触发交易",
       color: "default",
-      summary: "这次回测在单独验证阶段没有满足策略开仓条件，不能说明策略一定无效，但需要换标的、周期或参数继续验证。",
+      summary: "本次回测在单独验证阶段未满足开仓条件。这并不直接说明策略无效，但需要调整标的、周期或参数后继续验证。",
     };
   }
   if (netReturn > 0 && maxDrawdown <= 8) {
     return {
-      label: "表现较稳",
+      label: "收益与风险较平衡",
       color: "green",
-      summary: "单独验证收益为正，最大回撤相对可控，可以继续和买入持有、其他策略做对比。",
+      summary: "单独验证收益为正，且最大回撤相对可控，可继续与买入持有或其他策略进行对比。",
     };
   }
   if (netReturn > 0) {
     return {
-      label: "有收益但波动大",
+      label: "正收益但波动较高",
       color: "gold",
-      summary: "策略赚到了钱，但回撤压力不小。继续使用前要重点看净值曲线是否能接受。",
+      summary: "策略取得正收益，但回撤压力不低。继续采用前应重点评估净值波动是否可接受。",
     };
   }
   return {
-    label: "暂不理想",
+    label: "当前样本下表现偏弱",
     color: "red",
     summary: "单独验证收益为负，当前标的、周期或参数组合不建议直接采用。",
   };
@@ -191,7 +191,7 @@ function benchmarkGuide(validation: Record<string, unknown>) {
     return {
       title: "和买入持有比",
       value: "暂无对照",
-      description: "这份报告没有提供买入持有对照，先看收益、回撤和交易记录是否符合你的预期。",
+      description: "该报告未提供买入持有对照，建议优先检查收益、回撤与交易记录是否符合预期。",
     };
   }
 
@@ -206,7 +206,7 @@ function benchmarkGuide(validation: Record<string, unknown>) {
   return {
     title: "和买入持有比",
     value,
-    description: parts.join("，") || "这份报告提供了和买入持有的对照，可用来判断策略是否值得替代最简单的持有方案。",
+    description: parts.join("，") || "该报告提供了与买入持有的对照，可用于判断策略是否值得替代最简单的持有方案。",
   };
 }
 
@@ -228,7 +228,7 @@ function riskGuide(maxDrawdown: number) {
   return {
     title: "回撤怎么看",
     value: "波动偏大",
-    description: `最大回撤 ${maxDrawdown.toFixed(2)}%，这类波动对新手通常偏大，建议优先换参数、换周期或缩小仓位。`,
+    description: `最大回撤 ${maxDrawdown.toFixed(2)}%，波动暴露偏高，建议优先调整参数、周期或仓位控制。`,
   };
 }
 
@@ -403,20 +403,20 @@ function buildCurveReading(points: CurvePoint[], netReturn: number, maxDrawdown:
     Math.abs(worstDrawdownPoint.drawdown_pct) < 0.2 &&
     Math.abs((highestEquityPoint.equity - startPoint.equity) / Math.max(startPoint.equity, 1)) < 0.002;
 
-  let headline = "先看蓝线方向，再看红线深浅";
+  let headline = "观察顺序：先判断权益曲线方向，再评估回撤深度";
   let description = `单独验证从 ${formatCurveTime(startPoint.curve_time)} 跑到 ${formatCurveTime(endPoint.curve_time)}，账户最终停在 ${Math.round(endPoint.equity).toLocaleString()}。`;
 
   if (closedTrades === 0 || flatCurve) {
-    headline = "这张图几乎是一条平线，重点不是读走势，而是弄清为什么没有成交";
+    headline = "这张图几乎是一条平线，重点不是走势判断，而是确认为何没有成交";
     description = `从 ${formatCurveTime(startPoint.curve_time)} 到 ${formatCurveTime(endPoint.curve_time)}，账户权益几乎停在 ${Math.round(endPoint.equity).toLocaleString()}。这和“没有触发交易”一致，优先回去换标的、周期或参数。`;
   } else if (netReturn > 0 && maxDrawdown <= 8) {
-    headline = "蓝线整体抬升，而且红线没有长时间深回撤";
+    headline = "权益曲线整体抬升，且回撤线未长时间停留在深回撤区间";
     description = `这类曲线通常说明收益和波动比较平衡。先确认高点后的回落是否还能接受，再拿去和同标的其他策略对比。`;
   } else if (netReturn > 0) {
-    headline = "蓝线最终向上，但中途回撤不小";
+    headline = "权益曲线最终向上，但中途回撤较深";
     description = "这类曲线不是不能用，而是要重点看赚钱主要集中在哪一段，以及红线是否长时间贴着深回撤区域。";
   } else {
-    headline = "蓝线没有稳住向上趋势，先看亏损集中在哪一段";
+    headline = "权益曲线未形成稳定上升趋势，应先确认亏损集中区间";
     description = "如果亏损主要集中在少数几段行情，就优先换模板或周期重跑；如果全程都偏弱，说明这套组合本身不适合当前样本。";
   }
 
@@ -440,11 +440,11 @@ function buildCurveReading(points: CurvePoint[], netReturn: number, maxDrawdown:
       },
       {
         title: "读图顺序",
-        value: closedTrades === 0 ? "先确认为什么没开仓" : "先看蓝线，再看红线",
+        value: closedTrades === 0 ? "先确认为何未开仓" : "先判断权益，再评估回撤",
         description:
           closedTrades === 0
-            ? "蓝线不动、红线贴近 0%，说明主要问题不在止损，而在入场条件、标的活跃度或周期选择。"
-            : "蓝线代表账户权益，红线代表离阶段高点有多远。先判断收益方向，再看自己是否能接受中途回撤。",
+            ? "权益曲线不动、回撤接近 0%，说明主要问题不在止损，而在入场条件、标的活跃度或周期选择。"
+            : "蓝线代表账户权益，红线代表距离阶段高点的回落幅度。应先判断收益方向，再评估中途回撤是否可接受。",
       },
     ],
   };
@@ -509,7 +509,7 @@ function buildParameterHighlights(
   let paceValue = `${report.interval} 节奏`;
   let paceDescription =
     report.interval === "1d"
-      ? "更适合先看阶段性趋势和回撤，不需要盯盘。"
+      ? "更适合观察阶段性趋势与回撤，无需持续盯盘。"
       : report.interval === "15m"
         ? "属于中短线节奏，通常一天内会比日线更容易触发交易。"
         : "节奏很快，更适合已经接受高频波动和更密集信号的人。";
@@ -526,7 +526,7 @@ function buildParameterHighlights(
     paceDescription += ` 这次单独验证已经触发 ${closedTrades} 笔成交，说明它并不是只会长期空转。`;
   }
 
-  let riskValue = "先看仓位和成本";
+  let riskValue = "仓位与成本约束";
   const riskParts: string[] = [];
   if (totalCapital !== null) {
     riskParts.push(`初始资金约 ${formatMoney(totalCapital)}`);
@@ -623,12 +623,12 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
   const parameterHighlights = buildParameterHighlights(report, templateSnapshot, netReturn, maxDrawdown, closedTrades);
   const readingGuides = [
     {
-      title: "收益怎么看",
+      title: "收益判断",
       value: `${netReturn >= 0 ? "盈利" : "亏损"} ${netReturn.toFixed(2)}%`,
       description:
         netReturn > 0
-          ? "先确认这是单独验证收益，再继续看回撤是否也能接受；只看赚钱与否还不够。"
-          : "单独验证收益为负，说明这套组合至少在当前测试区间没有证明自己有效。",
+          ? "应先确认这是单独验证收益，再继续评估回撤是否可接受；仅看盈利与否并不足够。"
+          : "单独验证收益为负，说明该组合至少在当前测试区间内尚未证明其有效性。",
     },
     riskGuide(maxDrawdown),
     benchmarkGuide(validation),
@@ -660,7 +660,7 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
       <Card size="small" className="section-card result-verdict-card">
         <div className="result-verdict-main">
           <Tag color={verdict.color}>{verdict.label}</Tag>
-          <Typography.Title level={3}>这次回测{netReturn >= 0 ? "没有亏损" : "出现亏损"}，单独验证收益为 {netReturn.toFixed(2)}%</Typography.Title>
+          <Typography.Title level={3}>本次回测单独验证收益为 {netReturn.toFixed(2)}%，{netReturn >= 0 ? "未出现净亏损" : "当前样本下出现亏损"}</Typography.Title>
           <Typography.Paragraph>{verdict.summary}</Typography.Paragraph>
         </div>
         <div className="result-verdict-metrics">
@@ -670,7 +670,7 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
         </div>
       </Card>
 
-      <Card size="small" title="先看这几项" className="section-card">
+      <Card size="small" title="结果概览" className="section-card">
         <div className="detail-grid">
           <DetailItem label="标的" value={`${report.symbol} ${report.name}`} />
           <DetailItem label="策略" value={strategyLabel(report.strategy_kind)} />
@@ -681,7 +681,7 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
         </div>
       </Card>
 
-      <Card size="small" title="这几个数字怎么判断" className="section-card">
+      <Card size="small" title="关键指标解读" className="section-card">
         <div className="reading-guide-grid">
           {readingGuides.map((item) => (
             <article key={item.title} className="reading-guide-card">
@@ -693,10 +693,10 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
         </div>
       </Card>
 
-      <Card size="small" title="读完这份报告后，下一步做什么" className="section-card compare-next-card">
+      <Card size="small" title="后续动作" className="section-card compare-next-card">
         <div className="compare-next-main">
-          <strong>先把这份结果带去对比区</strong>
-          <p>系统会预先带入当前报告，并按同一标的和周期筛好列表。接下来只要再勾选 1 到 3 份报告，就能直接比较收益、回撤和交易次数。</p>
+          <strong>建议将该结果带入对比区继续验证</strong>
+          <p>系统会预先带入当前报告，并按相同标的和周期筛选结果列表。继续选择 1 到 3 份报告后，即可直接比较收益、回撤和交易次数。</p>
         </div>
         <div className="compare-next-actions">
           <Button type="primary">
@@ -727,18 +727,18 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
               ))}
             </div>
             <div className="curve-legend-note">
-              <strong>图上三条线分别代表什么：</strong>
-              <span>蓝线是账户权益，绿线是累计收益率，红线是从阶段高点回落的幅度。先看蓝线方向，再看红线是否长时间处在深回撤区域。</span>
+              <strong>图例说明：</strong>
+              <span>蓝线表示账户权益，绿线表示累计收益率，红线表示距离阶段高点的回落幅度。建议先判断权益方向，再确认回撤线是否长时间停留在深回撤区域。</span>
             </div>
             <EquityChart points={report.equity_curve} />
           </div>
         )}
       </Card>
 
-      <Card size="small" title="这套配置大概是什么意思" className="section-card">
+      <Card size="small" title="配置解读" className="section-card">
         <div className="parameter-summary-banner">
-          <strong>先看模板定位、交易节奏和风险假设，不必先读完全部参数名</strong>
-          <p>对第一次复盘来说，你真正需要先理解的通常只有四件事：它想抓什么行情、打算用多快的节奏交易、最多会打多大仓位，以及如果要重跑应该先改哪一类开关。</p>
+          <strong>优先理解模板定位、交易节奏与风险假设，无需先通读全部参数名</strong>
+          <p>对结果复盘而言，通常应先理解四件事：策略试图捕捉什么行情、以怎样的节奏交易、最大仓位约束如何设定，以及重跑时应优先调整哪一类参数。</p>
         </div>
         <div className="parameter-summary-grid">
           {parameterHighlights.map((item) => (
@@ -750,8 +750,8 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
           ))}
         </div>
         <div className="parameter-advanced-hint">
-          <strong>只有在你要核对模板来源、逐项排查参数时，再展开下面这块</strong>
-          <p>如果你只是判断这份结果值不值得继续用，先看上面的四张解释卡和收益、回撤、成交情况就够了。</p>
+          <strong>只有在需要核对模板来源或逐项排查参数时，再展开下面这块</strong>
+          <p>如果当前目标只是判断该结果是否值得继续研究，上方四张解释卡与收益、回撤、成交情况通常已经足够。</p>
         </div>
         <Collapse
           className="advanced-trace-panel"
@@ -800,13 +800,13 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
         />
       </Card>
 
-      <Card size="small" title="需要核对买卖时，再看交易记录" className="section-card">
+      <Card size="small" title="交易记录" className="section-card">
         <div className="detail-secondary-hint">
-          <strong>如果你只是判断这套配置值不值得继续用，先看前面的收益、回撤和成交笔数就够了</strong>
-          <p>只有当你想核对具体买在哪、卖在哪、花了多少费用，或者确认策略是不是按预期节奏成交时，再展开下面这块。</p>
+          <strong>如果当前只需判断该配置是否值得继续研究，前面的收益、回撤与成交笔数通常已经足够</strong>
+          <p>只有在需要核对具体成交点位、费用开销，或确认策略是否按预期节奏执行时，再展开下面这块。</p>
         </div>
         {report.trades.length === 0 ? (
-          <Empty description="这次没有形成逐笔成交记录" />
+          <Empty description="本次未形成逐笔成交记录" />
         ) : (
           <Collapse
             className="advanced-trace-panel"
@@ -816,8 +816,8 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
                 key: "trades",
                 label: (
                   <div className="advanced-trace-label">
-                    <strong>逐笔明细：这次到底买卖了什么</strong>
-                    <span>展开后会看到前 10 条交易卡片和完整分页表，适合核对成交时间、价格、数量、费用和备注。</span>
+                    <strong>逐笔明细：成交记录与费用结构</strong>
+                    <span>展开后会看到前 10 条交易卡片和完整分页表，适合核对成交时间、价格、数量、费用与备注。</span>
                   </div>
                 ),
                 children: (
@@ -869,13 +869,13 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
         )}
       </Card>
 
-      <Card size="small" title="需要追信号时，再看事件流水" className="section-card">
+      <Card size="small" title="事件流水" className="section-card">
         <div className="detail-secondary-hint">
-          <strong>如果你已经知道这次赚没赚钱、回撤大不大，事件流水通常不用立刻细看</strong>
-          <p>只有当你想追“为什么这里开仓”“为什么这里没成交”或“为什么会停手”时，再展开下面的信号明细。</p>
+          <strong>如果已经确认收益与回撤特征，事件流水通常无需立即细看</strong>
+          <p>只有在需要追溯“为何开仓”“为何未成交”或“为何触发停手”时，再展开下方信号明细。</p>
         </div>
         {report.events.length === 0 ? (
-          <Empty description="这次没有额外事件记录" />
+          <Empty description="本次没有额外事件记录" />
         ) : (
           <Collapse
             className="advanced-trace-panel"
@@ -885,8 +885,8 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
                 key: "events",
                 label: (
                   <div className="advanced-trace-label">
-                    <strong>信号明细：这次到底触发了什么</strong>
-                    <span>展开后会看到前 10 条事件卡片和完整分页表，适合核对触发价格、事件类型和 payload 说明。</span>
+                    <strong>信号明细：事件触发与附加说明</strong>
+                    <span>展开后会看到前 10 条事件卡片和完整分页表，适合核对触发价格、事件类型与 payload 说明。</span>
                   </div>
                 ),
                 children: (

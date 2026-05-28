@@ -27,30 +27,30 @@ function latestSuccessGuides(report: ReportSummary) {
   const { netReturn, maxDrawdown, closedTrades } = getValidationMetrics(report);
   return [
     {
-      title: "这次结果值不值得继续看",
-      value: netReturn > 0 ? "先继续看" : "先别急着采用",
+      title: "结果有效性",
+      value: netReturn > 0 ? "具备继续复盘价值" : "暂不宜直接采用",
       description:
         netReturn > 0
-          ? `单独验证收益 ${netReturn.toFixed(2)}%，说明这套组合至少在这段测试区间里跑出了正收益。`
-          : `单独验证收益 ${netReturn.toFixed(2)}%，先不要直接采用，优先对比别的模板或周期。`,
+          ? `单独验证收益 ${netReturn.toFixed(2)}%，说明该配置在当前验证区间内取得正收益。`
+          : `单独验证收益 ${netReturn.toFixed(2)}%，建议优先与其他模板或周期做对照。`,
     },
     {
-      title: "中途波动大不大",
-      value: maxDrawdown <= 8 ? "回撤较可控" : maxDrawdown <= 15 ? "回撤中等" : "回撤偏大",
+      title: "风险暴露",
+      value: maxDrawdown <= 8 ? "回撤相对可控" : maxDrawdown <= 15 ? "回撤中等" : "回撤偏高",
       description:
         maxDrawdown <= 8
-          ? `最大回撤 ${maxDrawdown.toFixed(2)}%，对第一次复盘来说更容易接受。`
-          : `最大回撤 ${maxDrawdown.toFixed(2)}%，继续使用前要重点看自己是否接受这种波动。`,
+          ? `最大回撤 ${maxDrawdown.toFixed(2)}%，风险暴露与收益表现相对平衡。`
+          : `最大回撤 ${maxDrawdown.toFixed(2)}%，继续采用前应重点评估波动承受能力。`,
     },
     {
-      title: "接下来怎么做",
-      value: closedTrades === 0 ? "换标的或周期" : netReturn > 0 ? "拿去做对比" : "换参数重跑",
+      title: "后续动作",
+      value: closedTrades === 0 ? "调整标的或周期" : netReturn > 0 ? "进入横向对比" : "调整配置重跑",
       description:
         closedTrades === 0
-          ? "这次没有形成有效成交，优先换一个更活跃的标的或周期。"
+          ? "当前验证区间未形成有效成交，建议优先更换更活跃的标的或研究周期。"
           : netReturn > 0
-            ? "先打开报告详情，再去对比区和同标的其他结果放在一起看。"
-            : "先保留这份结果，再用同一路径换模板或换周期重跑一轮。",
+            ? "建议先打开报告详情，再与同标的其他结果做横向比较。"
+            : "建议保留当前结果作为对照，再基于同一路径调整模板或周期重跑。",
     },
   ];
 }
@@ -63,87 +63,87 @@ function buildStartRecommendation(params: {
 }) {
   if (params.latestSucceededReportId && params.rerunHref) {
     return {
-      title: "你已经跑通过一次了，先沿着成功路径继续",
-      description: "最省力的做法不是重新填一遍，而是先打开上次成功报告，确认结果含义后，再按同一路径重跑一轮做对比。",
-      primaryLabel: "打开最近成功报告",
+      title: "优先沿用最近一次有效研究配置",
+      description: "当前最直接的做法不是重新填写表单，而是先复盘最近一次有效结果，再沿原配置发起对照回测。",
+      primaryLabel: "查看最近结果",
       primaryHref: `/reports/${params.latestSucceededReportId}`,
-      secondaryLabel: "按相同配置再跑一次",
+      secondaryLabel: "按原配置重跑",
       secondaryHref: params.rerunHref,
       guideItems: [
         {
-          title: "为什么现在推荐这一步",
-          value: "因为你已经有一条成功路径",
-          description: "最近成功任务和报告都已存在，继续沿着它复盘或重跑，比重新从空白表单开始更省时间。",
+          title: "推荐依据",
+          value: "已存在有效任务与结果",
+          description: "最近一次成功任务和报告已构成完整研究闭环，复盘或重跑的效率高于从空白配置重新开始。",
         },
         {
-          title: "为什么不是先看别的页面",
-          value: "因为你先缺的是复盘判断",
-          description: "先确认上次收益、回撤和交易是否值得继续，再决定去对比、换参数还是换标的。",
+          title: "当前优先级",
+          value: "先完成结果判断",
+          description: "应先确认收益、回撤和交易节奏是否具备继续研究价值，再决定进入对比、调参还是换标的。",
         },
       ] satisfies GuideCard[],
     };
   }
   if (params.presetCount > 0) {
     return {
-      title: "先用现成示例跑通第一轮",
-      description: "你已经有适合首跑的标的和周期，不需要先研究全部功能。直接用示例进入创建回测页最省时间。",
-      primaryLabel: "看示例标的",
+      title: "优先使用现成研究样本进入主流程",
+      description: "当前已有可直接使用的标的与周期，无需先浏览全部功能；直接基于推荐样本进入回测配置即可。",
+      primaryLabel: "查看推荐样本",
       primaryHref: "#beginner-presets",
-      secondaryLabel: "直接去创建回测",
+      secondaryLabel: "进入回测配置",
       secondaryHref: "/backtests",
       guideItems: [
         {
-          title: "为什么现在推荐这一步",
-          value: "因为你已经有现成首跑组合",
-          description: "首页已经找到了同时适合新手和当前数据条件的示例标的，不需要先研究全部功能。",
+          title: "推荐依据",
+          value: "已有可直接使用的样本组合",
+          description: "首页已筛出同时满足当前数据条件和基线研究需求的标的，无需先浏览全部功能页。",
         },
         {
-          title: "为什么不是先补更多数据",
-          value: "因为先跑通一次更重要",
-          description: "先完成一次提交和读报告，比先补齐一大堆标的更能帮助你理解平台主路径。",
+          title: "当前优先级",
+          value: "先形成一份可复盘结果",
+          description: "先完成一次提交与结果复盘，比先补齐大量标的更能确认平台主路径是否满足研究需求。",
         },
       ] satisfies GuideCard[],
     };
   }
   if (params.instrumentCount > 0) {
     return {
-      title: "先检查一个你熟悉的标的",
-      description: "库里已经有数据，但还没形成现成示例。先去数据准备页检查 1d 或 15m 是否齐全，再决定回测。",
-      primaryLabel: "去检查数据",
+      title: "先确认目标标的的覆盖情况",
+      description: "当前库内已有行情数据，但尚未形成标准样本；建议先检查 1d 或 15m 是否齐备，再决定是否发起回测。",
+      primaryLabel: "检查覆盖情况",
       primaryHref: "/market-data",
-      secondaryLabel: "直接去创建回测",
+      secondaryLabel: "进入回测配置",
       secondaryHref: "/backtests",
       guideItems: [
         {
-          title: "为什么现在推荐这一步",
-          value: "因为库里有数据，但还没形成现成示例",
-          description: "最值得先确认的是你熟悉的标的有没有 1d 或 15m，而不是先看更多模板或报告。",
+          title: "推荐依据",
+          value: "已有数据但缺少标准样本",
+          description: "当前更应确认目标标的是否具备 1d 或 15m，而不是优先浏览更多模板或历史结果。",
         },
         {
-          title: "为什么不是直接提交",
-          value: "因为先确认周期是否齐全更稳妥",
-          description: "确认好可用周期后再去创建回测，可以减少第一次提交就因为数据不足而失败的概率。",
+          title: "当前优先级",
+          value: "先确认关键周期",
+          description: "先确认可用周期，再进入回测配置，可以减少因覆盖不足导致的提交失败。",
         },
       ] satisfies GuideCard[],
     };
   }
   return {
-    title: "先准备一个可以回测的标的",
-    description: "当前还没有可直接首跑的数据。先去数据准备页补一个熟悉标的的 1d 或 15m，再回到首页开始。",
-    primaryLabel: "去准备数据",
+    title: "先补齐一个可研究标的的关键覆盖",
+    description: "当前尚无可直接使用的行情覆盖。建议先在数据覆盖页补齐熟悉标的的 1d 或 15m，再返回主流程。",
+    primaryLabel: "前往数据覆盖",
     primaryHref: "/market-data",
-    secondaryLabel: "查看模板",
+    secondaryLabel: "查看模板库",
     secondaryHref: "/templates",
     guideItems: [
       {
-        title: "为什么现在推荐这一步",
-        value: "因为还缺可直接回测的数据",
-        description: "没有数据时，先看模板或报告都无法真正开始，先补一个熟悉标的最直接。",
+        title: "推荐依据",
+        value: "当前缺少可直接研究的数据覆盖",
+        description: "在没有行情覆盖的情况下，模板和报告都无法支撑研究起点，优先补齐一个熟悉标的最直接。",
       },
       {
-        title: "为什么只补一个标的就够",
-        value: "因为先跑通主路径比全量建库更重要",
-        description: "第一次只需要 1d 或 15m 的一个可用标的，等你确认流程顺畅后再扩展更多数据。",
+        title: "当前优先级",
+        value: "先建立最小可研究样本",
+        description: "一只具备 1d 或 15m 的标的已足够验证主路径；待流程确认后，再扩展更多数据覆盖。",
       },
     ] satisfies GuideCard[],
   };
@@ -154,17 +154,17 @@ function buildPresetGuides(preset: BeginnerPreset): GuideCard[] {
   const readyForLongCycle = preset.availableIntervals.includes("1d");
   return [
     {
-      title: "为什么优先推荐它",
-      value: readyForShortCycle && readyForLongCycle ? "短线和长线都能起步" : readyForShortCycle ? "分钟回测可直接开始" : "日线回测更容易上手",
+      title: "研究适配性",
+      value: readyForShortCycle && readyForLongCycle ? "日线与分钟研究均可覆盖" : readyForShortCycle ? "可直接开展分钟研究" : "适合日线与长期研究",
       description: preset.reason,
     },
     {
-      title: "更适合怎么用",
-      value: readyForShortCycle ? `先用 ${strategyLabel(preset.strategyKind)} 跑一轮` : "先看长期或日线节奏",
+      title: "建议用途",
+      value: readyForShortCycle ? `以 ${strategyLabel(preset.strategyKind)} 作为基线配置` : "用于日线或长期节奏验证",
       description:
         readyForShortCycle
-          ? "这类示例更适合先把创建回测、提交任务和读报告的完整主路径跑通。"
-          : "这类示例更适合先看长期收益和回撤，再决定要不要扩到分钟策略。",
+          ? "这类样本更适合快速形成完整的回测、提交与复盘闭环。"
+          : "这类样本更适合先观察长期收益与回撤，再决定是否扩展到分钟级策略。",
     },
   ];
 }
@@ -173,36 +173,36 @@ function buildHomeReportSpotlight(report: ReportSummary, latestSucceededReportId
   const { netReturn, maxDrawdown, closedTrades } = getValidationMetrics(report);
   if (report.id === latestSucceededReportId) {
     return {
-      label: "刚跑通的成功样本",
+      label: "最近有效结果",
       color: "blue",
-      description: "这份报告和最近一次成功路径直接对应，最适合先确认你刚跑通的结果到底值不值得继续。",
+      description: "该报告直接对应最近一次有效研究路径，适合优先确认其是否具备继续研究价值。",
     };
   }
   if (closedTrades === 0) {
     return {
-      label: "先查为什么没成交",
+      label: "优先检查触发条件",
       color: "default",
-      description: "这份结果更适合用来判断是标的不活跃、周期不合适，还是模板条件太苛刻。",
+      description: "该结果更适合用于判断问题来自标的活跃度、周期选择，还是模板条件过严。",
     };
   }
   if (netReturn > 0 && maxDrawdown <= 8) {
     return {
-      label: "适合先看",
+      label: "优先复盘",
       color: "green",
-      description: "它既赚钱又相对稳，更适合作为首页第一批先读的参考样本。",
+      description: "该结果同时具备正收益与相对可控的回撤，适合作为优先复盘样本。",
     };
   }
   if (netReturn > 0) {
     return {
-      label: "重点看波动",
+      label: "关注波动暴露",
       color: "gold",
-      description: "它能赚钱，但更需要确认回撤和净值波动是不是你能接受的节奏。",
+      description: "该结果虽取得正收益，但更需要确认回撤和净值波动是否在可接受范围内。",
     };
   }
   return {
-    label: "适合做反面对照",
+    label: "作为反向对照",
     color: "red",
-    description: "这份结果更像对照组，适合帮助你判断哪些模板、参数或周期该优先排除。",
+    description: "该结果更适合作为对照样本，帮助判断应优先排除的模板、参数或周期组合。",
   };
 }
 
@@ -274,15 +274,15 @@ export function DashboardView() {
       const leftSpotlight = buildHomeReportSpotlight(left, latestSucceededReportId);
       const rightSpotlight = buildHomeReportSpotlight(right, latestSucceededReportId);
       const leftPriority =
-        leftSpotlight.label === "刚跑通的成功样本" ? 4 :
-        leftSpotlight.label === "适合先看" ? 3 :
-        leftSpotlight.label === "重点看波动" ? 2 :
-        leftSpotlight.label === "适合做反面对照" ? 1 : 0;
+        leftSpotlight.label === "最近有效结果" ? 4 :
+        leftSpotlight.label === "优先复盘" ? 3 :
+        leftSpotlight.label === "关注波动暴露" ? 2 :
+        leftSpotlight.label === "作为反向对照" ? 1 : 0;
       const rightPriority =
-        rightSpotlight.label === "刚跑通的成功样本" ? 4 :
-        rightSpotlight.label === "适合先看" ? 3 :
-        rightSpotlight.label === "重点看波动" ? 2 :
-        rightSpotlight.label === "适合做反面对照" ? 1 : 0;
+        rightSpotlight.label === "最近有效结果" ? 4 :
+        rightSpotlight.label === "优先复盘" ? 3 :
+        rightSpotlight.label === "关注波动暴露" ? 2 :
+        rightSpotlight.label === "作为反向对照" ? 1 : 0;
       if (leftPriority !== rightPriority) {
         return rightPriority - leftPriority;
       }
@@ -295,22 +295,22 @@ export function DashboardView() {
       <section className="hero-panel beginner-hero">
         <div className="beginner-hero-copy">
           <PageHeader
-            eyebrow="开始使用"
-            title="从一个标的开始，跑出第一份回测报告"
-            description="不用先理解内部服务怎么运作。选择标的、套用策略模板、提交回测，然后在报告里看收益、回撤和交易记录。"
+            eyebrow="研究总览"
+            title="从数据覆盖到结果复盘的策略研究工作台"
+            description="围绕单一标的建立回测样本，选择策略模板并提交任务，再基于收益、回撤与交易记录完成结果复盘。"
           />
           <Space wrap className="hero-actions">
             <Button type="primary" size="large" icon={<PlayCircleOutlined />}>
-              <Link href="/backtests">开始一次回测</Link>
+              <Link href="/backtests">发起回测</Link>
             </Button>
             <Button size="large" icon={<FileSearchOutlined />}>
-              <Link href="/reports">查看历史报告</Link>
+              <Link href="/reports">查看结果库</Link>
             </Button>
           </Space>
         </div>
         <div className="readiness-card">
-          <span className="readiness-label">当前准备情况</span>
-          <strong>{stats.instrument_count > 0 ? "可以开始" : "需要先准备数据"}</strong>
+          <span className="readiness-label">当前研究状态</span>
+          <strong>{stats.instrument_count > 0 ? "可直接进入主流程" : "需先补齐关键覆盖"}</strong>
           <span>{stats.instrument_count.toLocaleString()} 个标的，{stats.total_bars.toLocaleString()} 条 K 线</span>
         </div>
       </section>
@@ -343,10 +343,10 @@ export function DashboardView() {
         <Col xs={24} md={8}>
           <Card className="action-card" size="small">
             <div className="action-card-icon"><DatabaseOutlined /></div>
-            <Typography.Title level={4}>1. 数据准备</Typography.Title>
-            <p>先检查一个熟悉标的有没有 1d 或 15m。只补当前首跑需要的数据，不用一开始全量建库。</p>
+            <Typography.Title level={4}>1. 数据覆盖</Typography.Title>
+            <p>先确认目标标的是否具备 1d 或 15m。优先补齐当前研究所需周期，无需一开始全量建库。</p>
             <Button type="link">
-              <Link href="/market-data">去检查数据 <ArrowRightOutlined /></Link>
+              <Link href="/market-data">检查覆盖情况 <ArrowRightOutlined /></Link>
             </Button>
           </Card>
         </Col>
@@ -354,19 +354,19 @@ export function DashboardView() {
           <Card className="action-card" size="small">
             <div className="action-card-icon"><PlayCircleOutlined /></div>
             <Typography.Title level={4}>2. 创建回测</Typography.Title>
-            <p>输入 Yahoo 标的代码，选择一个默认策略模板，先跑通完整流程。</p>
+            <p>输入 Yahoo 标的代码并选择策略模板，先建立一份可复盘的基线结果。</p>
             <Button type="link">
-              <Link href="/backtests">去创建 <ArrowRightOutlined /></Link>
+              <Link href="/backtests">配置任务 <ArrowRightOutlined /></Link>
             </Button>
           </Card>
         </Col>
         <Col xs={24} md={8}>
           <Card className="action-card" size="small">
             <div className="action-card-icon"><FileSearchOutlined /></div>
-            <Typography.Title level={4}>3. 查看报告</Typography.Title>
-            <p>优先看单独验证收益、最大回撤、净值曲线和交易记录，再决定重跑还是做对比。</p>
+            <Typography.Title level={4}>3. 结果复盘</Typography.Title>
+            <p>优先检查验证收益、最大回撤、净值曲线与交易记录，再决定对比还是重跑。</p>
             <Button type="link">
-              <Link href="/reports">看报告 <ArrowRightOutlined /></Link>
+              <Link href="/reports">进入结果库 <ArrowRightOutlined /></Link>
             </Button>
           </Card>
         </Col>
@@ -376,18 +376,18 @@ export function DashboardView() {
         <div className="support-boundary-main">
           <div className="support-boundary-icon"><MonitorOutlined /></div>
           <div>
-            <strong>只有页面打不开、任务长期不动或连续失败时，再去系统状态</strong>
-            <p>{"系统状态页只负责排障，不是日常第一步。平时优先留在“数据准备 -> 创建回测 -> 查看报告”这条主路径里。"}</p>
+            <strong>只有服务异常、任务停滞或连续失败时，再进入系统状态</strong>
+            <p>{"系统状态页用于排障与运行检查，不是日常研究入口。常规操作优先停留在“数据覆盖 -> 创建回测 -> 结果复盘”主路径中。"}</p>
           </div>
         </div>
         <Button>
-          <Link href="/platform">确实需要时再去系统状态</Link>
+          <Link href="/platform">进入系统状态</Link>
         </Button>
       </Card>
 
-      <Card id="beginner-presets" title="现成示例标的" size="small" className="section-card">
+      <Card id="beginner-presets" title="推荐研究样本" size="small" className="section-card">
         {beginnerPresets.length === 0 ? (
-          <Typography.Text type="secondary">当前还没有适合直接试跑的示例标的，先到数据准备页补 15m 或 1d 数据。</Typography.Text>
+          <Typography.Text type="secondary">当前尚无可直接使用的标准样本，建议先到数据覆盖页补齐 15m 或 1d。</Typography.Text>
         ) : (
           <div className="beginner-preset-grid">
             {beginnerPresets.map((preset) => (
@@ -416,7 +416,7 @@ export function DashboardView() {
                   ))}
                 </div>
                 <Button type="primary">
-                  <Link href={buildBacktestPresetHref(preset)}>用这个示例开始</Link>
+                  <Link href={buildBacktestPresetHref(preset)}>基于该样本发起回测</Link>
                 </Button>
               </article>
             ))}
@@ -424,14 +424,14 @@ export function DashboardView() {
         )}
       </Card>
 
-      <Card title="最近一次成功路径" size="small" className="section-card">
+      <Card title="最近一次有效研究配置" size="small" className="section-card">
         {!latestSucceededJob || !latestSucceededPayload ? (
-          <Typography.Text type="secondary">还没有成功跑通的回测任务。先用上面的示例标的完成第一次回测，之后这里会保留可复用入口。</Typography.Text>
+          <Typography.Text type="secondary">当前还没有形成有效回测结果。完成一次有效任务后，这里会保留可复用的配置入口。</Typography.Text>
         ) : (
           <div className="recent-success-card">
             <div className="recent-success-head">
               <div>
-                <strong>任务编号 {latestSucceededJob.id} 已成功完成</strong>
+                <strong>任务编号 {latestSucceededJob.id} 已完成</strong>
                 <span>
                   {String(latestSucceededPayload.symbol ?? "-")} / {String(latestSucceededPayload.interval ?? "-")} / {strategyLabel(String(latestSucceededPayload.strategy_kind ?? "-"))}
                 </span>
@@ -453,20 +453,20 @@ export function DashboardView() {
                 ))}
               </div>
             ) : null}
-            <p>如果这次结果值得继续看，先打开报告；如果只是想再换参数或重跑同一路径，可以直接按原标的和周期重新带入创建页。</p>
+            <p>若该结果仍具备研究价值，可先进入报告详情；若只需继续验证，可直接基于原标的、周期与模板再次发起任务。</p>
             <div className="recent-success-actions">
               {latestSucceededReportId ? (
                 <Button type="primary">
-                  <Link href={`/reports/${latestSucceededReportId}`}>打开这份报告</Link>
+                  <Link href={`/reports/${latestSucceededReportId}`}>查看该报告</Link>
                 </Button>
                 ) : (
                   <Button type="primary">
-                  <Link href="/reports">去查看所有报告</Link>
+                  <Link href="/reports">进入结果库</Link>
                   </Button>
                 )}
               <Button>
                 <Link href={latestSucceededRerunHref ?? "/backtests"}>
-                  按相同配置再跑一次
+                  按原配置重跑
                 </Link>
               </Button>
             </div>
@@ -481,14 +481,14 @@ export function DashboardView() {
         <MetricCard label="数据最近更新" value={latestSyncStatus} note={latestSync?.completed_at ?? latestSync?.interval ?? "还没有更新记录"} />
       </div>
 
-      <Card title="现在更适合先看的报告" size="small" className="section-card">
+      <Card title="优先复盘的报告" size="small" className="section-card">
         {reports.length === 0 ? (
-          <Empty description="暂无报告，先创建一次回测。" />
+          <Empty description="暂无回测结果，请先创建任务。" />
         ) : (
           <>
             <div className="home-report-banner">
-              <strong>这些卡片不是只按时间堆出来，而是按“更值得先读”排序</strong>
-              <p>首页优先把刚跑通的成功样本、收益更稳的结果，以及适合当反面对照的报告放在前面，帮助你先决定先读哪一份，而不是自己盲猜。</p>
+              <strong>这些卡片不是简单按时间排序，而是按复盘优先级排列</strong>
+              <p>首页会优先展示最近有效结果、收益更稳的样本，以及适合作为反向对照的报告，帮助你快速确定复盘顺序。</p>
             </div>
             <div className="home-report-list">
               {spotlightReports.map((report) => {
@@ -497,10 +497,10 @@ export function DashboardView() {
                 const spotlight = buildHomeReportSpotlight(report, latestSucceededReportId);
                 const brief =
                   netReturn > 0 && maxDrawdown <= 8
-                    ? "这份结果更稳，适合先打开看看为什么能赚钱。"
+                    ? "该结果收益与波动较为平衡，适合作为优先复盘样本。"
                     : netReturn > 0
-                      ? "这份结果虽然赚钱，但要先看回撤自己是否能接受。"
-                      : "这份结果不理想，适合拿来和别的模板或周期做反面对比。";
+                      ? "该结果虽为正收益，但应优先确认回撤与净值波动是否可接受。"
+                      : "该结果更适合作为反向对照，用于排除不合适的模板或周期组合。";
                 return (
                   <article key={report.id} className="home-report-card">
                     <div className="home-report-card-head">
@@ -518,12 +518,12 @@ export function DashboardView() {
                       <span>最大回撤 {Number(validation.MaxDrawdownPct ?? 0).toFixed(2)}%</span>
                     </div>
                     <div className="home-report-spotlight">
-                      <strong>为什么现在先看它</strong>
+                      <strong>优先级说明</strong>
                       <p>{spotlight.description}</p>
                     </div>
                     <p className="home-report-brief">{brief}</p>
                     <Button type="primary">
-                      <Link href={`/reports/${report.id}`}>打开报告</Link>
+                      <Link href={`/reports/${report.id}`}>查看报告</Link>
                     </Button>
                   </article>
                 );
@@ -578,13 +578,13 @@ export function DashboardView() {
           },
           {
             key: "jobs",
-            label: `高级明细：最近回测记录（已完成 ${succeededJobs} / 未跑通 ${failedJobs}）`,
+            label: `高级明细：最近回测记录（已完成 ${succeededJobs} / 失败 ${failedJobs}）`,
             children: (
               <Card
                 title="最近几次回测记录"
                 size="small"
                 className="section-card"
-                extra={<span className="toolbar-count"><CheckCircleOutlined /> 已完成 {succeededJobs} / 未跑通 {failedJobs}</span>}
+                extra={<span className="toolbar-count"><CheckCircleOutlined /> 已完成 {succeededJobs} / 失败 {failedJobs}</span>}
               >
                 <Table
                   size="small"

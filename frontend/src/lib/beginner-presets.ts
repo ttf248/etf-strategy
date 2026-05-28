@@ -30,18 +30,18 @@ function recommendedReason(group: GroupedCoverage): string {
   const has15m = group.availableIntervals.has("15m");
   const has1m = group.availableIntervals.has("1m");
   if (hasDaily && has15m) {
-    return "日线和 15m 都已准备好，最适合第一次完整试跑。";
+    return "已具备日线与 15m 覆盖，可直接作为标准研究样本。";
   }
   if (has15m) {
-    return "15m 已准备好，可以直接体验默认分钟网格。";
+    return "已具备 15m 覆盖，适合直接开展分钟级基线回测。";
   }
   if (hasDaily) {
-    return "日线已准备好，适合先试定投或日线策略。";
+    return "已具备日线覆盖，适合开展定投或日线节奏研究。";
   }
   if (has1m) {
-    return "只有 1m 分钟线，适合继续做更细粒度研究。";
+    return "当前仅有 1m 覆盖，更适合细粒度分钟研究。";
   }
-  return "已有基础数据，可继续补齐更多周期。";
+  return "已有基础覆盖，可按研究需求继续补齐更多周期。";
 }
 
 function recommendedInterval(group: GroupedCoverage): string {

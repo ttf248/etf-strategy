@@ -127,30 +127,30 @@ export function PlatformStatusView() {
     !serviceOk(status.frontend.status) ? serviceLabelMap.frontend : null,
     !serviceOk(status.database.status) ? serviceLabelMap.database : null,
   ].filter(Boolean) as string[];
-  const attentionLabel = !platformReady ? "需要排障" : activeTaskCount > 0 ? "暂时观察任务" : "现在不用处理";
+  const attentionLabel = !platformReady ? "需要排障" : activeTaskCount > 0 ? "关注任务进展" : "当前无需处理";
   const attentionNote = !platformReady
     ? `优先确认 ${unhealthyServices.join("、")} 是否异常。`
     : activeTaskCount > 0
       ? formatActiveTaskNote(runningJobs, queuedJobs, cancelRequestedJobs)
       : "前端页面、接口服务和数据存储都正常，可以回到主路径继续使用。";
   const statusBannerTitle = !platformReady
-    ? "先确认是不是服务异常，而不是先翻日志"
+    ? "优先确认是否存在服务异常，而不是直接翻日志"
     : activeTaskCount > 0
-      ? "平台本身正常，先看任务是否只是还在处理"
-      : "现在不需要继续停留在这里";
+      ? "平台本身正常，先确认任务是否仍在处理中"
+      : "当前无需继续停留在此页面";
   const statusBannerDescription = !platformReady
-    ? `当前最值得先看的不是全部日志，而是 ${unhealthyServices.join("、")}。确认哪个环节异常后，再展开下面对应的高级维护信息。`
+    ? `当前更应优先检查 ${unhealthyServices.join("、")}，而不是直接查看全部日志。确认异常环节后，再展开对应的高级维护信息。`
     : activeTaskCount > 0
-      ? `当前 ${formatActiveTaskNote(runningJobs, queuedJobs, cancelRequestedJobs)}。如果只是任务还在跑，先等待或回报告页刷新，不必立即查看本机服务和日志。`
-      : "前端页面、接口服务、数据存储都正常，当前也没有等待处理的任务。直接回到创建回测、报告或数据准备页即可。";
+      ? `当前 ${formatActiveTaskNote(runningJobs, queuedJobs, cancelRequestedJobs)}。若只是任务仍在执行，可先等待或回结果库刷新，无需立即查看本机服务和日志。`
+      : "前端页面、接口服务与数据存储均正常，当前也没有等待处理的任务。可直接回到创建回测、结果库或数据覆盖页继续研究。";
 
   return (
     <div className="page-stack">
       {contextHolder}
       <PageHeader
-        eyebrow="排障维护"
+        eyebrow="运行状态"
         title="系统状态"
-        description="这里只在平台出问题时才需要查看。正常创建回测、查看报告时，不需要理解服务明细、维护日志或数据存储状态。"
+        description="该页面用于平台运行检查与排障。日常创建回测、查看结果或补数时，通常无需停留在这里。"
         actions={<Button onClick={() => void refreshPlatform()}>刷新状态</Button>}
       />
 
@@ -160,7 +160,7 @@ export function PlatformStatusView() {
         <MetricCard
           label="服务异常数"
           value={unhealthyServices.length}
-          note={unhealthyServices.length > 0 ? `重点先看：${unhealthyServices.join("、")}` : "接口服务、前端页面和数据存储都正常"}
+          note={unhealthyServices.length > 0 ? `优先检查：${unhealthyServices.join("、")}` : "接口服务、前端页面和数据存储都正常"}
         />
         <MetricCard
           label="历史失败任务"
@@ -179,41 +179,41 @@ export function PlatformStatusView() {
             <Link href="/backtests">回到创建回测</Link>
           </Button>
           <Button>
-            <Link href="/reports">去看报告列表</Link>
+            <Link href="/reports">回到结果库</Link>
           </Button>
           <Button>
-            <Link href="/market-data">去检查数据</Link>
+            <Link href="/market-data">检查数据覆盖</Link>
           </Button>
         </div>
       </Card>
 
       <Card size="small" className="section-card maintenance-guide-card">
-        <Typography.Title level={4}>先判断你是不是需要看这页</Typography.Title>
+        <Typography.Title level={4}>先确认当前是否需要进入该页</Typography.Title>
         <Typography.Paragraph>
-          如果你只是想创建回测、看报告或补数据，优先回主路径页面操作。只有当页面打不开、任务长期不动或同步一直失败时，再展开下面的维护信息。
+          如果当前只是创建回测、查看结果或补数，建议优先回主路径页面操作。只有页面不可用、任务长期停滞或同步持续失败时，再查看下方维护信息。
         </Typography.Paragraph>
       </Card>
 
       <div className="maintenance-path-grid">
         <Card size="small" className="maintenance-path-card">
           <strong>正常使用时</strong>
-          <span>平台可用性显示“可以继续使用”时，直接回到主路径，不需要再看维护日志或本机服务列表。</span>
+          <span>当平台可用性显示正常时，直接回到主路径即可，无需继续查看维护日志或本机服务列表。</span>
           <Button type="link">
             <Link href="/backtests">回到创建回测</Link>
           </Button>
         </Card>
         <Card size="small" className="maintenance-path-card">
-          <strong>数据有问题时</strong>
-          <span>如果回测报数据不足，先去数据准备页检查标的和周期，不必先看维护日志。</span>
+          <strong>数据异常时</strong>
+          <span>如果回测提示数据不足，建议先到数据覆盖页检查标的与周期，无需先查看维护日志。</span>
           <Button type="link">
-            <Link href="/market-data">去检查数据</Link>
+            <Link href="/market-data">检查数据覆盖</Link>
           </Button>
         </Card>
         <Card size="small" className="maintenance-path-card">
-          <strong>任务没结果时</strong>
-          <span>如果任务一直等待开始或报告没生成，再回来查看执行状态、等待中的任务和日志，确认回测执行服务是否正常。</span>
+          <strong>任务无结果时</strong>
+          <span>如果任务持续排队或报告未生成，再返回此页查看执行状态、等待队列和日志，确认回测执行服务是否正常。</span>
           <Button type="link">
-            <Link href="/reports">先看报告列表</Link>
+            <Link href="/reports">回到结果库</Link>
           </Button>
         </Card>
       </div>
@@ -223,7 +223,7 @@ export function PlatformStatusView() {
         items={[
           {
             key: "runtime",
-            label: "如果页面打不开，再看服务心跳与定时同步",
+            label: "服务不可用时，再看服务心跳与定时同步",
             children: (
               <Row gutter={[16, 16]}>
                 <Col xs={24} xl={12}>
@@ -274,7 +274,7 @@ export function PlatformStatusView() {
           },
           {
             key: "processes",
-            label: "如果怀疑执行服务没运行，再看本机服务",
+            label: "怀疑执行服务未运行时，再看本机服务",
             children: (
               <Card
                 title="本机服务"
@@ -310,7 +310,7 @@ export function PlatformStatusView() {
           },
           {
             key: "logs",
-            label: "如果需要复制错误提示，再看最近日志",
+            label: "需要核对错误提示时，再看最近日志",
             children: (
               <Card
                 title="最近日志"

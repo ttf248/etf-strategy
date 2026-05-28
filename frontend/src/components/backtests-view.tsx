@@ -10,20 +10,20 @@ import { PageHeader, StatusTag, ToolbarCount } from "@/components/platform-ui";
 import { buildBeginnerPresets } from "@/lib/beginner-presets";
 
 const strategyGuide: Record<string, { scene: string; beginnerHint: string; risk: string }> = {
-  grid: { scene: "震荡行情里低买高卖", beginnerHint: "第一次回测优先选这个", risk: "单边下跌时回撤可能变大" },
-  dca: { scene: "长期分批买入", beginnerHint: "最容易理解，适合日线", risk: "短期不一定跑赢买入持有" },
-  daily_rebound: { scene: "日线超跌反弹", beginnerHint: "适合想验证反弹机会", risk: "需要重点看止损和持仓天数" },
-  minute_rebound: { scene: "分钟级急跌反抽", beginnerHint: "适合有分钟数据后再试", risk: "对手续费和滑点更敏感" },
-  minute_rebound_with_fade_filter: { scene: "带过滤的分钟反抽", beginnerHint: "偏进阶，先理解普通反抽", risk: "参数更多，不适合第一轮" },
-  minute_index_grid_retrace: { scene: "指数回落后的网格", beginnerHint: "偏专项策略", risk: "需要匹配指数和标的数据" },
+  grid: { scene: "震荡区间内分层低买高卖", beginnerHint: "常用基线策略", risk: "单边下跌阶段回撤可能扩大" },
+  dca: { scene: "长期分批建仓", beginnerHint: "适合日线基线研究", risk: "短期收益未必优于买入持有" },
+  daily_rebound: { scene: "日线超跌反弹", beginnerHint: "适合验证阶段性反转", risk: "需重点关注止损与持仓时长" },
+  minute_rebound: { scene: "分钟级急跌反抽", beginnerHint: "适合分钟级短线研究", risk: "对手续费与滑点更敏感" },
+  minute_rebound_with_fade_filter: { scene: "带过滤条件的分钟反抽", beginnerHint: "适合进阶筛选研究", risk: "参数维度更多，配置复杂度更高" },
+  minute_index_grid_retrace: { scene: "指数回落后的网格承接", beginnerHint: "适合专项指数研究", risk: "依赖指数与标的数据匹配" },
 };
 
 function executionProfileLabel(profile: string): string {
   if (profile === "realistic") {
-    return "更接近真实交易";
+    return "真实成交口径";
   }
   if (profile === "research") {
-    return "先看理想情况";
+    return "理想成交口径";
   }
   return profile;
 }
@@ -31,15 +31,15 @@ function executionProfileLabel(profile: string): string {
 function buildTemplatePickHint(template: StrategyTemplate | null, strategyKind: string, interval: string) {
   if (!template) {
     return {
-      title: "当前还没有可直接套用的模板",
-      description: `现在选的是 ${strategyLabel(strategyKind)} / ${interval}。如果这组组合没有启用模板，优先换一个周期，或者先去策略模板页启用默认模板。`,
+      title: "当前组合尚无可直接使用的模板",
+      description: `当前选择为 ${strategyLabel(strategyKind)} / ${interval}。若该组合没有启用模板，建议优先调整周期，或先到策略模板页启用标准模板。`,
     };
   }
   return {
-    title: `推荐先用 ${template.template_name}`,
+    title: `推荐使用 ${template.template_name}`,
     description:
       template.description?.trim() ||
-      `${strategyLabel(strategyKind)} / ${interval} 已经有可用模板。第一次先直接套用它，先验证能不能跑出报告，再决定要不要改高级参数。`,
+      `${strategyLabel(strategyKind)} / ${interval} 已有可用模板。建议先直接采用该配置形成结果，再决定是否展开高级参数调整。`,
   };
 }
 
@@ -67,41 +67,41 @@ function buildTemplateFieldValues(template: StrategyTemplate) {
 
 function buildJobReadingHint(job: BacktestJob) {
   if (job.status === "succeeded") {
-    return job.reports?.length ? "这次已经生成报告，优先打开结果看收益、回撤和交易记录。" : "这轮已经跑完；如果结果还没马上出现，就去结果列表刷新确认。";
+    return job.reports?.length ? "本次任务已生成报告，建议直接进入结果页复盘收益、回撤与交易记录。" : "本次任务已执行完成；若结果尚未出现，请到结果库刷新确认。";
   }
   if (job.status === "failed") {
-    return "这轮没跑成，先看错误提示；通常是数据不足、模板不匹配，或参数不适合当前标的。";
+    return "本次任务执行失败，建议先查看错误信息；常见原因包括数据覆盖不足、模板不匹配或参数与标的不适配。";
   }
   if (job.status === "queued") {
-    return "这轮还没开始跑，先不用重复提交；等它真的开始后，再决定要不要停掉这次。";
+    return "任务仍在排队，通常无需重复提交；待进入执行阶段后，再判断是否需要取消。";
   }
   if (job.status === "running") {
-    return "这轮还在跑，先等结果出来；如果长时间没变化，再去系统状态页排查。";
+    return "任务仍在执行中，建议等待结果输出；若长时间无进展，再进入系统状态页排查。";
   }
   if (job.status === "cancelled" || job.status === "cancel_requested") {
-    return "这轮已经停掉；如果你还想继续验证，直接按原配置再跑一次就行。";
+    return "任务已取消；若仍需继续验证，可直接按原配置重新提交。";
   }
-  return "先看状态和错误提示，再决定要不要按原再跑、停掉这次，或者去结果列表继续看。";
+  return "建议先确认当前状态与错误信息，再决定是重跑、取消，还是进入结果库继续复盘。";
 }
 
 function backtestStatusLabel(status: string) {
   if (status === "succeeded") {
-    return "已经出结果";
+    return "已生成结果";
   }
   if (status === "failed") {
-    return "这次没跑成";
+    return "执行失败";
   }
   if (status === "queued") {
-    return "还没开始";
+    return "等待执行";
   }
   if (status === "running") {
-    return "还在跑";
+    return "执行中";
   }
   if (status === "cancel_requested") {
-    return "正在停掉";
+    return "取消中";
   }
   if (status === "cancelled") {
-    return "已经停掉";
+    return "已取消";
   }
   return status || "-";
 }
@@ -112,34 +112,34 @@ function buildJobPrimaryAction(job: BacktestJob) {
     return {
       disabled: false,
       href: `/reports/${reportId}`,
-      label: "先看这份结果",
+      label: "查看结果",
     };
   }
   if (job.status === "succeeded") {
     return {
       disabled: false,
       href: "/reports",
-      label: "去结果列表里找",
+      label: "进入结果库",
     };
   }
   if (job.status === "failed") {
     return {
       disabled: true,
       href: null,
-      label: "这次没生成结果",
+      label: "未生成结果",
     };
   }
   if (job.status === "cancelled" || job.status === "cancel_requested") {
     return {
       disabled: true,
       href: null,
-      label: "这轮已经停掉",
+      label: "任务已取消",
     };
   }
   return {
     disabled: true,
     href: null,
-    label: "先等结果出来",
+    label: "等待结果生成",
   };
 }
 
@@ -343,13 +343,13 @@ export function BacktestsView() {
     <div className="page-stack">
       {contextHolder}
       <PageHeader
-        eyebrow="创建回测"
-        title="创建一次回测"
-        description="按 3 步完成：先填标的和周期，再选策略模板，最后确认并提交。"
+        eyebrow="回测配置"
+        title="创建回测任务"
+        description="按三步完成任务配置：定义标的与周期、选择策略模板、确认执行口径后提交。"
         actions={<Button onClick={() => void loadJobs()}>看一下最新进展</Button>}
       />
 
-      <Card title="按步骤创建回测" size="small" className="section-card backtest-wizard-card">
+      <Card title="任务配置流程" size="small" className="section-card backtest-wizard-card">
         <Form
           form={form}
           layout="vertical"
@@ -366,12 +366,12 @@ export function BacktestsView() {
           }}
         >
           <div className="wizard-first-run-banner">
-            <strong>如果你只是想先跑通第一轮</strong>
-            <p>直接用现成示例标的，周期优先选 15m 或 1d，策略先试网格或定投，模板保持推荐项即可。第一次先跑出一份能读懂的报告，比一开始就改很多高级参数更重要。</p>
+            <strong>基线研究建议</strong>
+            <p>可直接使用现成样本，优先选择 15m 或 1d，策略使用网格或定投，模板保持推荐项。先形成一份可复盘结果，比一开始扩展大量高级参数更有效。</p>
             <div className="wizard-first-run-tags">
-              <span>1. 选示例标的</span>
-              <span>2. 用推荐模板</span>
-              <span>3. 提交后看最近任务第一条</span>
+              <span>1. 选择标准样本</span>
+              <span>2. 使用推荐模板</span>
+              <span>3. 复盘最近结果</span>
             </div>
           </div>
 
@@ -379,24 +379,24 @@ export function BacktestsView() {
             className="backtest-wizard-steps"
             current={activeStep}
             items={[
-              { title: "标的" },
-              { title: "策略" },
-              { title: "提交" },
+              { title: "标的与周期" },
+              { title: "策略与模板" },
+              { title: "确认提交" },
             ]}
           />
 
           {activeStep === 0 ? (
             <div className="wizard-step-panel">
-              <Typography.Title level={4}>先告诉平台要测哪个标的</Typography.Title>
-              <Typography.Paragraph>第一次建议使用已经准备好数据的标的，例如 1810.HK。周期不确定时先用 15m。</Typography.Paragraph>
+              <Typography.Title level={4}>定义研究标的与数据周期</Typography.Title>
+              <Typography.Paragraph>建议优先使用已具备覆盖的数据标的，例如 1810.HK。若暂无明确偏好，可先以 15m 作为分钟级基线周期。</Typography.Paragraph>
               {queryPreset ? (
                 <div className="wizard-preset-banner">
-                  <strong>已带入首页示例</strong>
+                  <strong>已带入推荐样本</strong>
                   <span>
                     {[queryPreset.symbol, queryPreset.interval, queryPreset.strategy_kind ? strategyLabel(queryPreset.strategy_kind) : undefined]
                       .filter(Boolean)
                       .join(" / ")}
-                    ，确认后直接点下一步即可。
+                    ，确认无误后可直接进入下一步。
                   </span>
                 </div>
               ) : null}
@@ -404,13 +404,13 @@ export function BacktestsView() {
                 <Form.Item name="symbol" label="回测标的" rules={[{ required: true, message: "请输入回测标的" }]} extra="使用 Yahoo 代码，例如 1810.HK、0700.HK、513050.SS。">
                   <Input placeholder="例如 1810.HK" />
                 </Form.Item>
-                <Form.Item name="interval" label="数据周期" extra="第一次建议选择 15m 或 1d。">
+                <Form.Item name="interval" label="数据周期" extra="常用基线周期为 15m 或 1d。">
                   <Select options={intervalOptions} />
                 </Form.Item>
               </div>
               {beginnerPresets.length > 0 ? (
                 <div className="wizard-preset-section">
-                  <Typography.Text strong>可直接试跑的示例</Typography.Text>
+                  <Typography.Text strong>可直接使用的研究样本</Typography.Text>
                   <div className="beginner-preset-grid">
                     {beginnerPresets.map((preset) => (
                       <button
@@ -450,8 +450,8 @@ export function BacktestsView() {
 
           {activeStep === 1 ? (
             <div className="wizard-step-panel">
-              <Typography.Title level={4}>选择一个容易理解的策略模板</Typography.Title>
-              <Typography.Paragraph>不确定时选“网格”并使用推荐模板。模板已经包含常用参数，后续可以再调整。</Typography.Paragraph>
+              <Typography.Title level={4}>选择策略与模板</Typography.Title>
+              <Typography.Paragraph>若暂无明确偏好，可先使用“网格”及推荐模板作为基线配置。模板已包含常用参数，后续再按结果调整。</Typography.Paragraph>
               <div className="wizard-template-banner">
                 <strong>{templatePickHint.title}</strong>
                 <p>{templatePickHint.description}</p>
@@ -483,10 +483,10 @@ export function BacktestsView() {
                 })}
               </div>
               <div className="template-form-grid">
-                <Form.Item name="strategy_kind" label="策略类型" extra="也可以直接点上面的策略卡片。">
+                <Form.Item name="strategy_kind" label="策略类型" extra="也可以直接选择上方策略卡片。">
                   <Select options={strategyOptions} />
                 </Form.Item>
-                <Form.Item name="template_id" label="参数模板" extra="推荐选择带“默认”的模板。">
+                <Form.Item name="template_id" label="参数模板" extra="推荐优先使用标准默认模板。">
                   <Select
                     allowClear
                     placeholder="按当前策略/周期筛选"
@@ -500,19 +500,19 @@ export function BacktestsView() {
               </div>
               {recommendedTemplate ? (
                 <Space direction="vertical" size={8}>
-                  <Typography.Text type="secondary">如果你不想手动挑参数，下一步会自动带入推荐模板。</Typography.Text>
-                  <Button onClick={() => applyTemplate(recommendedTemplate)}>使用推荐模板：{recommendedTemplate.template_name}</Button>
+                  <Typography.Text type="secondary">若不准备手动筛选参数，下一步会自动带入推荐模板。</Typography.Text>
+                  <Button onClick={() => applyTemplate(recommendedTemplate)}>应用推荐模板：{recommendedTemplate.template_name}</Button>
                 </Space>
               ) : (
-                <Typography.Text type="secondary">当前策略和周期没有可用模板，建议换一个周期或先到策略模板页启用模板。</Typography.Text>
+                <Typography.Text type="secondary">当前策略与周期暂无可用模板，建议调整周期或先到策略模板页启用模板。</Typography.Text>
               )}
             </div>
           ) : null}
 
           {activeStep === 2 ? (
             <div className="wizard-step-panel">
-              <Typography.Title level={4}>确认后提交任务</Typography.Title>
-              <Typography.Paragraph>确认标的、周期和策略无误即可提交。高级参数可以保持默认。</Typography.Paragraph>
+              <Typography.Title level={4}>确认执行配置并提交</Typography.Title>
+              <Typography.Paragraph>确认标的、周期、策略与模板无误后即可提交。若无专项需求，高级参数可保持默认。</Typography.Paragraph>
               <div className="detail-grid">
                 <div className="detail-item"><span className="detail-label">标的</span><span className="detail-value">{form.getFieldValue("symbol") || "-"}</span></div>
                 <div className="detail-item"><span className="detail-label">周期</span><span className="detail-value">{selectedInterval}</span></div>
@@ -521,19 +521,19 @@ export function BacktestsView() {
               </div>
               <div className="submit-reading-grid">
                 <article className="submit-reading-card">
-                  <span>提交后会发生什么</span>
-                  <strong>系统会先安排这次回测</strong>
-                  <p>正常情况下，提交成功后几秒内就会在下面的“最近回测任务”出现，不需要重复点提交。</p>
+                  <span>提交后</span>
+                  <strong>系统会为该配置创建任务</strong>
+                  <p>正常情况下，提交成功后数秒内即可在下方“最近回测任务”看到记录，无需重复提交。</p>
                 </article>
                 <article className="submit-reading-card">
-                  <span>什么时候看任务区</span>
-                  <strong>刚提交时，只看第一条就够了</strong>
-                  <p>如果第一条已经成功并生成报告，直接点进去看结果；没有生成前，不用急着翻完整历史。</p>
+                  <span>任务跟踪</span>
+                  <strong>优先关注最近一条记录</strong>
+                  <p>若最新任务已完成并生成报告，可直接进入结果页；在结果输出前，无需翻阅完整历史。</p>
                 </article>
                 <article className="submit-reading-card">
-                  <span>什么时候不用停留</span>
-                  <strong>没有卡住就不用盯着这页</strong>
-                  <p>只有任务长时间不动、连续失败或页面提示异常时，再去系统状态页排查；平时直接回报告页看结果更有价值。</p>
+                  <span>何时排障</span>
+                  <strong>仅在异常时进入系统状态</strong>
+                  <p>只有任务长期无进展、连续失败或页面提示异常时，再前往系统状态页排查；平时直接回结果页查看输出更有效。</p>
                 </article>
               </div>
               <Collapse
@@ -541,11 +541,11 @@ export function BacktestsView() {
                 items={[
                   {
                     key: "advanced",
-                    label: "高级参数，可保持默认",
+                    label: "高级参数，默认可保持不变",
                     children: (
                       <div className="template-form-grid">
                         <Form.Item name="execution_profile" label="成交假设">
-                          <Select options={[{ label: "更接近真实交易", value: "realistic" }, { label: "先看理想情况", value: "research" }]} />
+                          <Select options={[{ label: "真实成交口径", value: "realistic" }, { label: "理想成交口径", value: "research" }]} />
                         </Form.Item>
                         <Form.Item name="lookback_days" label="先回看多少天历史">
                           <InputNumber min={1} style={{ width: "100%" }} />
@@ -593,7 +593,7 @@ export function BacktestsView() {
               </Button>
             ) : (
               <Button type="primary" htmlType="submit" loading={submitting}>
-                开始回测
+                提交回测任务
               </Button>
             )}
           </div>
@@ -621,28 +621,28 @@ export function BacktestsView() {
         className="section-card"
       >
         {jobs.length === 0 ? (
-          <Empty description="你还没跑过回测，先按上面的步骤提交第一轮，结果会出现在这里。" />
+          <Empty description="当前还没有回测任务，提交后结果会显示在这里。" />
         ) : (
           <>
             <div className="job-summary-banner">
               <div className="job-summary-main">
-                <strong>先看最近几次任务，再决定要不要展开完整历史</strong>
-                <p>新手更需要先确认“有没有成功生成报告、失败是不是同一个原因、现在还有没有任务在跑”，而不是直接翻完整任务表。刚提交成功时，只看最近任务里的第一条就够了。</p>
+                <strong>优先检查最近任务，再决定是否展开完整历史</strong>
+                <p>当前最重要的是确认是否已生成报告、失败原因是否重复，以及是否仍有任务在执行，而不是直接浏览全部历史记录。</p>
               </div>
               <div className="job-summary-metrics">
-                <span>还在跑的 {runningJobs.length}</span>
-                <span>还没开始的 {queuedJobs.length}</span>
-                <span>这次没跑成的 {failedJobs.length}</span>
-                <span>已经出结果的 {succeededJobs.length}</span>
+                <span>执行中 {runningJobs.length}</span>
+                <span>排队中 {queuedJobs.length}</span>
+                <span>失败 {failedJobs.length}</span>
+                <span>已完成 {succeededJobs.length}</span>
               </div>
               <div className="job-summary-actions">
                 {latestSucceededJob?.reports?.[0]?.id ? (
                   <Button type="primary">
-                    <Link href={`/reports/${latestSucceededJob.reports[0].id}`}>先看最新跑成这份</Link>
+                    <Link href={`/reports/${latestSucceededJob.reports[0].id}`}>查看最新结果</Link>
                   </Button>
                 ) : null}
                 <Button>
-                  <Link href="/reports">去结果列表继续挑</Link>
+                  <Link href="/reports">进入结果库</Link>
                 </Button>
               </div>
             </div>
@@ -656,7 +656,7 @@ export function BacktestsView() {
                   <article key={job.id} className="job-mobile-card">
                     <div className="job-mobile-card-head">
                       <div>
-                        <strong>这次回测 #{job.id}</strong>
+                        <strong>任务 #{job.id}</strong>
                         <span>{String(payload.symbol ?? "-")} / {String(payload.interval ?? "-")} / {strategyLabel(String(payload.strategy_kind ?? "-"))}</span>
                       </div>
                       <StatusTag value={job.status} label={backtestStatusLabel(job.status)} />
@@ -676,10 +676,10 @@ export function BacktestsView() {
                         <Button disabled={primaryAction.disabled}>{primaryAction.label}</Button>
                       )}
                       <Button disabled={!["queued", "running"].includes(job.status)} onClick={() => void cancelJob(job.id)}>
-                        先停掉这次
+                        取消任务
                       </Button>
                       <Button disabled={job.status !== "failed"} onClick={() => void retryJob(job.id)}>
-                        按原配置再跑
+                        按原配置重跑
                       </Button>
                     </div>
                   </article>
@@ -687,8 +687,8 @@ export function BacktestsView() {
               })}
             </div>
             <div className="detail-secondary-hint">
-              <strong>只有在你想逐条核对、或者确实要一次处理多条任务时，再展开下面这块</strong>
-              <p>如果你只是确认这轮有没有成功生成报告、有没有还在跑、失败是不是同一个原因，前面的最近任务卡通常已经够用。</p>
+              <strong>只有在需要逐条核对或批量处理时，再展开下面的完整历史</strong>
+              <p>如果你只是确认是否成功生成报告、是否仍有任务在执行，以及失败原因是否重复，前面的任务卡通常已经足够。</p>
             </div>
 
             <Collapse
@@ -699,20 +699,20 @@ export function BacktestsView() {
                   key: "history",
                   label: (
                     <div className="advanced-trace-label">
-                      <strong>需要批量处理或逐条核对时，再看完整历史</strong>
-                      <span>这里更适合多选取消、多选重试，或按列核对每条任务的状态、时间和错误信息。</span>
+                      <strong>批量处理或逐条核对时，再看完整历史</strong>
+                      <span>这里更适合批量取消、批量重试，或按列核对每条任务的状态、时间与错误信息。</span>
                     </div>
                   ),
                   children: (
                     <>
                       <div className="table-toolbar">
-                        <ToolbarCount>已选 {selectedJobIds.length} 条，只有在确实需要一次处理多条任务时再操作。</ToolbarCount>
+                        <ToolbarCount>已选 {selectedJobIds.length} 条，仅在需要批量处理时再操作。</ToolbarCount>
                         <Space>
                           <Button size="small" disabled={selectedJobIds.length === 0} onClick={() => void bulkCancelJobs()}>
-                            停掉所选这些
+                            取消所选任务
                           </Button>
                           <Button size="small" disabled={selectedJobIds.length === 0} onClick={() => void bulkRetryJobs()}>
-                            按原再跑所选
+                            重跑所选任务
                           </Button>
                         </Space>
                       </div>
@@ -732,20 +732,20 @@ export function BacktestsView() {
                           { title: "模板", render: (_, row) => String((row.request_payload.template_snapshot as { template_name?: string } | undefined)?.template_name ?? "-"), ellipsis: true },
                           { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <StatusTag value={value} label={backtestStatusLabel(value)} /> },
                           { title: "进度", dataIndex: "progress_pct", width: 90, render: (value: number) => `${value.toFixed(0)}%` },
-                          { title: "什么时候提交", dataIndex: "submitted_at", width: 180 },
-                          { title: "什么时候结束", dataIndex: "completed_at", width: 180 },
-                          { title: "没跑成原因", dataIndex: "error_message", ellipsis: true },
+                          { title: "提交时间", dataIndex: "submitted_at", width: 180 },
+                          { title: "完成时间", dataIndex: "completed_at", width: 180 },
+                          { title: "错误信息", dataIndex: "error_message", ellipsis: true },
                           {
-                            title: "现在可做",
+                            title: "操作",
                             width: 150,
                             fixed: "right",
                             render: (_, row) => (
                               <Space size="small">
                                 <Button size="small" disabled={!["queued", "running"].includes(row.status)} onClick={() => void cancelJob(row.id)}>
-                                  停掉这次
+                                  取消
                                 </Button>
                                 <Button size="small" disabled={row.status !== "failed"} onClick={() => void retryJob(row.id)}>
-                                  按原再跑
+                                  重跑
                                 </Button>
                               </Space>
                             ),
@@ -753,7 +753,7 @@ export function BacktestsView() {
                         ]}
                       />
                       <Typography.Paragraph className="table-help">
-                        跑成后会自动生成结果，直接去结果列表打开就行。没跑成时，通常是标的数据不足、模板不匹配，或参数组合不适合当前行情。
+                        任务完成后会自动生成结果，可直接进入结果库查看；若执行失败，常见原因通常是覆盖不足、模板不匹配或参数组合不适应当前样本。
                       </Typography.Paragraph>
                     </>
                   ),
