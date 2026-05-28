@@ -301,6 +301,37 @@ function nextActionGuide(netReturn: number, maxDrawdown: number, closedTrades: n
   };
 }
 
+function buildDecisionSummary(params: {
+  netReturn: number;
+  maxDrawdown: number;
+  closedTrades: number;
+  vsBuyHold: number | null;
+}): { title: string; description: string } {
+  const { netReturn, maxDrawdown, closedTrades, vsBuyHold } = params;
+  if (closedTrades === 0) {
+    return {
+      title: "当前还不能判断这套策略优不优，先让它真正触发交易",
+      description: "这轮单独验证没有形成成交，因此最重要的问题不是赚了多少，而是当前标的、周期和参数组合为什么没有触发。应先让策略真正成交，再讨论收益和稳健性。",
+    };
+  }
+  if (netReturn > 0 && maxDrawdown <= 8 && (vsBuyHold === null || vsBuyHold >= 0)) {
+    return {
+      title: vsBuyHold !== null && vsBuyHold > 0 ? "当前结果值得继续研究，且已经跑赢买入持有" : "当前结果值得继续研究，下一步确认是否能稳定跑赢买入持有",
+      description: "这份结果已经同时满足正收益与相对可控的回撤，说明它至少值得进入下一轮横向比较。接下来重点不是再看更多明细，而是确认它是否稳定优于同标的其他方案。",
+    };
+  }
+  if (netReturn > 0) {
+    return {
+      title: "当前结果能赚钱，但还不能直接采用",
+      description: "这份结果说明策略方向未必有问题，但回撤偏高，首要任务应是判断净值波动是否可接受，再决定是否通过仓位、节奏或模板调整把回撤压下来。",
+    };
+  }
+  return {
+    title: "当前结果不建议直接采用，应优先作为反向对照",
+    description: "这轮单独验证收益为负，说明这套组合至少在当前样本里没有证明自己。与其继续死磕同一组参数，不如把它保留为对照样本，再换模板、周期或标的重跑。",
+  };
+}
+
 function parameterLabel(strategyKind: string, key: string): string {
   const strategyField = parameterFieldSpecsByStrategy[strategyKind]?.find((item) => item.key === key);
   return strategyField?.label ?? baseParameterLabels[key] ?? key;
@@ -653,19 +684,14 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
   const compareHref = buildCompareHref(report);
   const curveReading = buildCurveReading(report.equity_curve, netReturn, maxDrawdown, closedTrades);
   const parameterHighlights = buildParameterHighlights(report, templateSnapshot, netReturn, maxDrawdown, closedTrades);
-  const readingGuides = [
-    {
-      title: "收益判断",
-      value: `${netReturn >= 0 ? "盈利" : "亏损"} ${netReturn.toFixed(2)}%`,
-      description:
-        netReturn > 0
-          ? "应先确认这是单独验证收益，再继续评估回撤是否可接受；仅看盈利与否并不足够。"
-          : "单独验证收益为负，说明该组合至少在当前测试区间内尚未证明其有效性。",
-    },
+  const templateName = String(templateSnapshot?.template_name ?? "未记录模板");
+  const decisionSummary = buildDecisionSummary({ netReturn, maxDrawdown, closedTrades, vsBuyHold });
+  const nextAction = nextActionGuide(netReturn, maxDrawdown, closedTrades);
+  const decisionGuides = [
     riskGuide(maxDrawdown),
     benchmarkGuide(validation),
     tradeGuide(closedTrades, validation),
-    nextActionGuide(netReturn, maxDrawdown, closedTrades),
+    nextAction,
   ];
 
   return (
@@ -679,69 +705,82 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
             <Button>
               <Link href="/reports">回到报告列表</Link>
             </Button>
-            <Button>
-              <Link href={compareHref}>去对比同标的报告</Link>
-            </Button>
-            <Button type="primary">
-              <Link href={rerunHref}>按当前配置重跑</Link>
-            </Button>
           </Space>
         }
       />
 
-      <Card size="small" className="section-card result-verdict-card">
-        <div className="result-verdict-main">
-          <Tag color={verdict.color}>{verdict.label}</Tag>
-          <Typography.Title level={3}>第一眼先看：这套策略在验证区间里 {netReturn >= 0 ? "赚了" : "亏了"} {Math.abs(netReturn).toFixed(2)}%</Typography.Title>
-          <Typography.Paragraph>{verdict.summary} 如果只看一屏，先看下面四个数：收益、回撤、最终权益，以及有没有跑赢买入持有。</Typography.Paragraph>
+      <Card size="small" className="section-card report-decision-card">
+        <div className="report-decision-main">
+          <div className="report-decision-tags">
+            <Tag color={verdict.color}>{verdict.label}</Tag>
+            <Tag>{strategyLabel(report.strategy_kind)}</Tag>
+            <Tag>{report.interval}</Tag>
+            <Tag>{templateName}</Tag>
+          </div>
+          <Typography.Title level={3}>
+            当前结论：这套策略在验证区间里 {netReturn >= 0 ? "赚了" : "亏了"} {Math.abs(netReturn).toFixed(2)}%，{decisionSummary.title}
+          </Typography.Title>
+          <Typography.Paragraph>
+            {verdict.summary} {decisionSummary.description}
+          </Typography.Paragraph>
+          <div className="report-decision-metric-grid">
+            <DetailItem label="单独验证收益" value={<FormatPercent value={netReturn} />} tone={returnTone} />
+            <DetailItem label="最大回撤" value={`${maxDrawdown.toFixed(2)}%`} tone={maxDrawdown > 0 ? "negative" : undefined} />
+            <DetailItem label="期末权益" value={finalEquity > 0 ? formatMoney(finalEquity) : "-"} tone={returnTone} />
+            <DetailItem
+              label="相对买入持有"
+              value={vsBuyHold === null ? "-" : `${vsBuyHold >= 0 ? "+" : "-"}${Math.abs(vsBuyHold).toFixed(2)}`}
+              tone={vsBuyHoldTone}
+            />
+          </div>
+          <div className="report-decision-guide-grid">
+            {decisionGuides.map((item) => (
+              <article key={item.title} className="report-decision-guide-card">
+                <span>{item.title}</span>
+                <strong>{item.value}</strong>
+                <p>{item.description}</p>
+              </article>
+            ))}
+          </div>
         </div>
-        <div className="result-verdict-metrics">
-          <DetailItem label="单独验证收益" value={<FormatPercent value={netReturn} />} tone={returnTone} />
-          <DetailItem label="最大回撤" value={`${maxDrawdown.toFixed(2)}%`} tone={maxDrawdown > 0 ? "negative" : undefined} />
-          <DetailItem label="期末权益" value={finalEquity > 0 ? formatMoney(finalEquity) : "-"} tone={returnTone} />
-          <DetailItem
-            label="相对买入持有"
-            value={vsBuyHold === null ? "-" : `${vsBuyHold >= 0 ? "+" : "-"}${Math.abs(vsBuyHold).toFixed(2)}`}
-            tone={vsBuyHoldTone}
-          />
+        <div className="report-decision-side">
+          <div className="report-decision-side-card">
+            <span>这次回测是什么</span>
+            <strong>{report.symbol} / {strategyLabel(report.strategy_kind)} / {report.interval}</strong>
+            <p>{strategyBeginnerSummary(report.strategy_kind, report.interval)}</p>
+            <div className="report-decision-side-list">
+              <span>样本区间：{report.dataset_start} 至 {report.dataset_end}</span>
+              <span>报告时间：{report.created_at}</span>
+              <span>成交笔数：{closedTrades}</span>
+            </div>
+          </div>
+          <div className="report-decision-side-card">
+            <span>现在最合适的动作</span>
+            <strong>{nextAction.value}</strong>
+            <p>{nextAction.description}</p>
+          </div>
+          <div className="report-decision-actions">
+            <Button type="primary">
+              <Link href={compareHref}>带入对比区继续判断</Link>
+            </Button>
+            <Button>
+              <Link href={rerunHref}>按当前配置重跑</Link>
+            </Button>
+            <Button>
+              <Link href="/reports">回到结果库</Link>
+            </Button>
+          </div>
         </div>
       </Card>
 
-      <Card size="small" title="这次回测是什么" className="section-card">
+      <Card size="small" title="结果背景" className="section-card">
         <div className="detail-grid">
           <DetailItem label="标的" value={`${report.symbol} ${report.name}`} />
           <DetailItem label="策略" value={strategyLabel(report.strategy_kind)} />
           <DetailItem label="周期" value={report.interval} />
+          <DetailItem label="使用模板" value={templateName} />
           <DetailItem label="这次用到的行情区间" value={`${report.dataset_start} 至 ${report.dataset_end}`} />
           <DetailItem label="报告生成时间" value={report.created_at} />
-          <DetailItem label="成交笔数" value={String(closedTrades)} />
-        </div>
-      </Card>
-
-      <Card size="small" title="关键指标解读" className="section-card">
-        <div className="reading-guide-grid">
-          {readingGuides.map((item) => (
-            <article key={item.title} className="reading-guide-card">
-              <span className="reading-guide-label">{item.title}</span>
-              <strong>{item.value}</strong>
-              <p>{item.description}</p>
-            </article>
-          ))}
-        </div>
-      </Card>
-
-      <Card size="small" title="后续动作" className="section-card compare-next-card">
-        <div className="compare-next-main">
-          <strong>建议将该结果带入对比区继续验证</strong>
-          <p>系统会预先带入当前报告，并按相同标的和周期筛选结果列表。继续选择 1 到 3 份报告后，即可直接比较收益、回撤和交易次数。</p>
-        </div>
-        <div className="compare-next-actions">
-          <Button type="primary">
-            <Link href={compareHref}>去对比同标的报告</Link>
-          </Button>
-          <Button>
-            <Link href={rerunHref}>按当前配置重跑</Link>
-          </Button>
         </div>
       </Card>
 
