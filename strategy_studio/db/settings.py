@@ -13,6 +13,8 @@ DEFAULT_API_PORT = 8000
 DEFAULT_FRONTEND_HOST = "127.0.0.1"
 DEFAULT_FRONTEND_PORT = 3000
 DEFAULT_SYNC_INTERVALS = ("1d", "15m", "1m")
+DEFAULT_WORKER_MAX_CONCURRENT_JOBS = 2
+DEFAULT_WORKER_MAX_OPTIMIZATION_WORKERS = 4
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,8 @@ class PlatformSettings:
     frontend_host: str = DEFAULT_FRONTEND_HOST
     frontend_port: int = DEFAULT_FRONTEND_PORT
     sync_intervals: tuple[str, ...] = DEFAULT_SYNC_INTERVALS
+    worker_max_concurrent_jobs: int = DEFAULT_WORKER_MAX_CONCURRENT_JOBS
+    worker_max_optimization_workers: int = DEFAULT_WORKER_MAX_OPTIMIZATION_WORKERS
 
 
 def load_platform_settings() -> PlatformSettings:
@@ -46,5 +50,13 @@ def load_platform_settings() -> PlatformSettings:
         api_port=int(os.getenv("STRATEGY_STUDIO_API_PORT", str(DEFAULT_API_PORT))),
         frontend_host=os.getenv("STRATEGY_STUDIO_FRONTEND_HOST", DEFAULT_FRONTEND_HOST),
         frontend_port=int(os.getenv("STRATEGY_STUDIO_FRONTEND_PORT", str(DEFAULT_FRONTEND_PORT))),
+        worker_max_concurrent_jobs=max(
+            1,
+            int(os.getenv("STRATEGY_STUDIO_WORKER_MAX_CONCURRENT_JOBS", str(DEFAULT_WORKER_MAX_CONCURRENT_JOBS))),
+        ),
+        worker_max_optimization_workers=max(
+            1,
+            int(os.getenv("STRATEGY_STUDIO_WORKER_MAX_OPTIMIZATION_WORKERS", str(DEFAULT_WORKER_MAX_OPTIMIZATION_WORKERS))),
+        ),
     )
 

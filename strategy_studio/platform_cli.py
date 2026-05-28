@@ -206,6 +206,8 @@ def add_platform_subcommands(subparsers: argparse._SubParsersAction[argparse.Arg
 
     worker_parser = subparsers.add_parser("worker", help="启动回测任务 worker")
     worker_parser.add_argument("--poll-interval", type=int, default=5, help="任务轮询间隔秒数")
+    worker_parser.add_argument("--max-concurrent-jobs", type=int, default=None, help="最多同时执行多少个回测任务")
+    worker_parser.add_argument("--max-optimization-workers", type=int, default=None, help="单个任务最多占用多少个寻参 worker")
 
     scheduler_parser = subparsers.add_parser("scheduler", help="启动行情同步调度器")
     scheduler_parser.add_argument("--proxy", default=None, help="Yahoo 代理地址")
@@ -254,7 +256,11 @@ def handle_api(args: argparse.Namespace) -> int:
 
 def handle_worker(args: argparse.Namespace) -> int:
     run_worker_loop = _import_platform_module("strategy_studio.runtime.worker", "worker").run_worker_loop
-    run_worker_loop(poll_interval_seconds=args.poll_interval)
+    run_worker_loop(
+        poll_interval_seconds=args.poll_interval,
+        max_concurrent_jobs=args.max_concurrent_jobs,
+        max_optimization_workers=args.max_optimization_workers,
+    )
     return 0
 
 

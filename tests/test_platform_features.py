@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from strategy_studio.cli import build_parser
 from strategy_studio.platform_cli import handle_api
-from strategy_studio.services.backtests import _normalize_artifacts
+from strategy_studio.services.backtests import _estimate_eta_seconds, _normalize_artifacts, _resolve_effective_parallelism
 from strategy_studio.services.platform import record_platform_heartbeat
 from strategy_studio.services.templates import build_seed_templates, normalize_parameter_space, resolve_backtest_request_payload
 from strategy_studio.strategy.sampling import DeclineWindow
@@ -25,6 +25,7 @@ class PlatformFeatureTests(unittest.TestCase):
         init_args = parser.parse_args(["init-db"])
         api_args = parser.parse_args(["api", "--host", "127.0.0.1", "--port", "8000"])
         replace_args = parser.parse_args(["api", "--replace-existing"])
+        worker_args = parser.parse_args(["worker", "--poll-interval", "3", "--max-concurrent-jobs", "2", "--max-optimization-workers", "4"])
 
         self.assertEqual(init_args.command, "init-db")
         self.assertFalse(hasattr(init_args, "with_migration"))
@@ -33,6 +34,9 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(api_args.port, 8000)
         self.assertTrue(replace_args.replace_existing)
         self.assertEqual(parser.parse_args(["scheduler"]).command, "scheduler")
+        self.assertEqual(worker_args.poll_interval, 3)
+        self.assertEqual(worker_args.max_concurrent_jobs, 2)
+        self.assertEqual(worker_args.max_optimization_workers, 4)
 
     def test_hk_lot_size_cache_only_keeps_process_memory(self) -> None:
         self.assertFalse(hasattr(market_rules, "HK_LOT_SIZE_CACHE_PATH"))
@@ -255,6 +259,16 @@ class PlatformFeatureTests(unittest.TestCase):
 
 
 class StrategyTemplateServiceTests(unittest.TestCase):
+    def test_backtest_parallelism_is_capped_by_worker_and_cpu_budget(self) -> None:
+        with patch("strategy_studio.services.backtests.os.cpu_count", return_value=8):
+            self.assertEqual(_resolve_effective_parallelism(6, max_optimization_workers=4, worker_concurrency=2), 4)
+            self.assertEqual(_resolve_effective_parallelism(6, max_optimization_workers=8, worker_concurrency=4), 2)
+
+    def test_eta_estimation_returns_remaining_seconds(self) -> None:
+        self.assertEqual(_estimate_eta_seconds(50.0, 120), 120)
+        self.assertEqual(_estimate_eta_seconds(100.0, 120), 0)
+        self.assertIsNone(_estimate_eta_seconds(0.0, 120))
+
     def test_normalize_parameter_space_for_grid(self) -> None:
         payload = normalize_parameter_space(
             "grid",

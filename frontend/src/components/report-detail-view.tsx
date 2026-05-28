@@ -609,8 +609,11 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
   const netReturn = Number(validation.NetReturnPct ?? validation.ReturnPct ?? 0);
   const maxDrawdown = Number(validation.MaxDrawdownPct ?? 0);
   const closedTrades = Number(validation.ClosedTrades ?? 0);
+  const finalEquity = Number(validation.FinalEquity ?? 0);
+  const vsBuyHold = readNumberMetric(validation, "StrategyVsBuyHold", "GridVsBuyHold");
   const verdict = buildVerdict(netReturn, maxDrawdown, closedTrades);
   const returnTone = netReturn > 0 ? "positive" : netReturn < 0 ? "negative" : undefined;
+  const vsBuyHoldTone = vsBuyHold === null ? undefined : vsBuyHold > 0 ? "positive" : vsBuyHold < 0 ? "negative" : undefined;
   const templateId = readTemplateId(report, templateSnapshot);
   const rerunHref = buildBacktestLaunchHref({
     symbol: report.symbol,
@@ -660,24 +663,29 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
       <Card size="small" className="section-card result-verdict-card">
         <div className="result-verdict-main">
           <Tag color={verdict.color}>{verdict.label}</Tag>
-          <Typography.Title level={3}>本次回测单独验证收益为 {netReturn.toFixed(2)}%，{netReturn >= 0 ? "未出现净亏损" : "当前样本下出现亏损"}</Typography.Title>
-          <Typography.Paragraph>{verdict.summary}</Typography.Paragraph>
+          <Typography.Title level={3}>第一眼先看：这套策略在验证区间里 {netReturn >= 0 ? "赚了" : "亏了"} {Math.abs(netReturn).toFixed(2)}%</Typography.Title>
+          <Typography.Paragraph>{verdict.summary} 如果只看一屏，先看下面四个数：收益、回撤、最终权益，以及有没有跑赢买入持有。</Typography.Paragraph>
         </div>
         <div className="result-verdict-metrics">
           <DetailItem label="单独验证收益" value={<FormatPercent value={netReturn} />} tone={returnTone} />
           <DetailItem label="最大回撤" value={`${maxDrawdown.toFixed(2)}%`} tone={maxDrawdown > 0 ? "negative" : undefined} />
-          <DetailItem label="成交笔数" value={String(closedTrades)} />
+          <DetailItem label="期末权益" value={finalEquity > 0 ? formatMoney(finalEquity) : "-"} tone={returnTone} />
+          <DetailItem
+            label="相对买入持有"
+            value={vsBuyHold === null ? "-" : `${vsBuyHold >= 0 ? "+" : "-"}${Math.abs(vsBuyHold).toFixed(2)}`}
+            tone={vsBuyHoldTone}
+          />
         </div>
       </Card>
 
-      <Card size="small" title="结果概览" className="section-card">
+      <Card size="small" title="这次回测是什么" className="section-card">
         <div className="detail-grid">
           <DetailItem label="标的" value={`${report.symbol} ${report.name}`} />
           <DetailItem label="策略" value={strategyLabel(report.strategy_kind)} />
           <DetailItem label="周期" value={report.interval} />
           <DetailItem label="这次用到的行情区间" value={`${report.dataset_start} 至 ${report.dataset_end}`} />
           <DetailItem label="报告生成时间" value={report.created_at} />
-          <DetailItem label="任务编号" value={report.job_id} />
+          <DetailItem label="成交笔数" value={String(closedTrades)} />
         </div>
       </Card>
 

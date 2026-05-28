@@ -104,6 +104,7 @@ class BacktestJob(Base):
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
     request_payload_json: Mapped[dict[str, object]] = mapped_column(JSONB)
     progress_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    runtime_details_json: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

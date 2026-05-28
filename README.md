@@ -10,7 +10,7 @@ Strategy Studio 是一个中文优先的开源策略研究平台，用于从 Yah
 - 回测执行：API 入队，Worker 异步执行，报告结构化落库。
 - 参数模板：在数据库中管理策略、周期、执行口径和寻参空间。
 - 多策略研究：网格、定投、日线反弹、分钟反抽和指数回落网格共用同一套工作流。
-- Web 前端：研究总览、创建回测、查看报告、数据覆盖、策略模板和系统状态；数据覆盖页会直接推荐适合建立基线样本的标的和应补周期，报告详情可直接带去对比同标的结果，模板页也能按研究目标筛选和对比后再开跑。
+- Web 前端：研究总览、创建回测、查看报告、数据覆盖、策略模板和系统状态；数据覆盖页会直接推荐适合建立基线样本的标的和应补周期，回测任务会实时展示阶段、预计剩余时间和资源收口结果，报告详情会先给出收益/回撤/期末权益/对照结论，再按需展开细节。
 - CLI 研究：保留数据库同步、数据库回测和批量任务入口。
 - 仓库边界：历史行情、历史 Markdown 报告和平台回测结果不再随仓库提交，数据库是唯一长期事实来源。
 
@@ -85,7 +85,7 @@ scripts\start_platform_windows.bat
 
 ```powershell
 py -3.13 main.py api --host 127.0.0.1 --port 8000 --replace-existing
-py -3.13 main.py worker --poll-interval 5
+py -3.13 main.py worker --poll-interval 5 --max-concurrent-jobs 2 --max-optimization-workers 4
 py -3.13 main.py scheduler
 
 cd frontend
@@ -161,6 +161,8 @@ tests/           unittest 测试
 - `STRATEGY_STUDIO_ADMIN_DATABASE`
 - `STRATEGY_STUDIO_API_HOST`
 - `STRATEGY_STUDIO_API_PORT`
+- `STRATEGY_STUDIO_WORKER_MAX_CONCURRENT_JOBS`
+- `STRATEGY_STUDIO_WORKER_MAX_OPTIMIZATION_WORKERS`
 - `STRATEGY_STUDIO_PROXY`
 - `STRATEGY_STUDIO_ENABLE_PROCESS_CONTROL`
 - `NEXT_PUBLIC_API_BASE_URL`

@@ -22,7 +22,7 @@ def utc_now() -> datetime:
 
 
 def create_backtest_job(session: Session, payload: dict[str, object]) -> BacktestJob:
-    job = BacktestJob(request_payload_json=payload, status="queued", progress_pct=0.0)
+    job = BacktestJob(request_payload_json=payload, status="queued", progress_pct=0.0, runtime_details_json={})
     session.add(job)
     session.flush()
     return job
@@ -35,6 +35,21 @@ def list_backtest_jobs(session: Session, limit: int = 100) -> list[BacktestJob]:
 def count_backtest_jobs_by_status(session: Session) -> dict[str, int]:
     rows = session.execute(select(BacktestJob.status, func.count()).group_by(BacktestJob.status)).all()
     return {str(status): int(count) for status, count in rows}
+
+
+def count_queued_jobs_ahead(session: Session, job: BacktestJob) -> int:
+    return int(
+        session.scalar(
+            select(func.count())
+            .select_from(BacktestJob)
+            .where(BacktestJob.status == "queued")
+            .where(
+                (BacktestJob.submitted_at < job.submitted_at)
+                | ((BacktestJob.submitted_at == job.submitted_at) & (BacktestJob.id < job.id))
+            )
+        )
+        or 0
+    )
 
 
 def get_backtest_job(session: Session, job_id: int) -> BacktestJob | None:
@@ -54,6 +69,7 @@ def claim_next_queued_job(session: Session) -> BacktestJob | None:
     job.status = "running"
     job.progress_pct = 5.0
     job.started_at = utc_now()
+    job.runtime_details_json = {}
     session.flush()
     return job
 

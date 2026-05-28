@@ -23,6 +23,23 @@ export type BacktestJob = {
   job_type: string;
   request_payload: Record<string, unknown>;
   progress_pct: number;
+  runtime_details: {
+    stage_key?: string;
+    stage_label?: string;
+    stage_message?: string;
+    current_step?: number;
+    total_steps?: number;
+    elapsed_seconds?: number | null;
+    eta_seconds?: number | null;
+    queue_position?: number;
+    worker_name?: string;
+    requested_parallelism?: number;
+    effective_parallelism?: number;
+    worker_concurrency?: number;
+    max_optimization_workers?: number;
+    resource_summary?: string;
+    updated_at?: string;
+  };
   submitted_at: string;
   started_at: string;
   completed_at: string;

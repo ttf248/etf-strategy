@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Button, Card, Collapse, Descriptions, Empty, Form, Input, InputNumber, message, Select, Space, Steps, Table, Tag, Typography } from "antd";
+import { Button, Card, Collapse, Descriptions, Empty, Form, Input, InputNumber, message, Progress, Select, Space, Steps, Table, Tag, Typography } from "antd";
 import { useEffect, useMemo, useRef, useState, type Key } from "react";
 import Link from "next/link";
 import { apiFetch, type BacktestJob, type MarketDataStats, type StrategyTemplate } from "@/lib/api";
@@ -66,6 +66,7 @@ function buildTemplateFieldValues(template: StrategyTemplate) {
 }
 
 function buildJobReadingHint(job: BacktestJob) {
+  const stageLabel = job.runtime_details.stage_label;
   if (job.status === "succeeded") {
     return job.reports?.length ? "本次任务已生成报告，建议直接进入结果页复盘收益、回撤与交易记录。" : "本次任务已执行完成；若结果尚未出现，请到结果库刷新确认。";
   }
@@ -73,15 +74,77 @@ function buildJobReadingHint(job: BacktestJob) {
     return "本次任务执行失败，建议先查看错误信息；常见原因包括数据覆盖不足、模板不匹配或参数与标的不适配。";
   }
   if (job.status === "queued") {
-    return "任务仍在排队，通常无需重复提交；待进入执行阶段后，再判断是否需要取消。";
+    const queuePosition = job.runtime_details.queue_position;
+    return queuePosition && queuePosition > 1
+      ? `任务仍在排队，前面还有 ${queuePosition - 1} 个任务等待执行。通常无需重复提交。`
+      : "任务仍在排队，通常无需重复提交；待进入执行阶段后，再判断是否需要取消。";
   }
   if (job.status === "running") {
-    return "任务仍在执行中，建议等待结果输出；若长时间无进展，再进入系统状态页排查。";
+    return stageLabel
+      ? `任务仍在执行中，当前阶段为“${stageLabel}”。若长时间无进展，再进入系统状态页排查。`
+      : "任务仍在执行中，建议等待结果输出；若长时间无进展，再进入系统状态页排查。";
   }
   if (job.status === "cancelled" || job.status === "cancel_requested") {
     return "任务已取消；若仍需继续验证，可直接按原配置重新提交。";
   }
   return "建议先确认当前状态与错误信息，再决定是重跑、取消，还是进入结果库继续复盘。";
+}
+
+function formatDuration(seconds: number | null | undefined) {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) {
+    return "暂无法估计";
+  }
+  if (seconds < 60) {
+    return `${Math.max(0, Math.round(seconds))} 秒`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainSeconds = Math.max(0, Math.round(seconds % 60));
+  if (minutes < 60) {
+    return remainSeconds > 0 ? `${minutes} 分 ${remainSeconds} 秒` : `${minutes} 分`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainMinutes = minutes % 60;
+  return remainMinutes > 0 ? `${hours} 小时 ${remainMinutes} 分` : `${hours} 小时`;
+}
+
+function buildJobRuntimeSummary(job: BacktestJob) {
+  const runtime = job.runtime_details;
+  if (job.status === "queued") {
+    return {
+      title: runtime.queue_position && runtime.queue_position > 1 ? `队列第 ${runtime.queue_position} 位` : "等待进入执行",
+      description: runtime.stage_message ?? "任务已入队，等待 worker 领取。",
+    };
+  }
+  if (job.status === "running") {
+    const etaText = formatDuration(runtime.eta_seconds);
+    const elapsedText = formatDuration(runtime.elapsed_seconds);
+    return {
+      title: runtime.stage_label ? `当前阶段：${runtime.stage_label}` : "正在执行",
+      description: `已运行 ${elapsedText}，预计还需 ${etaText}。${runtime.stage_message ?? ""}`.trim(),
+    };
+  }
+  if (job.status === "succeeded") {
+    return {
+      title: "结果已生成",
+      description: runtime.elapsed_seconds ? `本次回测共耗时 ${formatDuration(runtime.elapsed_seconds)}。` : "回测已经完成，可直接进入结果页复盘。",
+    };
+  }
+  if (job.status === "failed") {
+    return {
+      title: "执行失败",
+      description: runtime.elapsed_seconds ? `本次任务在 ${formatDuration(runtime.elapsed_seconds)} 后失败。` : "任务未顺利完成，请先查看错误信息。",
+    };
+  }
+  if (job.status === "cancel_requested") {
+    return {
+      title: "等待取消落地",
+      description: runtime.stage_message ?? "系统会在安全检查点尽快停止当前任务。",
+    };
+  }
+  return {
+    title: runtime.stage_label ?? "任务已结束",
+    description: runtime.stage_message ?? "请根据当前状态决定是否继续处理。",
+  };
 }
 
 function backtestStatusLabel(status: string) {
@@ -219,6 +282,17 @@ export function BacktestsView() {
   }, []);
 
   useEffect(() => {
+    const hasActiveJobs = jobs.some((item) => ["queued", "running", "cancel_requested"].includes(item.status));
+    if (!hasActiveJobs) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void loadJobs();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [jobs]);
+
+  useEffect(() => {
     if (basePresetAppliedRef.current || !queryPreset) {
       return;
     }
@@ -345,7 +419,7 @@ export function BacktestsView() {
       <PageHeader
         eyebrow="回测配置"
         title="创建回测任务"
-        description="按三步完成任务配置：定义标的与周期、选择策略模板、确认执行口径后提交。"
+        description="按三步完成任务配置：定义标的与周期、选择策略模板、确认执行口径后提交。任务提交后会自动刷新进度、阶段和预计剩余时间。"
         actions={<Button onClick={() => void loadJobs()}>看一下最新进展</Button>}
       />
 
@@ -553,7 +627,7 @@ export function BacktestsView() {
                         <Form.Item name="validation_ratio" label="最后留多少比例做验证">
                           <InputNumber min={0.05} max={0.95} step={0.05} style={{ width: "100%" }} />
                         </Form.Item>
-                        <Form.Item name="jobs" label="同时试几组参数">
+                        <Form.Item name="jobs" label="同时试几组参数" extra="平台会按当前 worker 并发上限和 CPU 预算自动收口，不会无限占满资源。">
                           <InputNumber min={1} max={16} style={{ width: "100%" }} />
                         </Form.Item>
                         <Form.Item name="commission_bps" label="手续费（万分比）">
@@ -593,7 +667,7 @@ export function BacktestsView() {
               </Button>
             ) : (
               <Button type="primary" htmlType="submit" loading={submitting}>
-                提交回测任务
+                开始回测
               </Button>
             )}
           </div>
@@ -626,8 +700,8 @@ export function BacktestsView() {
           <>
             <div className="job-summary-banner">
               <div className="job-summary-main">
-                <strong>优先检查最近任务，再决定是否展开完整历史</strong>
-                <p>当前最重要的是确认是否已生成报告、失败原因是否重复，以及是否仍有任务在执行，而不是直接浏览全部历史记录。</p>
+                <strong>先看最近几次任务，再决定要不要展开完整历史</strong>
+                <p>当前最重要的是确认是否已生成报告、任务卡在哪个阶段、预计还要多久，以及失败原因是否重复，而不是直接浏览全部历史记录。</p>
               </div>
               <div className="job-summary-metrics">
                 <span>执行中 {runningJobs.length}</span>
@@ -652,6 +726,7 @@ export function BacktestsView() {
                 const payload = job.request_payload;
                 const templateName = (payload.template_snapshot as { template_name?: string } | undefined)?.template_name;
                 const primaryAction = buildJobPrimaryAction(job);
+                const runtime = buildJobRuntimeSummary(job);
                 return (
                   <article key={job.id} className="job-mobile-card">
                     <div className="job-mobile-card-head">
@@ -662,10 +737,22 @@ export function BacktestsView() {
                       <StatusTag value={job.status} label={backtestStatusLabel(job.status)} />
                     </div>
                     <p>{buildJobReadingHint(job)}</p>
+                    <div className="job-mobile-runtime">
+                      <strong>{runtime.title}</strong>
+                      <span>{runtime.description}</span>
+                    </div>
+                    <Progress
+                      percent={Math.round(job.progress_pct)}
+                      size="small"
+                      status={job.status === "failed" ? "exception" : job.status === "succeeded" ? "success" : "active"}
+                    />
                     <div className="job-mobile-metrics">
                       <span>进度 {job.progress_pct.toFixed(0)}%</span>
                       <span>模板 {templateName ?? "未选择"}</span>
+                      {job.runtime_details.worker_name ? <span>执行槽位 {job.runtime_details.worker_name}</span> : null}
+                      {job.runtime_details.queue_position ? <span>排队位置 #{job.runtime_details.queue_position}</span> : null}
                     </div>
+                    {job.runtime_details.resource_summary ? <p>{job.runtime_details.resource_summary}</p> : null}
                     {job.error_message ? <p className="job-mobile-error">{job.error_message}</p> : null}
                     <div className="job-mobile-actions">
                       {primaryAction.href ? (
@@ -723,7 +810,7 @@ export function BacktestsView() {
                         dataSource={jobs}
                         rowSelection={{ selectedRowKeys: selectedJobIds, onChange: setSelectedJobIds }}
                         pagination={{ pageSize: 12, showSizeChanger: false }}
-                        scroll={{ x: 1180 }}
+                        scroll={{ x: 1540 }}
                         columns={[
                           { title: "回测编号", dataIndex: "id", width: 88, fixed: "left" },
                           { title: "标的", render: (_, row) => String(row.request_payload.symbol ?? "-"), width: 120 },
@@ -731,7 +818,44 @@ export function BacktestsView() {
                           { title: "策略", render: (_, row) => strategyLabel(String(row.request_payload.strategy_kind ?? "-")), width: 160, ellipsis: true },
                           { title: "模板", render: (_, row) => String((row.request_payload.template_snapshot as { template_name?: string } | undefined)?.template_name ?? "-"), ellipsis: true },
                           { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <StatusTag value={value} label={backtestStatusLabel(value)} /> },
-                          { title: "进度", dataIndex: "progress_pct", width: 90, render: (value: number) => `${value.toFixed(0)}%` },
+                          {
+                            title: "进度",
+                            dataIndex: "progress_pct",
+                            width: 170,
+                            render: (value: number, row) => (
+                              <div>
+                                <Progress
+                                  percent={Math.round(value)}
+                                  size="small"
+                                  status={row.status === "failed" ? "exception" : row.status === "succeeded" ? "success" : "active"}
+                                />
+                                <Typography.Text type="secondary">
+                                  {row.runtime_details.stage_label ?? "等待更新"}
+                                </Typography.Text>
+                              </div>
+                            ),
+                          },
+                          {
+                            title: "预计剩余",
+                            width: 110,
+                            render: (_, row) =>
+                              row.status === "running"
+                                ? formatDuration(row.runtime_details.eta_seconds)
+                                : row.status === "queued" && row.runtime_details.queue_position
+                                  ? `队列第 ${row.runtime_details.queue_position} 位`
+                                  : "-",
+                          },
+                          {
+                            title: "已运行",
+                            width: 110,
+                            render: (_, row) => (row.runtime_details.elapsed_seconds ? formatDuration(row.runtime_details.elapsed_seconds) : "-"),
+                          },
+                          {
+                            title: "资源计划",
+                            width: 240,
+                            render: (_, row) => row.runtime_details.resource_summary ?? "-",
+                            ellipsis: true,
+                          },
                           { title: "提交时间", dataIndex: "submitted_at", width: 180 },
                           { title: "完成时间", dataIndex: "completed_at", width: 180 },
                           { title: "错误信息", dataIndex: "error_message", ellipsis: true },

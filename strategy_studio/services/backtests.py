@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+import os
 from pathlib import Path
 import pandas as pd
 
 from strategy_studio.db.session import open_session
 from strategy_studio.repositories.backtests import (
     claim_next_queued_job,
+    count_queued_jobs_ahead,
     create_backtest_job,
     create_backtest_report,
     get_backtest_job,
@@ -64,12 +66,149 @@ def _job_payload(request: BacktestRequest) -> dict[str, object]:
 def submit_backtest(request: BacktestRequest) -> dict[str, object]:
     with open_session() as session:
         job = create_backtest_job(session, _job_payload(request))
+        _set_job_runtime(
+            session,
+            job,
+            stage_key="queued",
+            message="任务已提交，等待进入执行队列。",
+            progress_pct=0.0,
+            requested_parallelism=int(job.request_payload_json.get("jobs") or 1),
+        )
         session.commit()
         return {"job_id": job.id, "status": job.status}
 
 
 def _database_source_label(symbol: str, interval: str) -> str:
     return f"database://price_bars/{symbol.upper()}/{interval}"
+
+
+_RUNTIME_STAGE_ORDER = (
+    ("queued", "等待执行", 0.0, 0),
+    ("claimed", "已领取任务", 5.0, 1),
+    ("loading_market_data", "读取行情数据", 20.0, 2),
+    ("running_research", "执行策略回测", 45.0, 3),
+    ("writing_report", "写入报告结果", 75.0, 4),
+    ("finalizing", "整理结果并收尾", 92.0, 5),
+    ("succeeded", "结果已生成", 100.0, 6),
+    ("failed", "执行失败", 100.0, 6),
+    ("cancel_requested", "等待取消", 100.0, 6),
+    ("cancelled", "已取消", 100.0, 6),
+)
+_RUNTIME_STAGE_MAP = {key: {"label": label, "progress": progress, "step": step} for key, label, progress, step in _RUNTIME_STAGE_ORDER}
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _seconds_between(started_at: datetime | None, finished_at: datetime | None = None) -> int | None:
+    if started_at is None:
+        return None
+    end_time = finished_at or _utc_now()
+    return max(0, int((end_time - started_at).total_seconds()))
+
+
+def _estimate_eta_seconds(progress_pct: float, elapsed_seconds: int | None) -> int | None:
+    if elapsed_seconds is None or progress_pct <= 0 or progress_pct >= 100:
+        return 0 if progress_pct >= 100 else None
+    estimated_total = elapsed_seconds / max(progress_pct / 100.0, 0.01)
+    return max(0, int(round(estimated_total - elapsed_seconds)))
+
+
+def _resolve_effective_parallelism(
+    requested_jobs: int | None,
+    max_optimization_workers: int | None = None,
+    worker_concurrency: int = 1,
+) -> int:
+    requested = max(1, int(requested_jobs or 1))
+    cpu_count = max(1, os.cpu_count() or 1)
+    per_job_budget = max(1, cpu_count // max(1, worker_concurrency))
+    if max_optimization_workers is None:
+        return min(requested, per_job_budget)
+    return min(requested, max(1, int(max_optimization_workers)), per_job_budget)
+
+
+def _build_runtime_details(
+    job,
+    *,
+    stage_key: str,
+    message: str,
+    worker_name: str | None = None,
+    requested_parallelism: int | None = None,
+    effective_parallelism: int | None = None,
+    worker_concurrency: int | None = None,
+    max_optimization_workers: int | None = None,
+) -> dict[str, object]:
+    stage = _RUNTIME_STAGE_MAP[stage_key]
+    previous = dict(job.runtime_details_json or {})
+    elapsed_seconds = _seconds_between(job.started_at, job.completed_at if stage_key in {"succeeded", "failed", "cancelled"} else None)
+    eta_seconds = _estimate_eta_seconds(float(job.progress_pct), elapsed_seconds)
+    details: dict[str, object] = {
+        **previous,
+        "stage_key": stage_key,
+        "stage_label": stage["label"],
+        "stage_message": message,
+        "current_step": int(stage["step"]),
+        "total_steps": 6,
+        "elapsed_seconds": elapsed_seconds,
+        "eta_seconds": eta_seconds,
+        "updated_at": _utc_now().isoformat(sep=" "),
+    }
+    if worker_name is not None:
+        details["worker_name"] = worker_name
+    if requested_parallelism is not None:
+        details["requested_parallelism"] = int(requested_parallelism)
+    if effective_parallelism is not None:
+        details["effective_parallelism"] = int(effective_parallelism)
+    if worker_concurrency is not None:
+        details["worker_concurrency"] = int(worker_concurrency)
+    if max_optimization_workers is not None:
+        details["max_optimization_workers"] = int(max_optimization_workers)
+    if effective_parallelism is not None:
+        details["resource_summary"] = (
+            f"当前任务申请 {requested_parallelism or effective_parallelism} 组并行寻参，"
+            f"实际限制为 {effective_parallelism} 组；平台同时执行上限 {worker_concurrency or 1} 个任务。"
+        )
+    return details
+
+
+def _set_job_runtime(
+    session,
+    job,
+    *,
+    stage_key: str,
+    message: str,
+    progress_pct: float | None = None,
+    worker_name: str | None = None,
+    requested_parallelism: int | None = None,
+    effective_parallelism: int | None = None,
+    worker_concurrency: int | None = None,
+    max_optimization_workers: int | None = None,
+) -> None:
+    if progress_pct is not None:
+        mark_job_progress(session, job, progress_pct)
+    job.runtime_details_json = _build_runtime_details(
+        job,
+        stage_key=stage_key,
+        message=message,
+        worker_name=worker_name,
+        requested_parallelism=requested_parallelism,
+        effective_parallelism=effective_parallelism,
+        worker_concurrency=worker_concurrency,
+        max_optimization_workers=max_optimization_workers,
+    )
+
+
+def _serialize_runtime(job, session) -> dict[str, object]:
+    details = dict(job.runtime_details_json or {})
+    if job.status == "queued":
+        details.setdefault("stage_key", "queued")
+        details.setdefault("stage_label", "等待执行")
+        details.setdefault("stage_message", "任务已入队，等待 worker 领取。")
+        details["queue_position"] = count_queued_jobs_ahead(session, job) + 1
+    details.setdefault("elapsed_seconds", _seconds_between(job.started_at, job.completed_at))
+    details.setdefault("eta_seconds", _estimate_eta_seconds(job.progress_pct, details.get("elapsed_seconds")))
+    return details
 
 
 def _normalize_artifacts(
@@ -193,7 +332,17 @@ def _requeue_failed_job(job_id: int) -> int | None:
         if job.status == "failed":
             job.status = "queued"
             job.progress_pct = 0.0
+            job.started_at = None
+            job.completed_at = None
             job.error_message = ""
+            _set_job_runtime(
+                session,
+                job,
+                stage_key="queued",
+                message="任务已重新入队，等待 worker 再次执行。",
+                progress_pct=0.0,
+                requested_parallelism=int(job.request_payload_json.get("jobs") or 1),
+            )
             session.commit()
     return job_id
 
@@ -209,11 +358,23 @@ def _cancel_if_requested(session, job) -> bool:
     if job.status != "cancel_requested":
         return False
     mark_job_cancelled(session, job)
+    _set_job_runtime(
+        session,
+        job,
+        stage_key="cancelled",
+        message="任务已按取消请求停止，不会继续执行。",
+        progress_pct=100.0,
+    )
     session.commit()
     return True
 
 
-def execute_next_job(preferred_job_id: int | None = None) -> int | None:
+def execute_next_job(
+    preferred_job_id: int | None = None,
+    worker_name: str | None = None,
+    max_optimization_workers: int | None = None,
+    worker_concurrency: int = 1,
+) -> int | None:
     with open_session() as session:
         if preferred_job_id is not None:
             job = get_backtest_job(session, preferred_job_id)
@@ -221,7 +382,18 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                 return None
             job.status = "running"
             job.progress_pct = 5.0
-            job.started_at = datetime.now(UTC)
+            job.started_at = _utc_now()
+            _set_job_runtime(
+                session,
+                job,
+                stage_key="claimed",
+                message="任务已被 worker 领取，准备读取数据库行情。",
+                progress_pct=5.0,
+                worker_name=worker_name,
+                requested_parallelism=int(job.request_payload_json.get("jobs") or 1),
+                worker_concurrency=worker_concurrency,
+                max_optimization_workers=max_optimization_workers,
+            )
             target_job_id = job.id
             session.commit()
         else:
@@ -229,6 +401,17 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
             if job is None:
                 session.commit()
                 return None
+            _set_job_runtime(
+                session,
+                job,
+                stage_key="claimed",
+                message="任务已被 worker 领取，准备读取数据库行情。",
+                progress_pct=5.0,
+                worker_name=worker_name,
+                requested_parallelism=int(job.request_payload_json.get("jobs") or 1),
+                worker_concurrency=worker_concurrency,
+                max_optimization_workers=max_optimization_workers,
+            )
             target_job_id = job.id
             session.commit()
 
@@ -240,7 +423,23 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
         try:
             if _cancel_if_requested(session, job):
                 return job.id
-            mark_job_progress(session, job, 20.0)
+            effective_parallelism = _resolve_effective_parallelism(
+                payload.jobs,
+                max_optimization_workers=max_optimization_workers,
+                worker_concurrency=worker_concurrency,
+            )
+            _set_job_runtime(
+                session,
+                job,
+                stage_key="loading_market_data",
+                message="开始读取数据库中的历史行情与标的元数据。",
+                progress_pct=20.0,
+                worker_name=worker_name,
+                requested_parallelism=payload.jobs or 1,
+                effective_parallelism=effective_parallelism,
+                worker_concurrency=worker_concurrency,
+                max_optimization_workers=max_optimization_workers,
+            )
             session.commit()
 
             price_frame = load_price_frame_from_database(session, payload.symbol, payload.interval)
@@ -262,7 +461,18 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
 
             if _cancel_if_requested(session, job):
                 return job.id
-            mark_job_progress(session, job, 45.0)
+            _set_job_runtime(
+                session,
+                job,
+                stage_key="running_research",
+                message="正在跑寻参与验证流程，耗时通常主要集中在这一阶段。",
+                progress_pct=45.0,
+                worker_name=worker_name,
+                requested_parallelism=payload.jobs or 1,
+                effective_parallelism=effective_parallelism,
+                worker_concurrency=worker_concurrency,
+                max_optimization_workers=max_optimization_workers,
+            )
             session.commit()
             workflow_result = (
                 run_minute_full_workflow(
@@ -272,7 +482,7 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                     validation_ratio=payload.validation_ratio,
                     strategy_kind=payload.strategy_kind,
                     execution_config=execution_config,
-                    jobs=payload.jobs,
+                    jobs=effective_parallelism,
                     parameter_space=payload.parameter_space,
                     data=price_frame,
                 )
@@ -284,14 +494,25 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                     lookback_days=payload.lookback_days,
                     strategy_kind=payload.strategy_kind,
                     execution_config=execution_config,
-                    jobs=payload.jobs,
+                    jobs=effective_parallelism,
                     parameter_space=payload.parameter_space,
                     data=price_frame,
                 )
             )
             if _cancel_if_requested(session, job):
                 return job.id
-            mark_job_progress(session, job, 75.0)
+            _set_job_runtime(
+                session,
+                job,
+                stage_key="writing_report",
+                message="寻参与验证已经完成，正在把摘要、曲线和明细写回数据库。",
+                progress_pct=75.0,
+                worker_name=worker_name,
+                requested_parallelism=payload.jobs or 1,
+                effective_parallelism=effective_parallelism,
+                worker_concurrency=worker_concurrency,
+                max_optimization_workers=max_optimization_workers,
+            )
             session.commit()
 
             best_summary = workflow_result["optimization"]["best_run"]["summary"]
@@ -323,7 +544,31 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                 trade_rows=_build_trade_rows(workflow_result["validation"]["run"]),
                 event_rows=_build_event_rows(workflow_result["validation"]["run"]),
             )
+            _set_job_runtime(
+                session,
+                job,
+                stage_key="finalizing",
+                message="结果已入库，正在整理任务状态与报告入口。",
+                progress_pct=92.0,
+                worker_name=worker_name,
+                requested_parallelism=payload.jobs or 1,
+                effective_parallelism=effective_parallelism,
+                worker_concurrency=worker_concurrency,
+                max_optimization_workers=max_optimization_workers,
+            )
             mark_job_completed(session, job)
+            _set_job_runtime(
+                session,
+                job,
+                stage_key="succeeded",
+                message="回测已完成，可直接打开报告查看收益、回撤和交易节奏。",
+                progress_pct=100.0,
+                worker_name=worker_name,
+                requested_parallelism=payload.jobs or 1,
+                effective_parallelism=effective_parallelism,
+                worker_concurrency=worker_concurrency,
+                max_optimization_workers=max_optimization_workers,
+            )
             session.commit()
             return job.id
         except Exception as exc:
@@ -331,6 +576,17 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
             job = get_backtest_job(session, job.id)
             if job is not None:
                 mark_job_failed(session, job, str(exc))
+                _set_job_runtime(
+                    session,
+                    job,
+                    stage_key="failed",
+                    message="回测执行失败，请先查看错误信息，再决定是否按原配置重跑。",
+                    progress_pct=100.0,
+                    worker_name=worker_name,
+                    requested_parallelism=payload.jobs or 1,
+                    worker_concurrency=worker_concurrency,
+                    max_optimization_workers=max_optimization_workers,
+                )
                 session.commit()
             return None
 
@@ -347,10 +603,24 @@ def cancel_backtest(job_id: int) -> dict[str, object]:
             return {"job_id": job_id, "status": "not_found", "changed": False}
         if job.status == "queued":
             mark_job_cancelled(session, job)
+            _set_job_runtime(
+                session,
+                job,
+                stage_key="cancelled",
+                message="任务已从队列中移除，不会再继续执行。",
+                progress_pct=100.0,
+            )
             session.commit()
             return {"job_id": job_id, "status": "cancelled", "changed": True}
         if job.status == "running":
             mark_job_cancel_requested(session, job)
+            _set_job_runtime(
+                session,
+                job,
+                stage_key="cancel_requested",
+                message="已经收到取消请求，当前任务会在安全检查点尽快停下。",
+                progress_pct=job.progress_pct,
+            )
             session.commit()
             return {"job_id": job_id, "status": "cancel_requested", "changed": True}
         return {"job_id": job_id, "status": job.status, "changed": False}
@@ -376,10 +646,20 @@ def fetch_jobs(limit: int = 100) -> list[dict[str, object]]:
                 "job_type": job.job_type,
                 "request_payload": job.request_payload_json,
                 "progress_pct": job.progress_pct,
+                "runtime_details": _serialize_runtime(job, session),
                 "submitted_at": job.submitted_at.isoformat(sep=" "),
                 "started_at": job.started_at.isoformat(sep=" ") if job.started_at else "",
                 "completed_at": job.completed_at.isoformat(sep=" ") if job.completed_at else "",
                 "error_message": job.error_message,
+                "reports": [
+                    {
+                        "id": report.id,
+                        "report_name": report.report_name,
+                        "strategy_kind": report.strategy_kind,
+                        "interval": report.interval,
+                    }
+                    for report in job.reports
+                ],
             }
             for job in jobs
         ]
@@ -396,6 +676,7 @@ def fetch_job(job_id: int) -> dict[str, object] | None:
             "job_type": job.job_type,
             "request_payload": job.request_payload_json,
             "progress_pct": job.progress_pct,
+            "runtime_details": _serialize_runtime(job, session),
             "submitted_at": job.submitted_at.isoformat(sep=" "),
             "started_at": job.started_at.isoformat(sep=" ") if job.started_at else "",
             "completed_at": job.completed_at.isoformat(sep=" ") if job.completed_at else "",
