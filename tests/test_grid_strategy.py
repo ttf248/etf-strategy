@@ -25,6 +25,7 @@ from strategy_studio.strategy.donchian import run_donchian_breakout_backtest
 from strategy_studio.strategy.macd import run_macd_trend_backtest
 from strategy_studio.strategy.rebound import run_rebound_backtest
 from strategy_studio.strategy.trend import run_ma_cross_backtest
+from strategy_studio.strategy.volume_breakout import run_volume_breakout_backtest
 
 
 def build_test_frame(close_prices: list[float], start: str = "2025-09-01") -> pd.DataFrame:
@@ -822,6 +823,55 @@ class GridStrategyTests(unittest.TestCase):
         self.assertIn("donchian_buy", set(events["EventType"]))
         self.assertIn("donchian_exit_sell", set(events["EventType"]))
         self.assertTrue((events[events["EventType"] == "donchian_buy"]["Units"] % 200 == 0).all())
+
+    def test_run_volume_breakout_backtest_generates_volume_confirmed_buy_and_exit(self) -> None:
+        prices = [10.0, 9.0, 8.0, 9.0, 11.0, 10.5, 8.5]
+        frame = build_test_frame(prices, start="2025-03-24")
+        frame["Volume"] = [1000000, 900000, 850000, 950000, 3000000, 1200000, 1100000]
+
+        result = run_volume_breakout_backtest(
+            data=frame,
+            scenario_name="volume_breakout_unit_test",
+            symbol="1810.HK",
+            market="HK",
+            lot_size=200,
+            lot_size_source="unit test",
+            params={
+                "breakout_window": 3,
+                "exit_window": 2,
+                "volume_window": 3,
+                "volume_multiplier": 1.5,
+                "confirm_buffer_pct": 0.0,
+                "stop_loss_pct": 30.0,
+            },
+            execution_config=build_execution_config(
+                "research",
+                commission_bps=0,
+                slippage_bps=0,
+                max_position_ratio=0.8,
+                cooldown_bars=0,
+            ),
+        )
+
+        summary = result["summary"]
+        events = result["events"]
+        trades = result["trades"]
+
+        self.assertEqual(summary["StrategyKind"], "volume_breakout")
+        self.assertEqual(summary["StrategyName"], "放量突破")
+        self.assertTrue(summary["TriggeredEntry"])
+        self.assertEqual(summary["VolumeBreakoutEntryEvents"], 1)
+        self.assertEqual(summary["VolumeBreakoutExitEvents"], 1)
+        self.assertEqual(summary["PositionUnits"], 0)
+        self.assertEqual(summary["volume_window"], 3)
+        self.assertEqual(summary["volume_multiplier"], 1.5)
+        self.assertNotIn("BaseOnlyUnits", summary)
+        self.assertNotIn("GridVsBaseOnly", summary)
+        self.assertFalse(trades.empty)
+        self.assertIn("volume_breakout", set(trades["Tag"]))
+        self.assertIn("volume_breakout_buy", set(events["EventType"]))
+        self.assertIn("volume_breakout_exit_sell", set(events["EventType"]))
+        self.assertTrue((events[events["EventType"] == "volume_breakout_buy"]["Units"] % 200 == 0).all())
 
     def test_run_minute_rebound_fade_filter_blocks_entry(self) -> None:
         dates = pd.date_range(start="2026-04-01 09:30:00", periods=8, freq="15min")

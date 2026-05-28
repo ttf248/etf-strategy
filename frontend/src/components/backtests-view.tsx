@@ -15,6 +15,7 @@ const strategyGuide: Record<string, { scene: string; beginnerHint: string; risk:
   ma_cross: { scene: "跟随中期趋势做顺势进出", beginnerHint: "适合建立趋势策略基线", risk: "横盘震荡阶段可能频繁来回止损" },
   macd_trend: { scene: "用 MACD 金叉和柱体转强跟随动量", beginnerHint: "适合建立动量型趋势基线", risk: "趋势转弱时也可能出现连续假信号" },
   donchian_breakout: { scene: "向上突破历史高点后顺势跟随", beginnerHint: "适合建立突破型趋势基线", risk: "假突破和震荡回撤会更频繁" },
+  volume_breakout: { scene: "突破高点并要求量能同步放大", beginnerHint: "适合建立更偏交易员语境的突破基线", risk: "缩量假突破减少了，但进场次数通常也会更少" },
   bollinger_reversion: { scene: "围绕布林带下轨做均值回归", beginnerHint: "适合建立震荡环境基线", risk: "单边下跌时容易抄底过早" },
   daily_rebound: { scene: "日线超跌反弹", beginnerHint: "适合验证阶段性反转", risk: "需重点关注止损与持仓时长" },
   minute_rebound: { scene: "分钟级急跌反抽", beginnerHint: "适合分钟级短线研究", risk: "对手续费与滑点更敏感" },

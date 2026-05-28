@@ -97,6 +97,10 @@ const baseParameterLabels: Record<string, string> = {
   total_capital: "初始资金",
   validation_ratio: "最后留多少比例做验证",
   validation_start: "从哪一天开始单独验证",
+  volume_multiplier: "成交量放大倍数",
+  VolumeMultiplier: "成交量放大倍数",
+  volume_window: "成交量均值窗口",
+  VolumeWindow: "成交量均值窗口",
 };
 
 const eventTypeLabels: Record<string, string> = {
@@ -118,6 +122,8 @@ const eventTypeLabels: Record<string, string> = {
   risk_stop_loss: "触发停手线",
   stop_loss_sell: "止损卖出",
   take_profit_sell: "止盈卖出",
+  volume_breakout_buy: "放量突破买入",
+  volume_breakout_exit_sell: "跌回通道卖出",
 };
 
 const payloadFieldLabels: Record<string, string> = {
@@ -146,6 +152,7 @@ const tradeTypeLabels: Record<string, string> = {
   grid_sell: "网格止盈",
   ma_cross: "双均线趋势",
   macd_trend: "MACD 趋势",
+  volume_breakout: "放量突破",
 };
 
 const valueLabels: Record<string, Record<string, string>> = {
@@ -711,6 +718,9 @@ function strategyBeginnerSummary(strategyKind: string, interval: string): string
   if (strategyKind === "donchian_breakout") {
     return "专门等价格突破一段时间内的高点再顺势跟随，更适合判断这只标的是否具备持续性趋势。";
   }
+  if (strategyKind === "volume_breakout") {
+    return "不仅要等价格突破高点，还要求成交量同步放大，更适合判断突破是否有资金参与确认。";
+  }
   if (strategyKind === "bollinger_reversion") {
     return "专门等价格跌到布林带下轨附近再尝试回归，适合先判断这只标的更像震荡市还是单边市。";
   }
@@ -740,6 +750,9 @@ function rerunFocusGuide(strategyKind: string): string {
   }
   if (strategyKind === "donchian_breakout") {
     return "优先改突破窗口、退出窗口、突破确认比例，以及固定止损阈值。";
+  }
+  if (strategyKind === "volume_breakout") {
+    return "优先改突破窗口、成交量均值窗口、放量倍数，以及退出窗口和固定止损阈值。";
   }
   if (strategyKind === "bollinger_reversion") {
     return "优先改布林带窗口、带宽、RSI 入场阈值，以及止盈止损和最长持仓时长。";

@@ -9,6 +9,7 @@
 - `ma_cross`：日线双均线趋势跟随，短均线上穿长均线买入、下穿卖出。
 - `macd_trend`：日线 MACD 趋势跟随，MACD 金叉且柱体转强时买入，MACD 死叉或止损时卖出。
 - `donchian_breakout`：日线唐奇安突破，向上突破过去一段时间高点买入，跌回退出通道或触发止损时卖出。
+- `volume_breakout`：日线放量突破，价格突破历史高点且成交量显著放大时买入，跌回退出通道或触发止损时卖出。
 - `bollinger_reversion`：日线布林带均值回归，跌破下轨买入、回到中轨附近卖出。
 - `daily_rebound`：日线超跌反弹。
 - `minute_rebound`：分钟急跌反抽。

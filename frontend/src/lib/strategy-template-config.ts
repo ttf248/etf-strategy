@@ -6,6 +6,7 @@ export const strategyOptions = [
   { label: "双均线趋势", value: "ma_cross" },
   { label: "MACD 趋势", value: "macd_trend" },
   { label: "唐奇安突破", value: "donchian_breakout" },
+  { label: "放量突破", value: "volume_breakout" },
   { label: "布林带均值回归", value: "bollinger_reversion" },
   { label: "日线超跌反弹", value: "daily_rebound" },
   { label: "分钟急跌反抽", value: "minute_rebound" },
@@ -52,6 +53,14 @@ const strategyDefaults: Record<string, Record<string, number[]>> = {
   donchian_breakout: {
     breakout_window: [20, 40, 55],
     exit_window: [10, 20],
+    confirm_buffer_pct: [0, 0.002, 0.005],
+    stop_loss_pct: [4, 6, 8],
+  },
+  volume_breakout: {
+    breakout_window: [20, 40, 55],
+    exit_window: [10, 20],
+    volume_window: [5, 10, 20],
+    volume_multiplier: [1.2, 1.5, 2],
     confirm_buffer_pct: [0, 0.002, 0.005],
     stop_loss_pct: [4, 6, 8],
   },
@@ -127,6 +136,14 @@ export const parameterFieldSpecsByStrategy: Record<string, ParameterFieldSpec[]>
   donchian_breakout: [
     { key: "breakout_window", label: "突破窗口", kind: "int" },
     { key: "exit_window", label: "退出窗口", kind: "int" },
+    { key: "confirm_buffer_pct", label: "突破确认比例", kind: "float" },
+    { key: "stop_loss_pct", label: "止损比例", kind: "float" },
+  ],
+  volume_breakout: [
+    { key: "breakout_window", label: "突破窗口", kind: "int" },
+    { key: "exit_window", label: "退出窗口", kind: "int" },
+    { key: "volume_window", label: "成交量均值窗口", kind: "int" },
+    { key: "volume_multiplier", label: "成交量放大倍数", kind: "float" },
     { key: "confirm_buffer_pct", label: "突破确认比例", kind: "float" },
     { key: "stop_loss_pct", label: "止损比例", kind: "float" },
   ],
