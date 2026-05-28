@@ -2599,3 +2599,32 @@
 - 已执行 `cd frontend && npm run test:smoke`
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
+
+## 报告详情市场标签补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按最小边界总扫报告详情页高级参数区，只处理 `Market` 这一处仍然语义过短的标签，不扩大到其他字段和值映射。
+
+### 修改内容
+
+- `frontend/src/components/report-detail-view.tsx`
+  - 将 `Market` 的展示标签从“市场”改为“在哪个市场交易”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮文案收口背景、边界和取舍。
+
+### 设计取舍
+
+- 保留后端字段名 `Market` 不变，只调整前端展示文案，避免影响报告快照、接口字段和历史数据兼容性。
+- 标签采用“在哪个市场交易”，优先让新手直接理解这是在说明标的归属的交易市场，而不是继续用单个名词“市场”让用户自行补足语义。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `cd frontend && npm run test:smoke`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
