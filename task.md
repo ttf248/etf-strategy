@@ -2937,3 +2937,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页头动作口径补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理页头右上角动作文案，把它从“后台刷新按钮”口气收成更像“重新看一下现在进展”的阅读动作。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将页头动作从“刷新结果”改为“看一下最新进展”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不删除手动刷新能力，只调整动作文案，让用户更像是在确认任务和报告有没有新进展，而不是操作后台刷新按钮。
+- 这轮不改页头结构、向导步骤、任务卡或批量逻辑，只处理这一个动作口径，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`

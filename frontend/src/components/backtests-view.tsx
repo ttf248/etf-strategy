@@ -287,7 +287,7 @@ export function BacktestsView() {
         eyebrow="创建回测"
         title="创建一次回测"
         description="按 3 步完成：先填标的和周期，再选策略模板，最后确认并提交。"
-        actions={<Button onClick={() => void loadJobs()}>刷新结果</Button>}
+        actions={<Button onClick={() => void loadJobs()}>看一下最新进展</Button>}
       />
 
       <Card title="按步骤创建回测" size="small" className="section-card backtest-wizard-card">
