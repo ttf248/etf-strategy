@@ -321,7 +321,7 @@ export function ReportsView() {
           value={bestReport ? <FormatPercent value={getValidationMetrics(bestReport).netReturn} /> : "-"}
           note={bestReport ? `${bestReport.symbol} / ${bestReport.interval}` : "暂无报告"}
         />
-        <MetricCard label="最近新结果" value={latestReport?.symbol ?? "-"} note={latestReport?.created_at ?? "暂无报告"} />
+        <MetricCard label="刚出来这份" value={latestReport?.symbol ?? "-"} note={latestReport?.created_at ?? "暂无报告"} />
       </div>
 
       <Card
