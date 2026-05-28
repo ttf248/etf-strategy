@@ -2813,3 +2813,35 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 报告列表筛选条口径补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按报告列表页局部体验边界优化，只处理筛选条这一组文案，把它从“报表筛选工具”口吻收成更像“先缩小到你想看的那批结果”的阅读辅助。
+
+### 修改内容
+
+- `frontend/src/components/reports-view.tsx`
+  - 将输入框占位从“筛选标的或名称”改为“先找某个标的或名称”。
+  - 将周期下拉占位从“按周期筛选”改为“只看某个周期”。
+  - 将收藏按钮改为“只看我标记过的 / 正在只看标记过的”。
+  - 将右侧计数改为“现在这批里有 ...，已标记 ...”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不删除任何筛选能力或改变交互逻辑，只调整文案，让用户更像在缩小“当前要读哪一批”，而不是操作结果报表。
+- 这轮不改排序说明、报告卡、对比区或高级表格，只处理筛选条这一组口径，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`

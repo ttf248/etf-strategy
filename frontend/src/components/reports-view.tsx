@@ -427,17 +427,17 @@ export function ReportsView() {
       <Card size="small" title="先挑几份值得细看的报告" className="section-card">
         <div className="table-toolbar">
           <Space wrap>
-            <Input placeholder="筛选标的或名称" value={keyword} onChange={(event) => setKeyword(event.target.value)} style={{ width: 240 }} />
-            <Select allowClear placeholder="按周期筛选" value={interval} onChange={setInterval} options={intervalOptions} style={{ width: 150 }} />
+            <Input placeholder="先找某个标的或名称" value={keyword} onChange={(event) => setKeyword(event.target.value)} style={{ width: 240 }} />
+            <Select allowClear placeholder="只看某个周期" value={interval} onChange={setInterval} options={intervalOptions} style={{ width: 150 }} />
             <Button
               icon={showFavoritesOnly ? <StarFilled /> : <StarOutlined />}
               type={showFavoritesOnly ? "primary" : "default"}
               onClick={() => setShowFavoritesOnly((current) => !current)}
             >
-              {showFavoritesOnly ? "只看收藏中" : "只看收藏"}
+              {showFavoritesOnly ? "正在只看标记过的" : "只看我标记过的"}
             </Button>
           </Space>
-          <ToolbarCount>共 {filteredReports.length} 份报告，收藏 {favoriteReports.length} 份</ToolbarCount>
+          <ToolbarCount>现在这批里有 {filteredReports.length} 份，已标记 {favoriteReports.length} 份</ToolbarCount>
         </div>
         {filteredReports.length === 0 ? (
           <Empty description={showFavoritesOnly ? "暂无收藏报告" : "暂无报告"} />
