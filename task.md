@@ -2658,3 +2658,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 已执行 `py -3.13 main.py api --host 127.0.0.1 --port 8000 --replace-existing` 后再执行 `cd frontend && npm run test:smoke`
+
+## 报告详情左侧处理展示补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按最小边界总扫报告详情页高级参数区，只处理 `left_side_policy` 这一组值映射，不扩大到其他字段。
+
+### 修改内容
+
+- `frontend/src/components/report-detail-view.tsx`
+  - 将 `both`、`force_exit`、`hold` 的展示值改为“两种处理都跑一遍”“亏到阈值就清仓停手”“先继续拿着，等后面反弹”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮文案收口背景、边界和取舍。
+
+### 设计取舍
+
+- 保留后端字段名和取值 `left_side_policy / both / force_exit / hold` 不变，只调整前端展示文案，避免影响报告快照和接口兼容性。
+- 文案严格对齐当前策略含义：`hold` 表示未平网格继续持有，`force_exit` 表示达到亏损阈值后清仓停手，`both` 表示两种处理都跑一遍再比较，不把风控决策继续留在内部缩写上。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`

@@ -105,9 +105,9 @@ const valueLabels: Record<string, Record<string, string>> = {
     weekly: "每周",
   },
   left_side_policy: {
-    both: "两种都保留",
-    force_exit: "触发阈值后强制离场",
-    hold: "继续持有",
+    both: "两种处理都跑一遍",
+    force_exit: "亏到阈值就清仓停手",
+    hold: "先继续拿着，等后面反弹",
   },
   Benchmark: {
     buy_hold: "买入后一直拿着",
