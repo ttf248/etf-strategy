@@ -687,10 +687,10 @@ export function BacktestsView() {
                             render: (_, row) => (
                               <Space size="small">
                                 <Button size="small" disabled={!["queued", "running"].includes(row.status)} onClick={() => void cancelJob(row.id)}>
-                                  取消
+                                  停掉这次
                                 </Button>
                                 <Button size="small" disabled={row.status !== "failed"} onClick={() => void retryJob(row.id)}>
-                                  重试
+                                  按原再跑
                                 </Button>
                               </Space>
                             ),

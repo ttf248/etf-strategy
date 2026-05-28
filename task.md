@@ -3372,3 +3372,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页完整历史行内动作口径补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理“完整历史”桌面表格里的行内动作文案，把“取消 / 重试”这类后台任务中心按钮收成更贴近“停掉这次 / 按原再跑”的用户操作表达。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将完整历史表格行内动作从“取消 / 重试”改成“停掉这次 / 按原再跑”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不改按钮启用条件、请求逻辑、批量操作或其他列，只调整完整历史表格行内动作这一组文案。
+- 这轮不改摘要横幅、最近任务卡或表格底部说明，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
