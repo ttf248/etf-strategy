@@ -1232,6 +1232,41 @@ a {
   line-height: 20px;
 }
 
+.wizard-template-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.wizard-template-guide-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid rgba(29, 78, 216, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.wizard-template-guide-card span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.wizard-template-guide-card strong {
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.wizard-template-guide-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .wizard-first-run-tags {
   display: flex;
   flex-wrap: wrap;
@@ -1304,10 +1339,71 @@ a {
   margin-top: 0;
 }
 
+.wizard-template-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .submit-reading-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
+}
+
+.wizard-submit-summary-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 16px;
+}
+
+.wizard-submit-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wizard-submit-main strong {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.wizard-submit-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wizard-submit-side-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.wizard-submit-side-card span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.wizard-submit-side-card strong {
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.wizard-submit-side-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .submit-reading-card {
@@ -3105,8 +3201,17 @@ a {
     grid-template-columns: 1fr;
   }
 
+  .wizard-template-action-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .template-recommend-actions,
   .template-mobile-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .wizard-submit-summary-card {
     grid-template-columns: 1fr;
   }
 

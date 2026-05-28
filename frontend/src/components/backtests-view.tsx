@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Button, Card, Collapse, Descriptions, Empty, Form, Input, InputNumber, message, Progress, Select, Space, Steps, Table, Tag, Typography } from "antd";
+import { Button, Card, Collapse, Empty, Form, Input, InputNumber, message, Progress, Select, Space, Steps, Table, Tag, Typography } from "antd";
 import { useEffect, useMemo, useRef, useState, type Key } from "react";
 import Link from "next/link";
 import { apiFetch, type BacktestJob, type MarketDataStats, type StrategyTemplate } from "@/lib/api";
@@ -43,6 +43,106 @@ function buildTemplatePickHint(template: StrategyTemplate | null, strategyKind: 
       template.description?.trim() ||
       `${strategyLabel(strategyKind)} / ${interval} 已有可用模板。建议先直接采用该配置形成结果，再决定是否展开高级参数调整。`,
   };
+}
+
+type GuideCard = {
+  title: string;
+  value: string;
+  description: string;
+};
+
+function buildTemplateChoiceGuides(params: {
+  selectedStrategy: string;
+  selectedInterval: string;
+  selectedTemplate: StrategyTemplate | null;
+  recommendedTemplate: StrategyTemplate | null;
+}): GuideCard[] {
+  const { selectedStrategy, selectedInterval, selectedTemplate, recommendedTemplate } = params;
+  const strategyMeta = strategyGuide[selectedStrategy] ?? {
+    scene: "策略实验",
+    beginnerHint: "按模板说明选择",
+    risk: "先小样本验证",
+  };
+  const activeTemplate = selectedTemplate ?? recommendedTemplate;
+  if (!activeTemplate) {
+    return [
+      {
+        title: "当前状态",
+        value: "暂无可用模板",
+        description: `${strategyLabel(selectedStrategy)} / ${selectedInterval} 当前没有启用模板，建议先切换周期，或去模板页启用一套标准模板。`,
+      },
+      {
+        title: "推荐动作",
+        value: "先保证能跑通",
+        description: "起步阶段不需要先追求最优参数，先拿到一份能正常生成结果的基线报告更重要。",
+      },
+      {
+        title: "风险提醒",
+        value: strategyMeta.risk,
+        description: "即使后续补齐模板，也建议先用小样本验证，再决定是否扩大参数搜索范围。",
+      },
+    ];
+  }
+  return [
+    {
+      title: "当前推荐",
+      value: activeTemplate.template_name,
+      description:
+        selectedTemplate?.id === activeTemplate.id
+          ? "你当前已经选中这套模板。只要它和你的交易假设不冲突，通常不需要继续手动筛选。"
+          : "系统会优先推荐这套模板作为基线配置。若你不手动改，下一步会按这套模板进入提交确认。",
+    },
+    {
+      title: "适合场景",
+      value: strategyMeta.beginnerHint,
+      description: `${strategyMeta.scene}。这一步的目标不是找最复杂的策略，而是先确认这类交易逻辑在当前标的和周期上能否成立。`,
+    },
+    {
+      title: "成本与范围",
+      value: `${executionProfileLabel(activeTemplate.execution_profile)} / ${activeTemplate.jobs} 组参数`,
+      description: "模板会预先带入成交口径和参数搜索范围。只有当费用、仓位或验证方式明显不匹配时，再去改高级参数。",
+    },
+  ];
+}
+
+function buildSubmissionGuides(params: {
+  symbol: string;
+  selectedInterval: string;
+  selectedStrategy: string;
+  selectedTemplate: StrategyTemplate | null;
+  selectedExecutionProfile: string;
+  selectedJobs: number;
+  selectedValidationRatio?: number;
+}): GuideCard[] {
+  const {
+    symbol,
+    selectedInterval,
+    selectedStrategy,
+    selectedTemplate,
+    selectedExecutionProfile,
+    selectedJobs,
+    selectedValidationRatio,
+  } = params;
+  return [
+    {
+      title: "这次会提交什么",
+      value: `${symbol || "-"} / ${selectedInterval} / ${strategyLabel(selectedStrategy)}`,
+      description: `本次会按 ${selectedTemplate?.template_name ?? "未选模板"} 发起任务。提交成功后，系统会保留这次配置快照，方便后续直接重跑。`,
+    },
+    {
+      title: "系统会怎么跑",
+      value: `${executionProfileLabel(selectedExecutionProfile)} / 同时尝试 ${selectedJobs} 组参数`,
+      description:
+        selectedValidationRatio && Number.isFinite(selectedValidationRatio)
+          ? `当前会把最后 ${(selectedValidationRatio * 100).toFixed(0)}% 的样本留作验证区间。平台会按 worker 并发上限与 CPU 预算自动收口，不会无限占满资源。`
+          : "平台会按当前 worker 并发上限与 CPU 预算自动收口，不会无限占满资源。",
+    },
+    {
+      title: "提交后先看什么",
+      value: "阶段、ETA 和资源摘要",
+      description: "提交后无需反复刷新多个页面。下方最近任务会自动更新当前阶段、预计剩余时间和资源占用摘要。",
+    },
+  ];
 }
 
 function buildTemplateFieldValues(template: StrategyTemplate) {
@@ -222,7 +322,11 @@ export function BacktestsView() {
   const templatePresetAppliedRef = useRef(false);
   const selectedStrategy = Form.useWatch("strategy_kind", form) ?? "grid";
   const selectedInterval = Form.useWatch("interval", form) ?? "15m";
+  const selectedSymbol = Form.useWatch("symbol", form) ?? "";
   const selectedTemplateId = Form.useWatch("template_id", form) as number | undefined;
+  const selectedExecutionProfile = Form.useWatch("execution_profile", form) ?? "realistic";
+  const selectedJobsValue = Form.useWatch("jobs", form);
+  const selectedValidationRatioValue = Form.useWatch("validation_ratio", form);
 
   const filteredTemplates = useMemo(
     () => templates.filter((item) => item.is_active && item.strategy_kind === selectedStrategy && item.interval === selectedInterval),
@@ -240,6 +344,49 @@ export function BacktestsView() {
   const templatePickHint = useMemo(
     () => buildTemplatePickHint(recommendedTemplate, selectedStrategy, selectedInterval),
     [recommendedTemplate, selectedInterval, selectedStrategy],
+  );
+  const templateChoiceGuides = useMemo(
+    () =>
+      buildTemplateChoiceGuides({
+        selectedStrategy,
+        selectedInterval,
+        selectedTemplate,
+        recommendedTemplate,
+      }),
+    [recommendedTemplate, selectedInterval, selectedStrategy, selectedTemplate],
+  );
+  const selectedJobs = useMemo(() => {
+    const numeric = Number(selectedJobsValue ?? selectedTemplate?.jobs ?? recommendedTemplate?.jobs ?? 1);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : 1;
+  }, [recommendedTemplate?.jobs, selectedJobsValue, selectedTemplate?.jobs]);
+  const selectedValidationRatio = useMemo(() => {
+    const numeric = Number(selectedValidationRatioValue ?? selectedTemplate?.validation_ratio ?? recommendedTemplate?.validation_ratio ?? NaN);
+    return Number.isFinite(numeric) ? numeric : undefined;
+  }, [
+    recommendedTemplate?.validation_ratio,
+    selectedTemplate?.validation_ratio,
+    selectedValidationRatioValue,
+  ]);
+  const submissionGuides = useMemo(
+    () =>
+      buildSubmissionGuides({
+        symbol: String(selectedSymbol ?? ""),
+        selectedInterval,
+        selectedStrategy,
+        selectedTemplate,
+        selectedExecutionProfile,
+        selectedJobs,
+        selectedValidationRatio,
+      }),
+    [
+      selectedExecutionProfile,
+      selectedInterval,
+      selectedJobs,
+      selectedStrategy,
+      selectedSymbol,
+      selectedTemplate,
+      selectedValidationRatio,
+    ],
   );
   const queryPreset = useMemo(() => {
     const symbol = searchParams.get("symbol")?.trim().toUpperCase();
@@ -531,6 +678,15 @@ export function BacktestsView() {
               <div className="wizard-template-banner">
                 <strong>{templatePickHint.title}</strong>
                 <p>{templatePickHint.description}</p>
+                <div className="wizard-template-guide-grid">
+                  {templateChoiceGuides.map((item) => (
+                    <article key={item.title} className="wizard-template-guide-card">
+                      <span>{item.title}</span>
+                      <strong>{item.value}</strong>
+                      <p>{item.description}</p>
+                    </article>
+                  ))}
+                </div>
               </div>
               <div className="strategy-choice-grid">
                 {strategyOptions.map((item) => {
@@ -575,10 +731,12 @@ export function BacktestsView() {
                 </Form.Item>
               </div>
               {recommendedTemplate ? (
-                <Space direction="vertical" size={8}>
-                  <Typography.Text type="secondary">若不准备手动筛选参数，下一步会自动带入推荐模板。</Typography.Text>
+                <div className="wizard-template-action-row">
+                  <Typography.Text type="secondary">
+                    若不准备手动筛选参数，下一步会自动带入推荐模板。
+                  </Typography.Text>
                   <Button onClick={() => applyTemplate(recommendedTemplate)}>应用推荐模板：{recommendedTemplate.template_name}</Button>
-                </Space>
+                </div>
               ) : (
                 <Typography.Text type="secondary">当前策略与周期暂无可用模板，建议调整周期或先到策略模板页启用模板。</Typography.Text>
               )}
@@ -589,35 +747,44 @@ export function BacktestsView() {
             <div className="wizard-step-panel">
               <Typography.Title level={4}>确认执行配置并提交</Typography.Title>
               <Typography.Paragraph>确认标的、周期、策略与模板无误后即可提交。若无专项需求，高级参数可保持默认。</Typography.Paragraph>
-              <div className="detail-grid">
-                <div className="detail-item"><span className="detail-label">标的</span><span className="detail-value">{form.getFieldValue("symbol") || "-"}</span></div>
-                <div className="detail-item"><span className="detail-label">周期</span><span className="detail-value">{selectedInterval}</span></div>
-                <div className="detail-item"><span className="detail-label">策略</span><span className="detail-value">{strategyLabel(selectedStrategy)}</span></div>
-                <div className="detail-item"><span className="detail-label">模板</span><span className="detail-value">{selectedTemplate?.template_name ?? "未选择模板"}</span></div>
-              </div>
-              <div className="submit-reading-grid">
-                <article className="submit-reading-card">
-                  <span>提交后</span>
-                  <strong>系统会为该配置创建任务</strong>
-                  <p>正常情况下，提交成功后数秒内即可在下方“最近回测任务”看到记录，无需重复提交。</p>
-                </article>
-                <article className="submit-reading-card">
-                  <span>任务跟踪</span>
-                  <strong>优先关注最近一条记录</strong>
-                  <p>若最新任务已完成并生成报告，可直接进入结果页；在结果输出前，无需翻阅完整历史。</p>
-                </article>
-                <article className="submit-reading-card">
-                  <span>何时排障</span>
-                  <strong>仅在异常时进入系统状态</strong>
-                  <p>只有任务长期无进展、连续失败或页面提示异常时，再前往系统状态页排查；平时直接回结果页查看输出更有效。</p>
-                </article>
+              <div className="wizard-submit-summary-card">
+                <div className="wizard-submit-main">
+                  <strong>当前将按这套配置创建任务</strong>
+                  <div className="detail-grid">
+                    <div className="detail-item"><span className="detail-label">标的</span><span className="detail-value">{form.getFieldValue("symbol") || "-"}</span></div>
+                    <div className="detail-item"><span className="detail-label">周期</span><span className="detail-value">{selectedInterval}</span></div>
+                    <div className="detail-item"><span className="detail-label">策略</span><span className="detail-value">{strategyLabel(selectedStrategy)}</span></div>
+                    <div className="detail-item"><span className="detail-label">模板</span><span className="detail-value">{selectedTemplate?.template_name ?? recommendedTemplate?.template_name ?? "未选择模板"}</span></div>
+                  </div>
+                  <div className="submit-reading-grid">
+                    {submissionGuides.map((item) => (
+                      <article key={item.title} className="submit-reading-card">
+                        <span>{item.title}</span>
+                        <strong>{item.value}</strong>
+                        <p>{item.description}</p>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+                <div className="wizard-submit-side">
+                  <div className="wizard-submit-side-card">
+                    <span>默认建议</span>
+                    <strong>先提交基线任务，不要急着展开高级参数</strong>
+                    <p>如果当前模板、费用口径和仓位上限都没有明显问题，先让系统跑出一份结果，再根据收益、回撤和交易节奏做下一步调整。</p>
+                  </div>
+                  <div className="wizard-submit-side-card">
+                    <span>提交后去哪里</span>
+                    <strong>先盯最近任务，再去结果页</strong>
+                    <p>任务开始后，下方会自动更新阶段、ETA 和资源摘要。任务完成并生成报告后，再进入结果页判断结论。</p>
+                  </div>
+                </div>
               </div>
               <Collapse
                 className="advanced-collapse"
                 items={[
                   {
                     key: "advanced",
-                    label: "高级参数，默认可保持不变",
+                    label: "只有费用、仓位或验证口径不匹配时，再改高级参数",
                     children: (
                       <div className="template-form-grid">
                         <Form.Item name="execution_profile" label="成交假设">
@@ -675,21 +842,6 @@ export function BacktestsView() {
           </div>
         </Form>
       </Card>
-
-      {selectedTemplate ? (
-        <Card size="small" title="模板摘要" className="section-card">
-          <Descriptions size="small" column={{ xs: 1, sm: 2, xl: 4 }}>
-            <Descriptions.Item label="模板">{selectedTemplate.template_name}</Descriptions.Item>
-            <Descriptions.Item label="策略">{strategyLabel(selectedTemplate.strategy_kind)}</Descriptions.Item>
-            <Descriptions.Item label="周期">{selectedTemplate.interval}</Descriptions.Item>
-            <Descriptions.Item label="成交假设">{executionProfileLabel(selectedTemplate.execution_profile)}</Descriptions.Item>
-            <Descriptions.Item label="说明">{selectedTemplate.description || "使用模板默认参数"}</Descriptions.Item>
-            <Descriptions.Item label="同时试几组参数">{selectedTemplate.jobs}</Descriptions.Item>
-            <Descriptions.Item label="默认模板">{selectedTemplate.is_default ? "是" : "否"}</Descriptions.Item>
-            <Descriptions.Item label="状态">{selectedTemplate.is_active ? "启用" : "停用"}</Descriptions.Item>
-          </Descriptions>
-        </Card>
-      ) : null}
 
       <Card
         title="最近回测任务"
