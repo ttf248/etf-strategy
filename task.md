@@ -3111,3 +3111,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页等待中状态提示口径补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理最近任务卡 `queued` 状态对应的阅读提示，把“等待开始 / 是否取消”这类后台口吻收成更贴近用户等待任务启动时的自然表达。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将等待中提示从“这次回测还在等待开始，先不用重复提交；等它真正开始后，再决定是否取消。”改成“这轮还没开始跑，先不用重复提交；等它真的开始后，再决定要不要停掉这次。”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不改变任务状态判断逻辑，也不改 `running / failed / cancelled / succeeded` 其他分支，只调整 `queued` 这一条提示文案。
+- 这轮不改卡片标题、主按钮、次级动作或完整历史表格，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`

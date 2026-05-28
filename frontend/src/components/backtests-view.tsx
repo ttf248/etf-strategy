@@ -73,7 +73,7 @@ function buildJobReadingHint(job: BacktestJob) {
     return "这次失败先看错误提示，通常是数据不足、模板不匹配，或参数不适合当前标的。";
   }
   if (job.status === "queued") {
-    return "这次回测还在等待开始，先不用重复提交；等它真正开始后，再决定是否取消。";
+    return "这轮还没开始跑，先不用重复提交；等它真的开始后，再决定要不要停掉这次。";
   }
   if (job.status === "running") {
     return "这轮还在跑，先等结果出来；如果长时间没变化，再去系统状态页排查。";
