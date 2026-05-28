@@ -315,7 +315,7 @@ export function ReportsView() {
       <div className="summary-grid">
         <MetricCard label="现在这批里有" value={filteredReports.length} note="按现在筛选条件算" />
         <MetricCard label="先看赚钱的" value={positiveReports} note="更适合优先细看" />
-        <MetricCard label="你标记过的" value={favoriteReports.length} note="保存在当前浏览器" />
+        <MetricCard label="先留着回看的" value={favoriteReports.length} note="保存在当前浏览器" />
         <MetricCard
           label="这批里最赚钱的"
           value={bestReport ? <FormatPercent value={getValidationMetrics(bestReport).netReturn} /> : "-"}

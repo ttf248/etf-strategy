@@ -3854,3 +3854,30 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 已执行 `cd frontend && npm run test:smoke`
+
+## 报告页收藏卡口径补充
+
+### 状态
+
+已完成：代码修改与本轮验证均已完成，待单独提交。
+
+### 修改方案
+
+继续按报告页局部体验边界优化，只处理首屏统计区里“你标记过的”这张卡，把偏功能状态计数的说法收成更像普通用户在回看候选结果时会直接理解的表达。
+
+### 修改内容
+
+- `frontend/src/components/reports-view.tsx`
+  - 将统计卡标签从“你标记过的”改成“先留着回看的”。
+
+### 设计取舍
+
+- 不改收藏逻辑、卡片数值、其他统计卡、筛选条或下方报告列表，只调整这一张统计卡标签。
+- 这轮不顺手处理右上角汇总文案或“只看我标记过的”筛选按钮，避免扩大提交边界。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 已执行 `cd frontend && npm run test:smoke`
