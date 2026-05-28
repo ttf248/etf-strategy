@@ -22,6 +22,9 @@ from strategy_studio.settings import (
     DAILY_REBOUND_TAKE_PROFITS,
     DAILY_SPACINGS,
     DAILY_TAKE_PROFITS,
+    DAILY_TREND_LONG_WINDOWS,
+    DAILY_TREND_SHORT_WINDOWS,
+    DAILY_TREND_SIGNAL_BUFFERS,
     DCA_DAY_RULES,
     DCA_FREQUENCIES,
     DCA_INVESTMENT_AMOUNTS,
@@ -43,6 +46,7 @@ from strategy_studio.strategy.dca import optimize_dca_parameters, run_dca_backte
 from strategy_studio.strategy.grid import optimize_grid_parameters, run_grid_backtest
 from strategy_studio.strategy.index_grid import run_index_grid_backtest
 from strategy_studio.strategy.rebound import optimize_rebound_parameters, run_rebound_backtest
+from strategy_studio.strategy.trend import optimize_ma_cross_parameters, run_ma_cross_backtest
 
 
 ParameterKind = str
@@ -171,6 +175,14 @@ def _dca_parameter_space(interval: str) -> dict[str, object]:
     }
 
 
+def _ma_cross_parameter_space(interval: str) -> dict[str, object]:
+    return {
+        "short_window": [int(item) for item in DAILY_TREND_SHORT_WINDOWS],
+        "long_window": [int(item) for item in DAILY_TREND_LONG_WINDOWS],
+        "signal_buffer_pct": [float(item) for item in DAILY_TREND_SIGNAL_BUFFERS],
+    }
+
+
 def _empty_parameter_space(interval: str) -> dict[str, object]:
     return {}
 
@@ -270,6 +282,22 @@ def _extract_dca_params(summary: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _optimize_ma_cross(**kwargs: object) -> tuple[pd.DataFrame, dict[str, object]]:
+    return optimize_ma_cross_parameters(**kwargs)
+
+
+def _run_ma_cross_once(params: dict[str, object], **kwargs: object) -> dict[str, object]:
+    return run_ma_cross_backtest(params=params, **kwargs)
+
+
+def _extract_ma_cross_params(summary: dict[str, object]) -> dict[str, object]:
+    return {
+        "short_window": int(summary["short_window"]),
+        "long_window": int(summary["long_window"]),
+        "signal_buffer_pct": float(summary["signal_buffer_pct"]),
+    }
+
+
 STRATEGY_SPECS: dict[str, StrategySpec] = {
     "grid": StrategySpec(
         kind="grid",
@@ -301,6 +329,21 @@ STRATEGY_SPECS: dict[str, StrategySpec] = {
         optimize=_optimize_dca,
         run_once=_run_dca_once,
         extract_params=_extract_dca_params,
+    ),
+    "ma_cross": StrategySpec(
+        kind="ma_cross",
+        display_name="双均线趋势",
+        signal_family="trend",
+        supported_intervals=("1d",),
+        parameter_fields=(
+            ParameterFieldSpec("short_window", "短均线窗口", "int"),
+            ParameterFieldSpec("long_window", "长均线窗口", "int"),
+            ParameterFieldSpec("signal_buffer_pct", "信号缓冲比例", "float"),
+        ),
+        default_parameter_space=_ma_cross_parameter_space,
+        optimize=_optimize_ma_cross,
+        run_once=_run_ma_cross_once,
+        extract_params=_extract_ma_cross_params,
     ),
     "daily_rebound": StrategySpec(
         kind="daily_rebound",
@@ -390,5 +433,5 @@ def strategy_display_name(strategy_kind: str) -> str:
 
 def compare_strategy_kinds(interval: str) -> list[str]:
     if interval == "1d":
-        return ["grid", "dca", "daily_rebound"]
+        return ["grid", "dca", "ma_cross", "daily_rebound"]
     return ["grid", "minute_rebound", "minute_rebound_with_fade_filter"]

@@ -300,6 +300,26 @@ class StrategyTemplateServiceTests(unittest.TestCase):
             },
         )
 
+    def test_normalize_parameter_space_for_ma_cross(self) -> None:
+        payload = normalize_parameter_space(
+            "ma_cross",
+            {
+                "short_window": [5, "10"],
+                "long_window": [20, "30"],
+                "signal_buffer_pct": [0, "0.005"],
+            },
+            "1d",
+        )
+
+        self.assertEqual(
+            payload,
+            {
+                "short_window": [5, 10],
+                "long_window": [20, 30],
+                "signal_buffer_pct": [0.0, 0.005],
+            },
+        )
+
     def test_resolve_backtest_request_payload_merges_template_defaults(self) -> None:
         template = SimpleNamespace(
             id=7,
@@ -353,6 +373,7 @@ class StrategyTemplateServiceTests(unittest.TestCase):
         seeds = build_seed_templates()
         keys = [item.template_key for item in seeds]
         self.assertEqual(len(keys), len(set(keys)))
+        self.assertIn("ma_cross_1d_realistic_default", keys)
 
 
 if __name__ == "__main__":

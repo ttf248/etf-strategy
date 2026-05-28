@@ -19,6 +19,7 @@ LeftSidePolicy = Literal["hold", "force_exit", "both"]
 StrategyKind = Literal[
     "grid",
     "dca",
+    "ma_cross",
     "daily_rebound",
     "minute_rebound",
     "minute_rebound_with_fade_filter",
@@ -61,6 +62,10 @@ DCA_INVESTMENT_AMOUNTS = (5000.0, 10000.0)
 DCA_FREQUENCIES = ("weekly", "monthly")
 DCA_DAY_RULES = ("first_trading_day",)
 DCA_MAX_POSITION_RATIOS = (0.95,)
+
+DAILY_TREND_SHORT_WINDOWS = (5, 10, 20)
+DAILY_TREND_LONG_WINDOWS = (20, 30, 60)
+DAILY_TREND_SIGNAL_BUFFERS = (0.0, 0.002, 0.005)
 
 
 @dataclass(frozen=True)

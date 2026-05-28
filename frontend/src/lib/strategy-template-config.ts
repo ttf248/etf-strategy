@@ -3,6 +3,7 @@ export const intervalOptions = ["1d", "15m", "1m"].map((item) => ({ label: item,
 export const strategyOptions = [
   { label: "网格", value: "grid" },
   { label: "定投", value: "dca" },
+  { label: "双均线趋势", value: "ma_cross" },
   { label: "日线超跌反弹", value: "daily_rebound" },
   { label: "分钟急跌反抽", value: "minute_rebound" },
   { label: "分钟反抽+冲高回落过滤", value: "minute_rebound_with_fade_filter" },
@@ -32,6 +33,11 @@ const strategyDefaults: Record<string, Record<string, number[]>> = {
   dca: {
     investment_amount: [5000, 10000],
     max_position_ratio: [0.95],
+  },
+  ma_cross: {
+    short_window: [5, 10, 20],
+    long_window: [20, 30, 60],
+    signal_buffer_pct: [0, 0.002, 0.005],
   },
   daily_rebound: {
     rsi_window: [6, 8, 10, 14],
@@ -81,6 +87,11 @@ export const parameterFieldSpecsByStrategy: Record<string, ParameterFieldSpec[]>
     { key: "frequency", label: "定投频率", kind: "string" },
     { key: "day_rule", label: "触发日规则", kind: "string" },
     { key: "max_position_ratio", label: "最大仓位", kind: "float" },
+  ],
+  ma_cross: [
+    { key: "short_window", label: "短均线窗口", kind: "int" },
+    { key: "long_window", label: "长均线窗口", kind: "int" },
+    { key: "signal_buffer_pct", label: "信号缓冲比例", kind: "float" },
   ],
   daily_rebound: [
     { key: "rsi_window", label: "RSI 窗口", kind: "int" },

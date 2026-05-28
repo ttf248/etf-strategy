@@ -38,6 +38,7 @@ const baseParameterLabels: Record<string, string> = {
   left_side_policy: "行情先走弱时怎么处理",
   lookback_days: "回看多少天历史",
   LotSize: "每次最少按多少份交易",
+  LongWindow: "长均线窗口",
   Market: "在哪个市场交易",
   max_position_ratio: "最大仓位",
   NetPnl: "单独验证盈亏",
@@ -50,6 +51,9 @@ const baseParameterLabels: Record<string, string> = {
   slippage_bps: "滑点假设",
   StartDate: "开始时间",
   stop_loss_pct: "停手跌幅",
+  ShortWindow: "短均线窗口",
+  signal_buffer_pct: "信号缓冲比例",
+  SignalBufferPct: "信号缓冲比例",
   Symbol: "标的代码",
   template_id: "模板编号",
   total_capital: "初始资金",
@@ -62,9 +66,12 @@ const eventTypeLabels: Record<string, string> = {
   dca_skip: "定投跳过",
   force_exit_sell: "强制离场卖出",
   grid_sell: "网格止盈卖出",
+  ma_cross_buy: "均线金叉买入",
+  ma_cross_sell: "均线死叉卖出",
   risk_cooldown: "冷却期跳过",
   risk_position_limit: "仓位上限拦截",
   risk_stop_loss: "触发停手线",
+  stop_loss_sell: "止损卖出",
 };
 
 const payloadFieldLabels: Record<string, string> = {
@@ -89,6 +96,7 @@ const tradeTypeLabels: Record<string, string> = {
   force_exit_sell: "强制离场",
   grid: "网格交易",
   grid_sell: "网格止盈",
+  ma_cross: "双均线趋势",
 };
 
 const valueLabels: Record<string, Record<string, string>> = {
@@ -454,6 +462,9 @@ function strategyBeginnerSummary(strategyKind: string, interval: string): string
   if (strategyKind === "dca") {
     return "用固定节奏慢慢买入，更适合长期积累和低频复盘。";
   }
+  if (strategyKind === "ma_cross") {
+    return "用短长均线的金叉和死叉跟随中期趋势，适合先判断这只标的更像趋势市还是震荡市。";
+  }
   if (strategyKind === "daily_rebound") {
     return "专门找日线级别的超跌反弹，适合慢节奏观察阶段性拐点。";
   }
@@ -471,6 +482,9 @@ function strategyBeginnerSummary(strategyKind: string, interval: string): string
 function rerunFocusGuide(strategyKind: string): string {
   if (strategyKind === "dca") {
     return "优先改定投频率、每期金额和最大仓位。";
+  }
+  if (strategyKind === "ma_cross") {
+    return "优先改短长均线窗口，以及金叉确认时的信号缓冲比例。";
   }
   if (strategyKind === "daily_rebound") {
     return "优先改入场阈值、止盈止损和最长持有时间。";

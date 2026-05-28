@@ -6,6 +6,7 @@
 
 - `grid`：固定股数现金网格。
 - `dca`：日线固定周期定投，按每个周期第一个交易日投入固定金额。
+- `ma_cross`：日线双均线趋势跟随，短均线上穿长均线买入、下穿卖出。
 - `daily_rebound`：日线超跌反弹。
 - `minute_rebound`：分钟急跌反抽。
 - `minute_rebound_with_fade_filter`：分钟反抽加冲高回落过滤。

@@ -21,6 +21,7 @@ from strategy_studio.strategy.grid import (
 from strategy_studio.strategy.dca import run_dca_backtest
 from strategy_studio.strategy.index_grid import resolve_index_grid_spec, run_index_grid_backtest
 from strategy_studio.strategy.rebound import run_rebound_backtest
+from strategy_studio.strategy.trend import run_ma_cross_backtest
 
 
 def build_test_frame(close_prices: list[float], start: str = "2025-09-01") -> pd.DataFrame:
@@ -638,6 +639,50 @@ class GridStrategyTests(unittest.TestCase):
         self.assertFalse(trades.empty)
         self.assertTrue((trades["Size"] < 0).all())
         self.assertTrue((events[events["EventType"] == "dca_buy"]["Units"] % 200 == 0).all())
+
+    def test_run_ma_cross_backtest_generates_cross_buy_and_sell(self) -> None:
+        prices = [10.0, 9.0, 8.0, 9.0, 10.0, 11.0, 10.0, 9.0]
+        frame = build_test_frame(prices, start="2025-02-03")
+
+        result = run_ma_cross_backtest(
+            data=frame,
+            scenario_name="ma_cross_unit_test",
+            symbol="1810.HK",
+            market="HK",
+            lot_size=200,
+            lot_size_source="unit test",
+            params={
+                "short_window": 2,
+                "long_window": 3,
+                "signal_buffer_pct": 0.0,
+            },
+            execution_config=build_execution_config(
+                "research",
+                commission_bps=0,
+                slippage_bps=0,
+                max_position_ratio=0.8,
+                stop_loss_pct=0.0,
+                cooldown_bars=0,
+            ),
+        )
+
+        summary = result["summary"]
+        events = result["events"]
+        trades = result["trades"]
+
+        self.assertEqual(summary["StrategyKind"], "ma_cross")
+        self.assertEqual(summary["StrategyName"], "双均线趋势")
+        self.assertTrue(summary["TriggeredEntry"])
+        self.assertEqual(summary["CrossEntryEvents"], 1)
+        self.assertEqual(summary["CrossExitEvents"], 1)
+        self.assertEqual(summary["PositionUnits"], 0)
+        self.assertNotIn("BaseOnlyUnits", summary)
+        self.assertNotIn("GridVsBaseOnly", summary)
+        self.assertFalse(trades.empty)
+        self.assertIn("ma_cross", set(trades["Tag"]))
+        self.assertIn("ma_cross_buy", set(events["EventType"]))
+        self.assertIn("ma_cross_sell", set(events["EventType"]))
+        self.assertTrue((events[events["EventType"] == "ma_cross_buy"]["Units"] % 200 == 0).all())
 
     def test_run_minute_rebound_fade_filter_blocks_entry(self) -> None:
         dates = pd.date_range(start="2026-04-01 09:30:00", periods=8, freq="15min")
