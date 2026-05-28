@@ -678,7 +678,7 @@ export function BacktestsView() {
                           { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <StatusTag value={value} /> },
                           { title: "进度", dataIndex: "progress_pct", width: 90, render: (value: number) => `${value.toFixed(0)}%` },
                           { title: "什么时候提交", dataIndex: "submitted_at", width: 180 },
-                          { title: "完成时间", dataIndex: "completed_at", width: 180 },
+                          { title: "什么时候结束", dataIndex: "completed_at", width: 180 },
                           { title: "没跑成原因", dataIndex: "error_message", ellipsis: true },
                           {
                             title: "现在可做",
