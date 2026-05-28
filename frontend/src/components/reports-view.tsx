@@ -486,19 +486,19 @@ export function ReportsView() {
                       <span>回撤 {maxDrawdown.toFixed(2)}%</span>
                       <span>交易 {closedTrades}</span>
                     </div>
+                    <Button type="primary" block>
+                      <Link href={`/reports/${report.id}`}>先打开细看</Link>
+                    </Button>
                     <div className="report-mobile-actions">
-                      <Button block icon={isFavorite ? <StarFilled /> : <StarOutlined />} onClick={() => toggleFavorite(report.id)}>
-                        {isFavorite ? "取消收藏" : "收藏报告"}
-                      </Button>
                       <Button block onClick={() => toggleCompare(report.id)}>
-                        {isCompared ? "已加入对比" : "加入对比"}
+                        {isCompared ? "已放进对比" : "先放进对比"}
+                      </Button>
+                      <Button block icon={isFavorite ? <StarFilled /> : <StarOutlined />} onClick={() => toggleFavorite(report.id)}>
+                        {isFavorite ? "取消标记" : "先标记起来"}
                       </Button>
                     </div>
-                    <Button type="primary" block>
-                      <Link href={`/reports/${report.id}`}>打开报告详情</Link>
-                    </Button>
                     <Button block>
-                      <Link href={buildRerunHref(report)}>按此配置重跑</Link>
+                      <Link href={buildRerunHref(report)}>看完后按此配置重跑</Link>
                     </Button>
                   </article>
                 );

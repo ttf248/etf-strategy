@@ -2845,3 +2845,35 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 报告卡动作顺序补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按报告列表页局部体验边界优化，只处理报告卡片动作区的默认顺序，把“先打开细看”提到最前，避免收藏、对比和重跑先把用户拉进操作心智。
+
+### 修改内容
+
+- `frontend/src/components/reports-view.tsx`
+  - 将主按钮从“打开报告详情”改为“先打开细看”，并上移到动作区最前。
+  - 将对比按钮改成“先放进对比 / 已放进对比”。
+  - 将收藏按钮改成“先标记起来 / 取消标记”。
+  - 将重跑按钮改成“看完后按此配置重跑”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不删除对比、收藏或重跑能力，只调整动作顺序和文案，让卡片默认先服务“打开读懂一份结果”。
+- 这轮不改报告卡内容结构、排序逻辑或对比区，只处理动作区这一组按钮层级，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
