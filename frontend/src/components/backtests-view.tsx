@@ -579,7 +579,7 @@ export function BacktestsView() {
               <div className="job-summary-actions">
                 {latestSucceededJob?.reports?.[0]?.id ? (
                   <Button type="primary">
-                    <Link href={`/reports/${latestSucceededJob.reports[0].id}`}>打开最近成功报告</Link>
+                    <Link href={`/reports/${latestSucceededJob.reports[0].id}`}>先看最新跑成这份</Link>
                   </Button>
                 ) : null}
                 <Button>

@@ -3227,3 +3227,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页最近任务摘要主动作口径补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理“最近回测任务”摘要横幅里的主动作文案，把“打开最近成功报告”这种页面跳转口吻收成更像“先去看最新跑成的结果”。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将摘要横幅主按钮从“打开最近成功报告”改成“先看最新跑成这份”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不删除直达最近成功报告的主按钮，也不改次按钮“去看报告列表”、任务摘要统计或最近任务卡，只调整这一处主动作文案。
+- 这轮不改空态、状态提示或完整历史入口，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
