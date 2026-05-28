@@ -33,7 +33,7 @@ npm run build
 PostgreSQL 默认连接：
 
 ```text
-postgresql+psycopg://postgres:tian@localhost:5432/etf_strategy
+postgresql+psycopg://postgres:tian@localhost:5432/strategy_studio
 ```
 
 生产环境建议通过环境变量覆盖默认值，不要依赖本地默认密码。
@@ -42,15 +42,15 @@ postgresql+psycopg://postgres:tian@localhost:5432/etf_strategy
 
 常用环境变量：
 
-- `ETF_STRATEGY_DATABASE_URL`：平台数据库连接串。
-- `ETF_STRATEGY_ADMIN_DATABASE`：初始化数据库时连接的管理员库，默认 `postgres`。
-- `ETF_STRATEGY_API_HOST`：API 默认监听地址。
-- `ETF_STRATEGY_API_PORT`：API 默认监听端口。
-- `ETF_STRATEGY_FRONTEND_HOST`：前端默认主机。
-- `ETF_STRATEGY_FRONTEND_PORT`：前端默认端口。
-- `ETF_STRATEGY_PLATFORM_OUTPUT_DIR`：平台中间产物目录。
-- `ETF_STRATEGY_PLATFORM_REPORT_DIR`：平台报告导出目录。
-- `ETF_STRATEGY_PROXY`：访问 Yahoo 时使用的代理。
+- `STRATEGY_STUDIO_DATABASE_URL`：平台数据库连接串。
+- `STRATEGY_STUDIO_ADMIN_DATABASE`：初始化数据库时连接的管理员库，默认 `postgres`。
+- `STRATEGY_STUDIO_API_HOST`：API 默认监听地址。
+- `STRATEGY_STUDIO_API_PORT`：API 默认监听端口。
+- `STRATEGY_STUDIO_FRONTEND_HOST`：前端默认主机。
+- `STRATEGY_STUDIO_FRONTEND_PORT`：前端默认端口。
+- `STRATEGY_STUDIO_PLATFORM_OUTPUT_DIR`：平台中间产物目录。
+- `STRATEGY_STUDIO_PLATFORM_REPORT_DIR`：平台报告导出目录。
+- `STRATEGY_STUDIO_PROXY`：访问 Yahoo 时使用的代理。
 - `NEXT_PUBLIC_API_BASE_URL`：前端访问 API 的基础地址。
 
 ## 初始化数据库
@@ -85,8 +85,8 @@ py -3.13 main.py scheduler
 如果 Yahoo 访问需要代理：
 
 ```powershell
-$env:ETF_STRATEGY_PROXY="http://127.0.0.1:7897"
-py -3.13 main.py scheduler --proxy $env:ETF_STRATEGY_PROXY
+$env:STRATEGY_STUDIO_PROXY="http://127.0.0.1:7897"
+py -3.13 main.py scheduler --proxy $env:STRATEGY_STUDIO_PROXY
 ```
 
 ## 启动前端

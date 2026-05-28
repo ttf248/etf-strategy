@@ -5,14 +5,14 @@ from unittest.mock import Mock, patch
 
 import pandas as pd
 
-from etf_strategy.data.southbound import (
+from strategy_studio.data.southbound import (
     build_southbound_source_label,
     fetch_southbound_shanghai_eligible_rows,
     load_southbound_shanghai_snapshot,
     normalize_southbound_symbol,
     refresh_southbound_shanghai_snapshot,
 )
-from etf_strategy.data.yahoo import DEFAULT_DAILY_PERIOD, download_price_bars, merge_price_bars, save_price_bars
+from strategy_studio.data.yahoo import DEFAULT_DAILY_PERIOD, download_price_bars, merge_price_bars, save_price_bars
 
 
 class YahooDataTests(unittest.TestCase):
@@ -100,7 +100,7 @@ class YahooDataTests(unittest.TestCase):
                 }
             )
 
-        with patch("etf_strategy.data.yahoo._load_from_yfinance", side_effect=fake_loader):
+        with patch("strategy_studio.data.yahoo._load_from_yfinance", side_effect=fake_loader):
             frame = download_price_bars(symbol="1810.HK", interval="1d", proxy="http://127.0.0.1:7897")
 
         self.assertEqual(captured["proxy"], "http://127.0.0.1:7897")
@@ -114,7 +114,7 @@ class YahooDataTests(unittest.TestCase):
             download_price_bars(symbol="1810.HK", interval="15m", period="60d")
 
     def test_download_price_bars_stops_when_yahoo_fails(self) -> None:
-        with patch("etf_strategy.data.yahoo._load_from_yfinance", side_effect=RuntimeError("rate limited")):
+        with patch("strategy_studio.data.yahoo._load_from_yfinance", side_effect=RuntimeError("rate limited")):
             with self.assertRaisesRegex(ValueError, "Yahoo 行情下载失败"):
                 download_price_bars(
                     symbol="1810.HK",
@@ -123,7 +123,7 @@ class YahooDataTests(unittest.TestCase):
                     proxy="http://127.0.0.1:7897",
                 )
 
-    @patch("etf_strategy.data.southbound.requests.get")
+    @patch("strategy_studio.data.southbound.requests.get")
     def test_fetch_southbound_shanghai_eligible_rows_parses_official_jsonp(self, mock_get: Mock) -> None:
         mock_response = Mock()
         mock_response.raise_for_status.return_value = None
@@ -143,7 +143,7 @@ class YahooDataTests(unittest.TestCase):
         self.assertEqual(normalize_southbound_symbol(rows[0]["SecurityCode"]), "0001.HK")
         self.assertEqual(normalize_southbound_symbol(rows[1]["SecurityCode"]), "2800.HK")
 
-    @patch("etf_strategy.data.southbound.requests.get")
+    @patch("strategy_studio.data.southbound.requests.get")
     def test_refresh_and_load_southbound_shanghai_snapshot(self, mock_get: Mock) -> None:
         mock_response = Mock()
         mock_response.raise_for_status.return_value = None

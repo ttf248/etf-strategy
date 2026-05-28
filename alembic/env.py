@@ -5,8 +5,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from etf_strategy.db.base import Base
-from etf_strategy.db import models  # noqa: F401
+from strategy_studio.db.base import Base
+from strategy_studio.db import models  # noqa: F401
 
 
 config = context.config

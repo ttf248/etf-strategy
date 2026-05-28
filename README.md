@@ -1,6 +1,6 @@
-# ETF Strategy
+# Strategy Studio
 
-ETF Strategy 是一个中文优先的开源策略研究平台，用于从 Yahoo Finance 获取行情、长期存储 K 线、提交异步回测任务，并在 Web 前端按新手流程创建回测、查看报告和准备数据。
+Strategy Studio 是一个中文优先的开源策略研究平台，用于从 Yahoo Finance 获取行情、长期存储 K 线、提交异步回测任务，并在 Web 前端按新手流程创建回测、查看报告和准备数据。
 
 当前架构由 Python 研究引擎、FastAPI 后端、PostgreSQL、Worker、Scheduler 和 Next.js 前端组成。CLI 仍然保留，用于离线研究、批量回测、CSV 导入和运维命令。
 
@@ -56,7 +56,7 @@ npm install
 默认数据库连接为：
 
 ```text
-postgresql+psycopg://postgres:tian@localhost:5432/etf_strategy
+postgresql+psycopg://postgres:tian@localhost:5432/strategy_studio
 ```
 
 初始化并导入本地样例行情：
@@ -66,7 +66,7 @@ py -3.13 main.py init-db
 py -3.13 main.py import-csv --source-dir data/processed
 ```
 
-生产环境请通过 `ETF_STRATEGY_DATABASE_URL` 覆盖默认连接。
+生产环境请通过 `STRATEGY_STUDIO_DATABASE_URL` 覆盖默认连接。
 
 ### 3. 启动平台
 
@@ -133,7 +133,7 @@ py -3.13 main.py batch --symbol-set southbound_shanghai_all --interval 15m --loc
 ## 项目结构
 
 ```text
-etf_strategy/    Python 后端、策略、数据、服务和运行时
+strategy_studio/    Python 后端、策略、数据、服务和运行时
 frontend/        Next.js 前端控制台
 alembic/         PostgreSQL 迁移
 data/            样例输入和参考数据
@@ -160,14 +160,14 @@ tests/           unittest 测试
 
 常用环境变量：
 
-- `ETF_STRATEGY_DATABASE_URL`
-- `ETF_STRATEGY_ADMIN_DATABASE`
-- `ETF_STRATEGY_API_HOST`
-- `ETF_STRATEGY_API_PORT`
-- `ETF_STRATEGY_PLATFORM_OUTPUT_DIR`
-- `ETF_STRATEGY_PLATFORM_REPORT_DIR`
-- `ETF_STRATEGY_PROXY`
-- `ETF_STRATEGY_ENABLE_PROCESS_CONTROL`
+- `STRATEGY_STUDIO_DATABASE_URL`
+- `STRATEGY_STUDIO_ADMIN_DATABASE`
+- `STRATEGY_STUDIO_API_HOST`
+- `STRATEGY_STUDIO_API_PORT`
+- `STRATEGY_STUDIO_PLATFORM_OUTPUT_DIR`
+- `STRATEGY_STUDIO_PLATFORM_REPORT_DIR`
+- `STRATEGY_STUDIO_PROXY`
+- `STRATEGY_STUDIO_ENABLE_PROCESS_CONTROL`
 - `NEXT_PUBLIC_API_BASE_URL`
 
 更多部署细节见 [部署指南](doc/deployment.md)。

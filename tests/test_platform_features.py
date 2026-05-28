@@ -6,12 +6,12 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from etf_strategy.cli import build_parser
-from etf_strategy.platform_cli import handle_api
-from etf_strategy.services.market_data import infer_interval_from_data_path
-from etf_strategy.services.platform import record_platform_heartbeat
-from etf_strategy.services.templates import build_seed_templates, normalize_parameter_space, resolve_backtest_request_payload
-from etf_strategy.web.app import create_app
+from strategy_studio.cli import build_parser
+from strategy_studio.platform_cli import handle_api
+from strategy_studio.services.market_data import infer_interval_from_data_path
+from strategy_studio.services.platform import record_platform_heartbeat
+from strategy_studio.services.templates import build_seed_templates, normalize_parameter_space, resolve_backtest_request_payload
+from strategy_studio.web.app import create_app
 
 
 class PlatformFeatureTests(unittest.TestCase):
@@ -43,7 +43,7 @@ class PlatformFeatureTests(unittest.TestCase):
         app = create_app()
         client = TestClient(app)
 
-        with patch("etf_strategy.web.app.fetch_market_data_stats", return_value={"instrument_count": 2, "total_bars": 10, "by_interval": [], "coverages": [], "recent_sync_runs": []}):
+        with patch("strategy_studio.web.app.fetch_market_data_stats", return_value={"instrument_count": 2, "total_bars": 10, "by_interval": [], "coverages": [], "recent_sync_runs": []}):
             health_response = client.get("/health")
             stats_response = client.get("/api/market-data/stats")
 
@@ -58,7 +58,7 @@ class PlatformFeatureTests(unittest.TestCase):
         status_payload = {
             "api": {"status": "ok", "host": "127.0.0.1", "port": 8000, "base_url": "http://127.0.0.1:8000"},
             "frontend": {"status": "ok", "host": "127.0.0.1", "port": 3000, "base_url": "http://127.0.0.1:3000"},
-            "database": {"status": "ok", "url": "postgresql+psycopg://postgres:***@localhost:5432/etf_strategy"},
+            "database": {"status": "ok", "url": "postgresql+psycopg://postgres:***@localhost:5432/strategy_studio"},
             "heartbeats": [],
             "queue": {"queued": 0, "running": 0, "succeeded": 1, "failed": 0},
             "process_control_enabled": False,
@@ -66,9 +66,9 @@ class PlatformFeatureTests(unittest.TestCase):
         }
 
         with (
-            patch("etf_strategy.web.app.fetch_platform_status", return_value=status_payload) as mock_status,
-            patch("etf_strategy.web.app.fetch_platform_processes", return_value=[{"pid": 1, "service_name": "api"}]) as mock_processes,
-            patch("etf_strategy.web.app.fetch_platform_logs", return_value={"service": "api", "lines": ["api started"]}) as mock_logs,
+            patch("strategy_studio.web.app.fetch_platform_status", return_value=status_payload) as mock_status,
+            patch("strategy_studio.web.app.fetch_platform_processes", return_value=[{"pid": 1, "service_name": "api"}]) as mock_processes,
+            patch("strategy_studio.web.app.fetch_platform_logs", return_value={"service": "api", "lines": ["api started"]}) as mock_logs,
         ):
             status_response = client.get("/api/platform/status")
             processes_response = client.get("/api/platform/processes")
@@ -87,10 +87,10 @@ class PlatformFeatureTests(unittest.TestCase):
     def test_heartbeat_missing_table_does_not_break_runtime_loop(self) -> None:
         missing_table_error = Exception("psycopg.errors.UndefinedTable: relation platform_heartbeats does not exist")
 
-        with patch("etf_strategy.services.platform.open_session", side_effect=missing_table_error):
+        with patch("strategy_studio.services.platform.open_session", side_effect=missing_table_error):
             self.assertFalse(record_platform_heartbeat("worker"))
 
-        with patch("etf_strategy.services.platform.open_session", side_effect=RuntimeError("database is offline")):
+        with patch("strategy_studio.services.platform.open_session", side_effect=RuntimeError("database is offline")):
             with self.assertRaisesRegex(RuntimeError, "database is offline"):
                 record_platform_heartbeat("worker")
 
@@ -99,9 +99,9 @@ class PlatformFeatureTests(unittest.TestCase):
         client = TestClient(app)
 
         with (
-            patch("etf_strategy.web.app.cancel_backtest", return_value={"job_id": 7, "status": "cancel_requested", "changed": True}) as mock_cancel,
-            patch("etf_strategy.web.app.bulk_cancel_backtests", return_value={"results": []}) as mock_bulk_cancel,
-            patch("etf_strategy.web.app.bulk_retry_backtests", return_value={"results": []}) as mock_bulk_retry,
+            patch("strategy_studio.web.app.cancel_backtest", return_value={"job_id": 7, "status": "cancel_requested", "changed": True}) as mock_cancel,
+            patch("strategy_studio.web.app.bulk_cancel_backtests", return_value={"results": []}) as mock_bulk_cancel,
+            patch("strategy_studio.web.app.bulk_retry_backtests", return_value={"results": []}) as mock_bulk_retry,
         ):
             cancel_response = client.post("/api/backtests/7/cancel")
             bulk_cancel_response = client.post("/api/backtests/bulk-cancel", json={"job_ids": [1, 2]})
@@ -139,9 +139,9 @@ class PlatformFeatureTests(unittest.TestCase):
         }
 
         with (
-            patch("etf_strategy.web.app.list_strategy_templates", return_value=[template_payload]) as mock_list,
-            patch("etf_strategy.web.app.create_strategy_template_entry", return_value=template_payload) as mock_create,
-            patch("etf_strategy.web.app.update_strategy_template_entry", return_value={**template_payload, "template_name": "已更新模板"}) as mock_update,
+            patch("strategy_studio.web.app.list_strategy_templates", return_value=[template_payload]) as mock_list,
+            patch("strategy_studio.web.app.create_strategy_template_entry", return_value=template_payload) as mock_create,
+            patch("strategy_studio.web.app.update_strategy_template_entry", return_value={**template_payload, "template_name": "已更新模板"}) as mock_update,
         ):
             list_response = client.get("/api/templates?active_only=true")
             create_response = client.post(
@@ -172,13 +172,13 @@ class PlatformFeatureTests(unittest.TestCase):
         def fake_import(module_name: str):
             if module_name == "uvicorn":
                 raise ModuleNotFoundError("No module named 'uvicorn'", name="uvicorn")
-            if module_name == "etf_strategy.db.settings":
+            if module_name == "strategy_studio.db.settings":
                 return SimpleNamespace(load_platform_settings=lambda: SimpleNamespace(api_host="127.0.0.1", api_port=8000))
-            if module_name == "etf_strategy.web.app":
+            if module_name == "strategy_studio.web.app":
                 return SimpleNamespace(create_app=lambda: object())
             raise AssertionError(f"unexpected import: {module_name}")
 
-        with patch("etf_strategy.platform_cli.importlib.import_module", side_effect=fake_import):
+        with patch("strategy_studio.platform_cli.importlib.import_module", side_effect=fake_import):
             with self.assertRaisesRegex(RuntimeError, "python -m pip install -r requirements.txt"):
                 handle_api(args)
 
@@ -188,17 +188,17 @@ class PlatformFeatureTests(unittest.TestCase):
         def fake_import(module_name: str, command_name: str):
             if module_name == "uvicorn":
                 return SimpleNamespace(run=lambda *args, **kwargs: self.fail("端口已占用时不应继续启动 uvicorn"))
-            if module_name == "etf_strategy.db.settings":
+            if module_name == "strategy_studio.db.settings":
                 return SimpleNamespace(load_platform_settings=lambda: SimpleNamespace(api_host="127.0.0.1", api_port=8000))
-            if module_name == "etf_strategy.web.app":
+            if module_name == "strategy_studio.web.app":
                 return SimpleNamespace(create_app=lambda: object())
             raise AssertionError(f"unexpected import: {module_name} ({command_name})")
 
         with (
-            patch("etf_strategy.platform_cli._import_platform_module", side_effect=fake_import),
-            patch("etf_strategy.platform_cli._is_tcp_port_in_use", return_value=True),
-            patch("etf_strategy.platform_cli._probe_existing_platform_api", return_value=True),
-            patch("etf_strategy.platform_cli._describe_windows_listener", return_value="PID=29876 进程名=python.exe"),
+            patch("strategy_studio.platform_cli._import_platform_module", side_effect=fake_import),
+            patch("strategy_studio.platform_cli._is_tcp_port_in_use", return_value=True),
+            patch("strategy_studio.platform_cli._probe_existing_platform_api", return_value=True),
+            patch("strategy_studio.platform_cli._describe_windows_listener", return_value="PID=29876 进程名=python.exe"),
         ):
             with self.assertRaisesRegex(RuntimeError, "已经有本项目 API 在运行"):
                 handle_api(args)
@@ -210,16 +210,16 @@ class PlatformFeatureTests(unittest.TestCase):
         def fake_import(module_name: str, command_name: str):
             if module_name == "uvicorn":
                 return SimpleNamespace(run=lambda *args, **kwargs: run_calls.append(kwargs))
-            if module_name == "etf_strategy.db.settings":
+            if module_name == "strategy_studio.db.settings":
                 return SimpleNamespace(load_platform_settings=lambda: SimpleNamespace(api_host="127.0.0.1", api_port=8000))
-            if module_name == "etf_strategy.web.app":
+            if module_name == "strategy_studio.web.app":
                 return SimpleNamespace(create_app=lambda: object())
             raise AssertionError(f"unexpected import: {module_name} ({command_name})")
 
         with (
-            patch("etf_strategy.platform_cli._import_platform_module", side_effect=fake_import),
-            patch("etf_strategy.platform_cli._is_tcp_port_in_use", return_value=True),
-            patch("etf_strategy.platform_cli._replace_existing_platform_api", return_value=True),
+            patch("strategy_studio.platform_cli._import_platform_module", side_effect=fake_import),
+            patch("strategy_studio.platform_cli._is_tcp_port_in_use", return_value=True),
+            patch("strategy_studio.platform_cli._replace_existing_platform_api", return_value=True),
             patch("builtins.print"),
         ):
             handle_api(args)
@@ -299,7 +299,7 @@ class StrategyTemplateServiceTests(unittest.TestCase):
             parameter_space=None,
         )
 
-        with patch("etf_strategy.services.templates.get_strategy_template", return_value=template):
+        with patch("strategy_studio.services.templates.get_strategy_template", return_value=template):
             payload = resolve_backtest_request_payload(request, session=object())
 
         self.assertEqual(payload["symbol"], "1810.HK")

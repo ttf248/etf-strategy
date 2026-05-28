@@ -1,6 +1,6 @@
 # 架构设计
 
-ETF Strategy 当前由一套研究引擎和一套 Web 平台组成。两者共享 Python 策略、数据和报告能力，只是入口不同。
+Strategy Studio 当前由一套研究引擎和一套 Web 平台组成。两者共享 Python 策略、数据和报告能力，只是入口不同。
 
 ## 系统边界
 
@@ -29,17 +29,17 @@ Backtest  Yahoo Sync
 
 ## 后端模块
 
-- `etf_strategy/cli.py`：研究命令入口，负责参数解析和工作流分发。
-- `etf_strategy/platform_cli.py`：平台命令入口，负责数据库初始化、API、Worker、Scheduler 和同步命令。
-- `etf_strategy/data/`：Yahoo 下载、标准化、交易单位和标的池数据。
-- `etf_strategy/strategy/`：网格、反转、指数 ETF 回落反弹等策略实现。
-- `etf_strategy/workflow.py`：样本切分、寻参、验证和结果落盘的编排层。
-- `etf_strategy/reporting.py`：图表、Markdown 报告和报告索引生成。
-- `etf_strategy/db/`：SQLAlchemy 模型、数据库连接和迁移配置。
-- `etf_strategy/repositories/`：数据库读写和查询。
-- `etf_strategy/services/`：业务服务层，连接 API、仓储、策略工作流和报告落库。
-- `etf_strategy/runtime/`：常驻 Worker 和 Scheduler。
-- `etf_strategy/web/`：FastAPI 应用和请求模型。
+- `strategy_studio/cli.py`：研究命令入口，负责参数解析和工作流分发。
+- `strategy_studio/platform_cli.py`：平台命令入口，负责数据库初始化、API、Worker、Scheduler 和同步命令。
+- `strategy_studio/data/`：Yahoo 下载、标准化、交易单位和标的池数据。
+- `strategy_studio/strategy/`：网格、反转、指数 ETF 回落反弹等策略实现。
+- `strategy_studio/workflow.py`：样本切分、寻参、验证和结果落盘的编排层。
+- `strategy_studio/reporting.py`：图表、Markdown 报告和报告索引生成。
+- `strategy_studio/db/`：SQLAlchemy 模型、数据库连接和迁移配置。
+- `strategy_studio/repositories/`：数据库读写和查询。
+- `strategy_studio/services/`：业务服务层，连接 API、仓储、策略工作流和报告落库。
+- `strategy_studio/runtime/`：常驻 Worker 和 Scheduler。
+- `strategy_studio/web/`：FastAPI 应用和请求模型。
 
 当前后端保持模块化单体，不单独引入前置网关或 RPC 框架。API、Worker 和 Scheduler 是同一代码包的不同进程入口，跨进程协作通过 PostgreSQL 中的任务、同步记录和心跳表完成；只有出现跨语言、跨机器或独立扩缩容需求时，才需要升级为独立网关加 RPC。
 
@@ -68,7 +68,7 @@ Backtest  Yahoo Sync
 
 Windows 开发环境可以使用 `.vscode/launch.json` 或 `scripts/start_platform_windows.bat` 一键拉起。
 
-Worker 和 Scheduler 会写入 `platform_heartbeats` 心跳记录，前端平台总控页据此判断常驻进程是否可见。Web 进程控制默认关闭；只有设置 `ETF_STRATEGY_ENABLE_PROCESS_CONTROL=true` 后，相关接口才允许进入后续受控操作。
+Worker 和 Scheduler 会写入 `platform_heartbeats` 心跳记录，前端平台总控页据此判断常驻进程是否可见。Web 进程控制默认关闭；只有设置 `STRATEGY_STUDIO_ENABLE_PROCESS_CONTROL=true` 后，相关接口才允许进入后续受控操作。
 
 ## 数据存储原则
 

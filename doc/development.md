@@ -21,11 +21,11 @@ npm install
 
 ```text
 localhost:5432
-database: etf_strategy
+database: strategy_studio
 admin user: postgres
 ```
 
-密码和连接串可以通过 `ETF_STRATEGY_DATABASE_URL` 覆盖。
+密码和连接串可以通过 `STRATEGY_STUDIO_DATABASE_URL` 覆盖。
 
 ## 开发启动
 
@@ -57,15 +57,15 @@ npx next dev --hostname 127.0.0.1 --port 3000
 
 新增 API：
 
-- 在 `etf_strategy/web/app.py` 添加路由。
-- 在 `etf_strategy/web/schemas.py` 添加请求模型。
+- 在 `strategy_studio/web/app.py` 添加路由。
+- 在 `strategy_studio/web/schemas.py` 添加请求模型。
 - 在 `services/` 和 `repositories/` 中分别实现业务逻辑和数据库访问。
 - 更新 [API 接口说明](api.md) 和测试。
 
 新增策略：
 
-- 在 `etf_strategy/strategy/` 中实现策略逻辑。
-- 在 `etf_strategy/strategy/registry.py` 注册策略代码、中文名、支持周期、参数字段、寻参入口和验证入口。
+- 在 `strategy_studio/strategy/` 中实现策略逻辑。
+- 在 `strategy_studio/strategy/registry.py` 注册策略代码、中文名、支持周期、参数字段、寻参入口和验证入口。
 - 如需平台提交，确认模板服务和前端模板配置能读取或同步该参数空间。
 - 如需专用报告，更新 `reporting.py`；否则复用通用报告结构。
 - 更新 [策略引擎](strategy-engine.md)。
@@ -120,4 +120,4 @@ npm run test:smoke
 - Git 提交日志使用中文。
 - 每个提交只包含当前任务相关文件。
 - 不提交运行缓存、日志和一次性实验产物。
-- AI 协作任务必须更新 `task.md`。
+- 不再维护 `task.md`；需要长期保留的任务背景和取舍应写入文档、注释或提交记录。

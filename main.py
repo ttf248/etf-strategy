@@ -7,7 +7,7 @@
 import os
 import sys
 
-from etf_strategy.cli import main
+from strategy_studio.cli import main
 
 
 def configure_console_encoding() -> None:

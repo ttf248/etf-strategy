@@ -67,7 +67,7 @@ Scheduler 默认在 Asia/Shanghai 时区运行：
 后端日志会输出到终端，并写入：
 
 ```text
-log/etf_strategy_YYYY-MM-DD.log
+log/strategy_studio_YYYY-MM-DD.log
 ```
 
 排查顺序：
@@ -83,7 +83,7 @@ log/etf_strategy_YYYY-MM-DD.log
 Web 端进程控制默认关闭，避免误杀本机服务。只有本地开发确实需要时才设置：
 
 ```powershell
-$env:ETF_STRATEGY_ENABLE_PROCESS_CONTROL="true"
+$env:STRATEGY_STUDIO_ENABLE_PROCESS_CONTROL="true"
 ```
 
 当前接口只作为受控入口，不建议把它当作生产进程管理方案。生产环境应使用系统服务、Supervisor、容器编排或 CI/CD 发布脚本管理进程。
@@ -126,7 +126,7 @@ py -3.13 main.py import-csv --source-dir data/processed
 在无法直连 Yahoo 的网络环境中，需要配置代理：
 
 ```powershell
-$env:ETF_STRATEGY_PROXY="http://127.0.0.1:7897"
+$env:STRATEGY_STUDIO_PROXY="http://127.0.0.1:7897"
 ```
 
 常见失败原因：

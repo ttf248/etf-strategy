@@ -13,7 +13,7 @@
 
 ## 策略注册表
 
-策略元数据集中在 `etf_strategy/strategy/registry.py`：
+策略元数据集中在 `strategy_studio/strategy/registry.py`：
 
 - 策略代码和中文名称。
 - 支持周期。

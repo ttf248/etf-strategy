@@ -3,7 +3,7 @@ import re
 import unittest
 from pathlib import Path
 
-from etf_strategy.config import DEFAULT_DATA_PATH, DEFAULT_MINUTE_DATA_PATH
+from strategy_studio.config import DEFAULT_DATA_PATH, DEFAULT_MINUTE_DATA_PATH
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

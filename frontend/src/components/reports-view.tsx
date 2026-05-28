@@ -10,7 +10,7 @@ import { FormatPercent, MetricCard, PageHeader, ToolbarCount } from "@/component
 import { strategyLabel } from "@/lib/strategy-template-config";
 import { buildBacktestLaunchHref } from "@/lib/beginner-presets";
 
-const FAVORITE_REPORTS_STORAGE_KEY = "etf-strategy.favorite-report-ids";
+const FAVORITE_REPORTS_STORAGE_KEY = "strategy-studio.favorite-report-ids";
 
 type Verdict = {
   label: string;

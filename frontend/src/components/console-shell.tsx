@@ -99,7 +99,7 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
           <div className="platform-logo">
             <div className="platform-logo-mark">ES</div>
             <div className="platform-logo-text">
-              <span className="platform-logo-title">ETF Strategy</span>
+              <span className="platform-logo-title">Strategy Studio</span>
               <span className="platform-logo-subtitle">策略研究平台</span>
             </div>
           </div>
@@ -132,7 +132,7 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
         </Content>
       </Layout>
       <Drawer
-        title="ETF Strategy"
+        title="Strategy Studio"
         placement="left"
         size="default"
         open={mobileMenuOpen}

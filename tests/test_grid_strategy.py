@@ -5,20 +5,20 @@ from unittest.mock import ANY, Mock, patch
 
 import pandas as pd
 
-import etf_strategy.data.market_rules as market_rules
-from etf_strategy.cli import build_parser, handle_batch, handle_download, handle_run
-from etf_strategy.config import DEFAULT_DATA_PATH, DEFAULT_MINUTE_DATA_PATH, DEFAULT_MINUTE_OUTPUT_DIR
-from etf_strategy.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
-from etf_strategy.reporting import (
+import strategy_studio.data.market_rules as market_rules
+from strategy_studio.cli import build_parser, handle_batch, handle_download, handle_run
+from strategy_studio.config import DEFAULT_DATA_PATH, DEFAULT_MINUTE_DATA_PATH, DEFAULT_MINUTE_OUTPUT_DIR
+from strategy_studio.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
+from strategy_studio.reporting import (
     build_minute_report_markdown,
     build_report_index_entry,
     build_unified_report_index,
     load_report_registry,
     register_report_index_entries,
 )
-from etf_strategy.settings import build_execution_config
-from etf_strategy.symbols import SymbolSpec
-from etf_strategy.strategy.grid import (
+from strategy_studio.settings import build_execution_config
+from strategy_studio.symbols import SymbolSpec
+from strategy_studio.strategy.grid import (
     build_sample_window,
     build_walk_forward_windows,
     optimize_grid_parameters,
@@ -26,9 +26,9 @@ from etf_strategy.strategy.grid import (
     split_intraday_in_sample_and_validation,
     split_in_sample_and_validation,
 )
-from etf_strategy.strategy.dca import run_dca_backtest
-from etf_strategy.strategy.index_grid import resolve_index_grid_spec, run_index_grid_backtest
-from etf_strategy.strategy.rebound import run_rebound_backtest
+from strategy_studio.strategy.dca import run_dca_backtest
+from strategy_studio.strategy.index_grid import resolve_index_grid_spec, run_index_grid_backtest
+from strategy_studio.strategy.rebound import run_rebound_backtest
 
 
 def build_test_frame(close_prices: list[float], start: str = "2025-09-01") -> pd.DataFrame:
@@ -177,8 +177,8 @@ class GridStrategyTests(unittest.TestCase):
         )
 
         with (
-            patch("etf_strategy.cli.download_price_bars", return_value=bars) as mock_download,
-            patch("etf_strategy.cli.save_price_bars", return_value=DEFAULT_MINUTE_DATA_PATH) as mock_save,
+            patch("strategy_studio.cli.download_price_bars", return_value=bars) as mock_download,
+            patch("strategy_studio.cli.save_price_bars", return_value=DEFAULT_MINUTE_DATA_PATH) as mock_save,
             patch("builtins.print"),
         ):
             result = handle_download(args)
@@ -211,8 +211,8 @@ class GridStrategyTests(unittest.TestCase):
         )
 
         with (
-            patch("etf_strategy.cli.download_price_bars", return_value=bars) as mock_download,
-            patch("etf_strategy.cli.save_price_bars", return_value=DEFAULT_DATA_PATH) as mock_save,
+            patch("strategy_studio.cli.download_price_bars", return_value=bars) as mock_download,
+            patch("strategy_studio.cli.save_price_bars", return_value=DEFAULT_DATA_PATH) as mock_save,
             patch("builtins.print"),
         ):
             result = handle_download(args)
@@ -264,14 +264,14 @@ class GridStrategyTests(unittest.TestCase):
         }
 
         with (
-            patch("etf_strategy.cli.download_price_bars", return_value=bars) as mock_download,
-            patch("etf_strategy.cli.save_price_bars", return_value=DEFAULT_MINUTE_DATA_PATH) as mock_save,
-            patch("etf_strategy.cli.run_minute_full_workflow", return_value=workflow_result) as mock_workflow,
+            patch("strategy_studio.cli.download_price_bars", return_value=bars) as mock_download,
+            patch("strategy_studio.cli.save_price_bars", return_value=DEFAULT_MINUTE_DATA_PATH) as mock_save,
+            patch("strategy_studio.cli.run_minute_full_workflow", return_value=workflow_result) as mock_workflow,
             patch(
-                "etf_strategy.cli.build_minute_report_markdown",
+                "strategy_studio.cli.build_minute_report_markdown",
                 return_value="reports/1810_hk/minute/1810_hk_15m_grid_report.md",
             ),
-            patch("etf_strategy.cli._refresh_unified_report_index", return_value=Path("reports") / "report_index.md"),
+            patch("strategy_studio.cli._refresh_unified_report_index", return_value=Path("reports") / "report_index.md"),
             patch("builtins.print"),
         ):
             result = handle_run(args)
@@ -331,15 +331,15 @@ class GridStrategyTests(unittest.TestCase):
             data_path.write_text("Date,Open,High,Low,Close,Volume\n2026-05-20 09:30:00,1,1,1,1,1\n", encoding="utf-8")
             args = parser.parse_args(["run", "--symbol", "1810.HK", "--interval", "15m", "--local-only"])
             with (
-                patch("etf_strategy.cli._resolve_download_output_path", return_value=data_path),
-                patch("etf_strategy.cli.download_price_bars") as mock_download,
-                patch("etf_strategy.cli.save_price_bars") as mock_save,
-                patch("etf_strategy.cli.run_minute_full_workflow", return_value=workflow_result) as mock_workflow,
+                patch("strategy_studio.cli._resolve_download_output_path", return_value=data_path),
+                patch("strategy_studio.cli.download_price_bars") as mock_download,
+                patch("strategy_studio.cli.save_price_bars") as mock_save,
+                patch("strategy_studio.cli.run_minute_full_workflow", return_value=workflow_result) as mock_workflow,
                 patch(
-                    "etf_strategy.cli.build_minute_report_markdown",
+                    "strategy_studio.cli.build_minute_report_markdown",
                     return_value="reports/1810_hk/minute/1810_hk_15m_grid_report.md",
                 ),
-                patch("etf_strategy.cli._refresh_unified_report_index", return_value=Path("reports") / "report_index.md"),
+                patch("strategy_studio.cli._refresh_unified_report_index", return_value=Path("reports") / "report_index.md"),
                 patch("builtins.print"),
             ):
                 result = handle_run(args)
@@ -462,9 +462,9 @@ class GridStrategyTests(unittest.TestCase):
                 ]
             )
             with (
-                patch("etf_strategy.cli.run_full_workflow", return_value=workflow_result) as mock_workflow,
+                patch("strategy_studio.cli.run_full_workflow", return_value=workflow_result) as mock_workflow,
                 patch(
-                    "etf_strategy.cli.build_report_markdown",
+                    "strategy_studio.cli.build_report_markdown",
                     return_value=Path(temp_dir) / "reports" / "1810_hk" / "daily" / "1810_hk_grid_report.md",
                 ),
                 patch("builtins.print"),
@@ -557,9 +557,9 @@ class GridStrategyTests(unittest.TestCase):
                 ]
             )
             with (
-                patch("etf_strategy.cli._run_comparison_workflows", return_value=comparison_results),
+                patch("strategy_studio.cli._run_comparison_workflows", return_value=comparison_results),
                 patch(
-                    "etf_strategy.cli.build_strategy_comparison_report",
+                    "strategy_studio.cli.build_strategy_comparison_report",
                     return_value=Path(temp_dir) / "reports" / "1810_hk" / "minute" / "1810_hk_15m_strategy_compare_report.md",
                 ),
                 patch("builtins.print"),
@@ -618,7 +618,7 @@ class GridStrategyTests(unittest.TestCase):
             )
             with (
                 patch(
-                    "etf_strategy.cli._resolve_batch_symbols",
+                    "strategy_studio.cli._resolve_batch_symbols",
                     return_value=(
                         ["0001.HK"],
                         {
@@ -631,10 +631,10 @@ class GridStrategyTests(unittest.TestCase):
                         },
                     ),
                 ),
-                patch("etf_strategy.cli._resolve_download_output_path", return_value=data_path),
-                patch("etf_strategy.cli.run_full_workflow", return_value=workflow_result),
+                patch("strategy_studio.cli._resolve_download_output_path", return_value=data_path),
+                patch("strategy_studio.cli.run_full_workflow", return_value=workflow_result),
                 patch(
-                    "etf_strategy.cli.build_report_markdown",
+                    "strategy_studio.cli.build_report_markdown",
                     return_value=Path(temp_dir) / "reports" / "00001_hk" / "daily" / "00001_hk_grid_report.md",
                 ),
                 patch("builtins.print"),
@@ -748,9 +748,9 @@ class GridStrategyTests(unittest.TestCase):
                 ]
             )
             with (
-                patch("etf_strategy.cli.download_price_bars", side_effect=ValueError("Yahoo 行情下载失败")) as mock_download,
+                patch("strategy_studio.cli.download_price_bars", side_effect=ValueError("Yahoo 行情下载失败")) as mock_download,
                 patch(
-                    "etf_strategy.cli._write_failed_batch_report",
+                    "strategy_studio.cli._write_failed_batch_report",
                     return_value=Path(temp_dir) / "reports" / "1810_hk" / "minute" / "1810_hk_15m_grid_report.md",
                 ) as mock_failed_report,
                 patch("builtins.print"),
@@ -840,7 +840,7 @@ class GridStrategyTests(unittest.TestCase):
         self.assertEqual(rule.lot_size, 100)
         self.assertIn("100 股", rule.source)
 
-    @patch("etf_strategy.data.market_rules.requests.get")
+    @patch("strategy_studio.data.market_rules.requests.get")
     def test_resolve_lot_size_rule_for_hk_symbol(self, mock_get: Mock) -> None:
         mock_response = Mock()
         mock_response.raise_for_status.return_value = None
@@ -1327,7 +1327,7 @@ class GridStrategyTests(unittest.TestCase):
         self.assertLess(windows[0].index.max(), windows[1].index.min())
         self.assertLess(windows[1].index.max(), windows[2].index.min())
 
-    @patch("etf_strategy.strategy.grid.run_grid_backtest")
+    @patch("strategy_studio.strategy.grid.run_grid_backtest")
     def test_optimize_grid_parameters_prefers_robust_candidate(self, mock_run_grid_backtest: Mock) -> None:
         frame = build_test_frame([20.0 + index * 0.1 for index in range(60)], start="2025-01-01")
         candidate_metrics = {

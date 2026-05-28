@@ -1,6 +1,6 @@
-# ETF Strategy Frontend
+# Strategy Studio Frontend
 
-这是 ETF Strategy 的回测实验室前端，基于 Next.js、React、Ant Design 和 ECharts 构建。
+这是 Strategy Studio 的回测实验室前端，基于 Next.js、React、Ant Design 和 ECharts 构建。
 
 前端只负责交互和展示，不直接访问 PostgreSQL。所有数据都通过 FastAPI 获取。
 
