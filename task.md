@@ -2719,3 +2719,36 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 报告详情交易与事件区降噪补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按局部体验边界优化报告详情页，只处理交易记录和事件流水区的默认优先级，把它们从“默认往下读的明细墙”降成“需要排查时再展开”的次级信息。
+
+### 修改内容
+
+- `frontend/src/components/report-detail-view.tsx`
+  - 将交易记录区标题改为“需要核对买卖时，再看交易记录”，并补充用途提示。
+  - 将事件流水区标题改为“需要追信号时，再看事件流水”，并补充用途提示。
+  - 将两块逐笔明细统一收进折叠区，折叠标题改成解释用途的说明式文案。
+- `frontend/src/app/globals.css`
+  - 新增交易与事件区提示块样式，弱化这两块默认存在感。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不删除交易记录、事件流水、移动端卡片或桌面分页表，只调整默认叙事和展开层级，保留排查能力。
+- 这轮不改交易字段、事件 payload 展示或表格列结构，只改变“什么时候该看这块”的说明，避免一次改动同时牵动阅读口径和数据明细本身。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
