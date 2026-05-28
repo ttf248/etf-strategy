@@ -29,8 +29,8 @@ admin user: postgres
 
 本地导入目录与运行产物分离：
 
-- `data/processed/`：手工准备后等待导入数据库的临时 CSV，默认不提交。
-- `reports/platform/`：只有显式导出时才会生成的临时报告，默认不提交。
+- `data/processed/`：历史兼容目录，当前只保留空目录占位，默认不提交。
+- `reports/platform/`：历史兼容目录，当前只保留空目录占位，默认不提交。
 
 ## 开发启动
 

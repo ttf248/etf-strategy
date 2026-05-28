@@ -366,8 +366,8 @@ export function BacktestsView() {
           }}
         >
           <div className="wizard-first-run-banner">
-            <strong>基线研究建议</strong>
-            <p>可直接使用现成样本，优先选择 15m 或 1d，策略使用网格或定投，模板保持推荐项。先形成一份可复盘结果，比一开始扩展大量高级参数更有效。</p>
+            <strong>标准研究起点</strong>
+            <p>可直接使用现成样本，优先选择 15m 或 1d，策略使用网格或定投，模板保持推荐项。先形成一份可复盘的基线结果，再按结论扩展参数空间，通常比起步阶段就展开大规模调参更高效。</p>
             <div className="wizard-first-run-tags">
               <span>1. 选择标准样本</span>
               <span>2. 使用推荐模板</span>
@@ -391,7 +391,7 @@ export function BacktestsView() {
               <Typography.Paragraph>建议优先使用已具备覆盖的数据标的，例如 1810.HK。若暂无明确偏好，可先以 15m 作为分钟级基线周期。</Typography.Paragraph>
               {queryPreset ? (
                 <div className="wizard-preset-banner">
-                  <strong>已带入推荐样本</strong>
+                  <strong>已载入推荐研究样本</strong>
                   <span>
                     {[queryPreset.symbol, queryPreset.interval, queryPreset.strategy_kind ? strategyLabel(queryPreset.strategy_kind) : undefined]
                       .filter(Boolean)
@@ -451,7 +451,7 @@ export function BacktestsView() {
           {activeStep === 1 ? (
             <div className="wizard-step-panel">
               <Typography.Title level={4}>选择策略与模板</Typography.Title>
-              <Typography.Paragraph>若暂无明确偏好，可先使用“网格”及推荐模板作为基线配置。模板已包含常用参数，后续再按结果调整。</Typography.Paragraph>
+              <Typography.Paragraph>若暂无明确偏好，可先采用“网格”与推荐模板作为标准研究配置。模板已封装常用参数，待结果形成后再做针对性调整。</Typography.Paragraph>
               <div className="wizard-template-banner">
                 <strong>{templatePickHint.title}</strong>
                 <p>{templatePickHint.description}</p>
@@ -621,7 +621,7 @@ export function BacktestsView() {
         className="section-card"
       >
         {jobs.length === 0 ? (
-          <Empty description="当前还没有回测任务，提交后结果会显示在这里。" />
+          <Empty description="当前还没有回测任务。提交后，执行状态与结果入口会展示在这里。" />
         ) : (
           <>
             <div className="job-summary-banner">

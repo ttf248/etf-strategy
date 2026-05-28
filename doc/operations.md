@@ -112,7 +112,7 @@ py -3.13 main.py init-db
 导入本地 CSV：
 
 ```powershell
-py -3.13 main.py import-csv --source-dir data/processed
+py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
 ```
 
 如果 CSV 导入失败，优先检查：
@@ -145,5 +145,5 @@ $env:STRATEGY_STUDIO_PROXY="http://127.0.0.1:7897"
 - `log/`
 - 前端构建缓存。
 
-平台回测结果应留存在数据库；`reports/platform/` 仅用于 CLI 临时文件报告，默认不提交。
+平台回测结果应留存在数据库；`reports/platform/` 当前仅保留兼容占位属性，默认不提交。
 如果没有显式传入 `--output`、`--output-dir` 或 `--report-dir`，CLI 默认不会在本地工作区新增 CSV、汇总表或 Markdown 报告。

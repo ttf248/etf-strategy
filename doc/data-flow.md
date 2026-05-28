@@ -7,7 +7,7 @@
 行情有两种来源：
 
 - Yahoo 同步：通过 `sync-now`、Scheduler 或前端同步按钮触发。
-- CSV 导入：通过 `import-csv` 把临时整理在 `data/processed/` 下的标准化历史文件导入数据库。
+- 历史兼容目录：`data/processed/` 仍保留空目录占位，但当前标准流程不再依赖本地 CSV 导入。
 
 标准流程：
 
@@ -72,7 +72,7 @@ Worker 执行完成后写入：
 - 结构化报告：存储在 PostgreSQL，供前端查询和绘图。
 - 文件报告：只有在显式传入导出目录时，CLI 研究工作流才会临时生成 Markdown、图片和 CSV，适合离线阅读，但不再作为平台长期事实来源。
 
-`reports/platform/` 默认视为运行产物，不纳入版本控制。平台 worker 执行回测时只写数据库，不再落地本地 Markdown 报告。
+`reports/platform/` 默认视为运行产物兼容目录，不纳入版本控制。平台 worker 执行回测时只写数据库，不再落地本地 Markdown 报告。
 
 ## 数据边界
 

@@ -74,5 +74,5 @@ Worker 和 Scheduler 会写入 `platform_heartbeats` 心跳记录，前端平台
 
 - PostgreSQL 是长期主存储。
 - CSV 只作为历史导入、离线调试和兼容 CLI 的输入形式。
-- `outputs/` 和 `reports/platform/` 是运行产物，不应作为平台主数据源。
+- `outputs/` 与 `reports/platform/` 只保留运行产物或兼容占位属性，不应作为平台主数据源。
 - 自动生成报告可以保存为文件，但平台报告的可查询信息以数据库中的结构化记录为准。

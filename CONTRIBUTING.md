@@ -17,11 +17,10 @@ cd frontend
 npm install
 ```
 
-3. 初始化数据库，并按需导入你自己的 CSV 或同步 Yahoo 数据：
+3. 初始化数据库，并按需同步 Yahoo 数据准备首批行情：
 
 ```powershell
 py -3.13 main.py init-db
-py -3.13 main.py import-csv --source-dir data/processed
 py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
 ```
 
@@ -65,11 +64,11 @@ git diff --check
 - 文档默认使用中文。
 - 用户文档只描述当前仓库真实能力，不提前承诺未实现功能。
 - 架构、数据流、部署、运维和开发说明分别维护，避免 README 过长。
-- 仓库不再提交样例行情或历史 Markdown 报告；需要复盘时应以数据库中的平台结果或你本地临时运行产物为准。
+- 仓库不再提交样例行情或历史 Markdown 报告；需要复盘时应以数据库中的平台结果为准。
 
 ## 数据和策略口径
 
 - PostgreSQL 是平台长期主存储。
-- CSV 是导入、调试和兼容 CLI 的输入形式。
+- CSV 目录仅为历史兼容占位，标准数据入口是数据库。
 - Yahoo 数据访问失败时应明确报错，不静默切换数据源。
 - 策略结果必须说明样本、周期、执行口径和费用/风控假设。

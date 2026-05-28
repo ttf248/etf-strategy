@@ -31,7 +31,7 @@ async function pickLaunchPreset(request: APIRequestContext): Promise<LaunchPrese
   const statsResponse = await request.get(`${apiBaseUrl}/api/market-data/stats`);
   expect(statsResponse.ok(), "后端 `/api/market-data/stats` 不可用，请先启动 API 并准备数据库行情。").toBeTruthy();
   const stats = (await statsResponse.json()) as MarketDataStats;
-  expect(stats.instrument_count, "当前数据库没有可回测标的，请先执行 `py -3.13 main.py import-csv --source-dir data/processed` 或 `py -3.13 main.py sync-now --symbol 1810.HK --interval 1d`。").toBeGreaterThan(0);
+  expect(stats.instrument_count, "当前数据库没有可回测标的，请先执行 `py -3.13 main.py sync-now --symbol 1810.HK --interval 1d`，或在数据覆盖页同步首批行情。").toBeGreaterThan(0);
 
   const templatesResponse = await request.get(`${apiBaseUrl}/api/templates?active_only=true`);
   expect(templatesResponse.ok(), "后端 `/api/templates` 不可用，请先完成 `init-db`。").toBeTruthy();
@@ -70,12 +70,10 @@ test("首页到回测提交主路径可用", async ({ page, request }) => {
     page.waitForResponse((response) => response.url().startsWith(`${apiBaseUrl}/api/reports?limit=`) && response.ok()),
     page.goto("/"),
   ]);
-  await expect(page.getByRole("heading", { name: "从一个标的开始，跑出第一份回测报告" })).toBeVisible();
-  await expect(page.getByText("第一次使用建议按这条路走")).toBeVisible();
-  await expect(page.getByText("数据准备 -> 创建回测 -> 查看报告。只有页面打不开或任务长期不动时，再去系统状态。")).toBeVisible();
-  await expect(page.getByText("为什么现在推荐这一步")).toBeVisible();
-  await expect(page.getByText("只有页面打不开、任务长期不动或连续失败时，再去系统状态")).toBeVisible();
-  await expect(page.getByRole("link", { name: "开始一次回测" })).toHaveAttribute("href", "/backtests");
+  await expect(page.getByRole("heading", { name: "从数据覆盖到结果复盘的策略研究工作台" })).toBeVisible();
+  await expect(page.getByText("当前研究状态")).toBeVisible();
+  await expect(page.getByText("只有服务异常、任务停滞或连续失败时，再进入系统状态")).toBeVisible();
+  await expect(page.getByRole("link", { name: "发起回测" })).toHaveAttribute("href", "/backtests");
 
   const launchParams = new URLSearchParams({
     symbol: preset.symbol,
@@ -85,19 +83,19 @@ test("首页到回测提交主路径可用", async ({ page, request }) => {
   });
   await page.goto(`/backtests?${launchParams.toString()}`);
 
-  await expect(page.getByText("已带入首页示例")).toBeVisible();
-  await expect(page.getByText("如果你只是想先跑通第一轮")).toBeVisible();
+  await expect(page.getByText("已载入推荐研究样本")).toBeVisible();
+  await expect(page.getByText("标准研究起点")).toBeVisible();
   await expect(page.getByText("先看最近几次任务，再决定要不要展开完整历史")).toBeVisible();
   await expect(page.locator('input[placeholder="例如 1810.HK"]')).toHaveValue(preset.symbol);
 
   await page.getByRole("button", { name: "下一步" }).click();
-  await expect(page.getByText("选择一个容易理解的策略模板")).toBeVisible();
+  await expect(page.getByText("选择策略与模板")).toBeVisible();
   await page.getByRole("button", { name: /使用推荐模板：/ }).click();
 
   await page.getByRole("button", { name: "下一步" }).click();
-  await expect(page.getByText("确认后提交任务")).toBeVisible();
-  await expect(page.getByText("提交后会发生什么")).toBeVisible();
-  await expect(page.getByText("刚提交时，只看第一条就够了")).toBeVisible();
+  await expect(page.getByText("确认执行配置并提交")).toBeVisible();
+  await expect(page.getByText("系统会为该配置创建任务")).toBeVisible();
+  await expect(page.getByText("优先关注最近一条记录")).toBeVisible();
   await expect(page.getByText(preset.symbol).first()).toBeVisible();
 
   const submitResponsePromise = page.waitForResponse((response) => {

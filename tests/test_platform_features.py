@@ -7,7 +7,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from strategy_studio.cli import build_parser
-from strategy_studio.platform_cli import handle_api
+from strategy_studio.platform_cli import handle_api, handle_import_csv
 from strategy_studio.services.backtests import _normalize_artifacts
 from strategy_studio.services.market_data import infer_interval_from_data_path
 from strategy_studio.services.platform import record_platform_heartbeat
@@ -36,6 +36,12 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(api_args.port, 8000)
         self.assertTrue(replace_args.replace_existing)
         self.assertEqual(parser.parse_args(["scheduler"]).command, "scheduler")
+
+    def test_import_csv_command_is_kept_only_as_compatibility_stub(self) -> None:
+        args = SimpleNamespace(source_dir="data/processed")
+
+        with self.assertRaisesRegex(RuntimeError, "数据库优先模式"):
+            handle_import_csv(args)
 
     def test_infer_interval_from_data_path_supports_daily_alias(self) -> None:
         self.assertEqual(infer_interval_from_data_path("data/processed/1810_hk_daily.csv"), "1d")

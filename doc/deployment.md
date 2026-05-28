@@ -55,10 +55,10 @@ postgresql+psycopg://postgres:tian@localhost:5432/strategy_studio
 
 ```powershell
 py -3.13 main.py init-db
-py -3.13 main.py import-csv --source-dir data/processed
+py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
 ```
 
-`init-db` 会创建项目数据库并执行 Alembic 迁移。`import-csv` 用于把你自己整理好的标准化行情导入 PostgreSQL；如果不走本地 CSV，也可以直接使用 `sync-now` 从 Yahoo 同步。
+`init-db` 会创建项目数据库并执行 Alembic 迁移。当前标准流程建议直接使用 `sync-now` 从 Yahoo 同步首批行情到 PostgreSQL；旧的本地 CSV 导入链路仅作兼容占位，不再作为推荐路径。
 
 ## 启动后端
 

@@ -194,8 +194,8 @@ def add_platform_subcommands(subparsers: argparse._SubParsersAction[argparse.Arg
     init_db_parser = subparsers.add_parser("init-db", help="创建项目数据库并执行迁移")
     init_db_parser.add_argument("--with-migration", action="store_true", default=True, help="保留兼容参数，占位表示执行迁移")
 
-    import_parser = subparsers.add_parser("import-csv", help="导入本地 CSV 行情到 PostgreSQL")
-    import_parser.add_argument("--source-dir", default="data/processed", help="CSV 源目录；默认读取未纳入版本控制的运行目录")
+    import_parser = subparsers.add_parser("import-csv", help="兼容保留命令：当前数据库优先流程不再支持本地 CSV 导入")
+    import_parser.add_argument("--source-dir", default="data/processed", help="兼容参数，占位保留；当前标准流程请改用 sync-now 直接同步数据库行情")
 
     sync_parser = subparsers.add_parser("sync-now", help="立即同步 Yahoo 行情到数据库")
     sync_parser.add_argument("--symbol", default=None, help="指定单个标的；不传则同步数据库中已知全部标的")
@@ -223,16 +223,12 @@ def handle_init_db(_: argparse.Namespace) -> int:
 
 
 def handle_import_csv(args: argparse.Namespace) -> int:
-    import_csv_directory = _import_platform_module("strategy_studio.services.market_data", "import-csv").import_csv_directory
-    result = import_csv_directory(args.source_dir)
-    print(f"CSV 导入完成：扫描 {result.files_scanned} 个文件")
-    print(f"新增标的：{result.instruments_created}")
-    print(f"新增 K 线：{result.bars_inserted}")
-    print(f"更新 K 线：{result.bars_updated}")
-    print(f"失败文件：{len(result.failed_files)}")
-    for item in result.failed_files:
-        print(f"- {item}")
-    return 0 if not result.failed_files else 1
+    raise RuntimeError(
+        "当前仓库已切换到数据库优先模式，不再维护本地 CSV 导入链路。"
+        f"收到的兼容参数 source_dir={args.source_dir} 不会被执行；"
+        "请改用 `py -3.13 main.py sync-now --symbol 1810.HK --interval 1d` "
+        "或前端数据覆盖页直接把行情同步到数据库。"
+    )
 
 
 def handle_sync_now(args: argparse.Namespace) -> int:
