@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Button, Card, Col, Collapse, Empty, Row, Select, Skeleton, Space, Table, Typography, message } from "antd";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiFetch, type PlatformLogs, type PlatformProcess, type PlatformStatus } from "@/lib/api";
 import { MetricCard, PageHeader, StatusTag, ToolbarCount } from "@/components/platform-ui";
 
@@ -39,6 +39,136 @@ function formatActiveTaskNote(runningJobs: number, queuedJobs: number, cancelReq
   return parts.join(" / ");
 }
 
+type CapacityGuide = {
+  title: string;
+  value: string;
+  description: string;
+};
+
+function readHeartbeatNumber(
+  heartbeat: PlatformStatus["heartbeats"][number] | undefined,
+  key: string,
+): number | null {
+  const value = heartbeat?.details?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function buildQueuePressureGuide(params: {
+  runningJobs: number;
+  queuedJobs: number;
+  cancelRequestedJobs: number;
+}): CapacityGuide {
+  const { runningJobs, queuedJobs, cancelRequestedJobs } = params;
+  if (runningJobs === 0 && queuedJobs === 0 && cancelRequestedJobs === 0) {
+    return {
+      title: "任务压力",
+      value: "当前无积压",
+      description: "当前没有运行中或排队中的回测任务，平台容量没有被占用。",
+    };
+  }
+  if (queuedJobs > runningJobs && queuedJobs > 0) {
+    return {
+      title: "任务压力",
+      value: `排队 ${queuedJobs} / 执行中 ${runningJobs}`,
+      description: "排队任务多于运行中任务，说明当前更需要判断容量是否已经吃满，而不是重复提交新任务。",
+    };
+  }
+  return {
+    title: "任务压力",
+    value: `执行中 ${runningJobs} / 排队 ${queuedJobs}`,
+    description:
+      cancelRequestedJobs > 0
+        ? `当前还有 ${cancelRequestedJobs} 个任务等待取消落地，应先等待 worker 安全释放槽位。`
+        : "当前任务主要处于执行阶段，优先确认 ETA 是否持续推进即可。",
+  };
+}
+
+function buildWorkerCapacityGuide(
+  workerHeartbeat: PlatformStatus["heartbeats"][number] | undefined,
+  runningJobs: number,
+  queuedJobs: number,
+): CapacityGuide {
+  const maxConcurrentJobs = readHeartbeatNumber(workerHeartbeat, "max_concurrent_jobs");
+  const activeJobs = readHeartbeatNumber(workerHeartbeat, "active_jobs");
+  const pollIntervalSeconds = readHeartbeatNumber(workerHeartbeat, "poll_interval_seconds");
+
+  if (!workerHeartbeat) {
+    return {
+      title: "执行容量",
+      value: "未检测到 worker 心跳",
+      description: "若任务持续排队且这里没有 worker 心跳，优先确认回测执行服务是否正在运行。",
+    };
+  }
+
+  const usedJobs = activeJobs ?? runningJobs;
+  if (maxConcurrentJobs !== null) {
+    const remainingSlots = Math.max(0, maxConcurrentJobs - usedJobs);
+    return {
+      title: "执行容量",
+      value: `${usedJobs}/${maxConcurrentJobs} 槽位已用`,
+      description:
+        queuedJobs > 0 && remainingSlots === 0
+          ? `当前执行槽位已满。worker 约每 ${pollIntervalSeconds ?? 5} 秒轮询一次，新任务需要等已有任务释放槽位。`
+          : `当前还剩 ${remainingSlots} 个执行槽位。${pollIntervalSeconds !== null ? `worker 轮询间隔约 ${pollIntervalSeconds} 秒。` : ""}`,
+    };
+  }
+
+  return {
+    title: "执行容量",
+    value: `${usedJobs} 个任务活跃`,
+    description: "已检测到 worker 心跳，但未记录明确的并发上限。可结合任务队列与服务心跳继续判断。",
+  };
+}
+
+function buildPerJobBudgetGuide(workerHeartbeat: PlatformStatus["heartbeats"][number] | undefined): CapacityGuide {
+  const maxOptimizationWorkers = readHeartbeatNumber(workerHeartbeat, "max_optimization_workers");
+  const maxConcurrentJobs = readHeartbeatNumber(workerHeartbeat, "max_concurrent_jobs");
+  if (!workerHeartbeat) {
+    return {
+      title: "单任务资源上限",
+      value: "等待 worker 心跳",
+      description: "未检测到 worker 心跳时，无法判断单任务参数搜索的资源预算。",
+    };
+  }
+  if (maxOptimizationWorkers !== null) {
+    return {
+      title: "单任务资源上限",
+      value: `单任务最多 ${maxOptimizationWorkers} 组并行`,
+      description:
+        maxConcurrentJobs !== null
+          ? `平台会在“同时跑 ${maxConcurrentJobs} 个任务”和“单任务最多 ${maxOptimizationWorkers} 组并行”之间自动收口 CPU 预算。`
+          : "这意味着单个回测任务不会无限占满资源，即使请求了更大的参数并发。",
+    };
+  }
+  return {
+    title: "单任务资源上限",
+    value: "心跳未记录寻参上限",
+    description: "若需要进一步确认，可查看任务页里的资源摘要或下方服务心跳信息。",
+  };
+}
+
+function buildFailureGuide(failedJobs: number, unhealthyServices: string[]): CapacityGuide {
+  if (unhealthyServices.length > 0) {
+    return {
+      title: "当前优先处理",
+      value: `先检查 ${unhealthyServices.join("、")}`,
+      description: "服务异常优先级高于历史失败任务统计。只要基础服务不正常，先不要花时间解释任务结果。",
+    };
+  }
+  if (failedJobs > 0) {
+    return {
+      title: "失败记录",
+      value: `${failedJobs} 条历史失败`,
+      description: "历史失败不代表当前平台仍然异常。若当前服务与队列正常，更应回任务页核对最近失败原因是否重复。",
+    };
+  }
+  return {
+    title: "失败记录",
+    value: "当前没有失败压力",
+    description: "没有服务异常，也没有失败任务压力，通常无需继续停留在维护页。",
+  };
+}
+
 export function PlatformStatusView() {
   const [status, setStatus] = useState<PlatformStatus | null>(null);
   const [processes, setProcesses] = useState<PlatformProcess[]>([]);
@@ -56,7 +186,7 @@ export function PlatformStatusView() {
     return { statusPayload, processesPayload, logsPayload };
   }
 
-  async function refreshPlatform() {
+  const refreshPlatform = useCallback(async () => {
     setLoading(true);
     try {
       const payload = await fetchPlatformPayload(logService);
@@ -68,7 +198,7 @@ export function PlatformStatusView() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [logService, messageApi]);
 
   async function restartService(serviceName: string) {
     try {
@@ -108,6 +238,27 @@ export function PlatformStatusView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logService]);
 
+  useEffect(() => {
+    if (!status) {
+      return;
+    }
+    const queue = status.queue ?? {};
+    const shouldPoll =
+      !serviceOk(status.api.status) ||
+      !serviceOk(status.frontend.status) ||
+      !serviceOk(status.database.status) ||
+      Number(queue.running ?? 0) > 0 ||
+      Number(queue.queued ?? 0) > 0 ||
+      Number(queue.cancel_requested ?? 0) > 0;
+    if (!shouldPoll) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void refreshPlatform();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [refreshPlatform, status]);
+
   if (loading && !status) {
     return <Skeleton active paragraph={{ rows: 10 }} />;
   }
@@ -143,6 +294,15 @@ export function PlatformStatusView() {
     : activeTaskCount > 0
       ? `当前 ${formatActiveTaskNote(runningJobs, queuedJobs, cancelRequestedJobs)}。若只是任务仍在执行，可先等待或回结果库刷新，无需立即查看本机服务和日志。`
       : "前端页面、接口服务与数据存储均正常，当前也没有等待处理的任务。可直接回到创建回测、结果库或数据覆盖页继续研究。";
+  const workerHeartbeat = status.heartbeats.find((item) => item.service_name === "worker");
+  const schedulerHeartbeat = status.heartbeats.find((item) => item.service_name === "scheduler");
+  const workerPollInterval = readHeartbeatNumber(workerHeartbeat, "poll_interval_seconds");
+  const capacityGuides: CapacityGuide[] = [
+    buildQueuePressureGuide({ runningJobs, queuedJobs, cancelRequestedJobs }),
+    buildWorkerCapacityGuide(workerHeartbeat, runningJobs, queuedJobs),
+    buildPerJobBudgetGuide(workerHeartbeat),
+    buildFailureGuide(failedJobs, unhealthyServices),
+  ];
 
   return (
     <div className="page-stack">
@@ -184,6 +344,42 @@ export function PlatformStatusView() {
           <Button>
             <Link href="/market-data">检查数据覆盖</Link>
           </Button>
+        </div>
+      </Card>
+
+      <Card size="small" className="section-card maintenance-capacity-card">
+        <div className="maintenance-capacity-main">
+          <strong>并发与资源判断</strong>
+          <p>这里不只是看服务有没有活着，而是用来判断当前是否卡在执行容量、队列积压，还是已经需要进入排障流程。</p>
+          <div className="maintenance-capacity-grid">
+            {capacityGuides.map((item) => (
+              <article key={item.title} className="maintenance-capacity-guide-card">
+                <span>{item.title}</span>
+                <strong>{item.value}</strong>
+                <p>{item.description}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+        <div className="maintenance-capacity-side">
+          <div className="maintenance-capacity-side-card">
+            <span>worker 心跳</span>
+            <strong>{workerHeartbeat ? "已检测到回测执行服务" : "未检测到回测执行服务"}</strong>
+            <p>
+              {workerHeartbeat
+                ? `最近心跳延迟 ${workerHeartbeat.age_seconds}s。${workerPollInterval !== null ? `轮询间隔约 ${workerPollInterval} 秒。` : ""}`
+                : "如果任务持续排队且这里一直没有 worker 心跳，应优先检查回测执行服务是否运行。"}
+            </p>
+          </div>
+          <div className="maintenance-capacity-side-card">
+            <span>调度与维护</span>
+            <strong>{schedulerHeartbeat ? "定时同步服务在线" : "未检测到定时同步服务"}</strong>
+            <p>
+              {schedulerHeartbeat
+                ? `当前配置了 ${status.sync_schedule.length} 条同步计划。只有数据更新异常时，才需要继续查看下方调度表。`
+                : "若只是回测执行，不一定需要定时同步服务；只有行情自动更新异常时，再重点排查它。"}
+            </p>
+          </div>
         </div>
       </Card>
 

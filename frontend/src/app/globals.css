@@ -1112,6 +1112,101 @@ a {
   gap: 8px;
 }
 
+.maintenance-capacity-card .ant-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.maintenance-capacity-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.maintenance-capacity-main strong {
+  color: #0f172a;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.maintenance-capacity-main p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 22px;
+}
+
+.maintenance-capacity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.maintenance-capacity-guide-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.maintenance-capacity-guide-card span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.maintenance-capacity-guide-card strong {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.maintenance-capacity-guide-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.maintenance-capacity-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.maintenance-capacity-side-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.maintenance-capacity-side-card span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.maintenance-capacity-side-card strong {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.maintenance-capacity-side-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .maintenance-guide-card h4 {
   margin: 0 0 8px !important;
 }
@@ -3561,6 +3656,10 @@ a {
   }
 
   .maintenance-status-card .ant-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .maintenance-capacity-card .ant-card-body {
     grid-template-columns: 1fr;
   }
 
