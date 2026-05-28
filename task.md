@@ -2783,3 +2783,33 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 报告列表统计卡降级补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按报告列表页局部体验边界优化，只处理顶部统计卡这一组文案，把它们从“结果中心指标”收成“快速扫一眼结果库里有什么”的辅助信息。
+
+### 修改内容
+
+- `frontend/src/components/reports-view.tsx`
+  - 在统计卡前新增弱提示，明确第一次找报告时不需要先理解这些数字。
+  - 将统计卡标签改成“当前能看的报告 / 先有正收益的 / 你标记过的 / 当前最高收益 / 最近新结果”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不删除统计卡或改变统计逻辑，只调整标签、说明和阅读边界，让它们保留参考价值但不再像报表看板主区。
+- 这轮不改筛选条、排序依据、报告卡或对比逻辑，只处理顶部统计卡一组文案，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`

@@ -308,16 +308,20 @@ export function ReportsView() {
         description="先看结论和风险，再打开详情看净值曲线、交易记录和参数。"
       />
 
+      <div className="detail-secondary-hint">
+        <strong>这些数字只是帮你先扫一眼当前结果库里大概有什么</strong>
+        <p>如果你只想先找一份最值得细看的报告，不用先把这几张卡都看懂。更自然的顺序通常是先看下面的卡片，再回头用这些数字确认当前结果池的大致分布。</p>
+      </div>
       <div className="summary-grid">
-        <MetricCard label="报告数量" value={filteredReports.length} note="当前筛选范围" />
-        <MetricCard label="收益为正" value={positiveReports} note="单独验证收益 > 0" />
-        <MetricCard label="已收藏" value={favoriteReports.length} note="保存在当前浏览器" />
+        <MetricCard label="当前能看的报告" value={filteredReports.length} note="按现在筛选条件算" />
+        <MetricCard label="先有正收益的" value={positiveReports} note="更适合优先细看" />
+        <MetricCard label="你标记过的" value={favoriteReports.length} note="保存在当前浏览器" />
         <MetricCard
-          label="最佳单独验证收益"
+          label="当前最高收益"
           value={bestReport ? <FormatPercent value={getValidationMetrics(bestReport).netReturn} /> : "-"}
           note={bestReport ? `${bestReport.symbol} / ${bestReport.interval}` : "暂无报告"}
         />
-        <MetricCard label="最近报告" value={latestReport?.symbol ?? "-"} note={latestReport?.created_at ?? "暂无报告"} />
+        <MetricCard label="最近新结果" value={latestReport?.symbol ?? "-"} note={latestReport?.created_at ?? "暂无报告"} />
       </div>
 
       <Card
