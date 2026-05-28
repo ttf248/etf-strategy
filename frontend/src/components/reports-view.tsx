@@ -314,7 +314,7 @@ export function ReportsView() {
       </div>
       <div className="summary-grid">
         <MetricCard label="当前能看的报告" value={filteredReports.length} note="按现在筛选条件算" />
-        <MetricCard label="先有正收益的" value={positiveReports} note="更适合优先细看" />
+        <MetricCard label="先看赚钱的" value={positiveReports} note="更适合优先细看" />
         <MetricCard label="你标记过的" value={favoriteReports.length} note="保存在当前浏览器" />
         <MetricCard
           label="这批里最赚钱的"

@@ -3773,3 +3773,30 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 已执行 `cd frontend && npm run test:smoke`
+
+## 报告页正收益卡口径补充
+
+### 状态
+
+已完成：代码修改与本轮验证均已完成，待单独提交。
+
+### 修改方案
+
+继续按报告页局部体验边界优化，只处理首屏统计区里“先有正收益的”这张卡，把偏结果筛查面板、而且读起来不自然的说法收成更像普通用户会直接理解的阅读提示。
+
+### 修改内容
+
+- `frontend/src/components/reports-view.tsx`
+  - 将统计卡标签从“先有正收益的”改成“先看赚钱的”。
+
+### 设计取舍
+
+- 不改收益计算逻辑、卡片数值、其他统计卡、排序规则或下方报告列表，只调整这一张统计卡标签。
+- 这轮不顺手处理“最近新结果”或“当前能看的报告”等其他统计卡口径，避免扩大提交边界。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 已执行 `cd frontend && npm run test:smoke`
