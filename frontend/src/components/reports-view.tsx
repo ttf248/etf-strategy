@@ -310,10 +310,10 @@ export function ReportsView() {
 
       <div className="summary-grid">
         <MetricCard label="报告数量" value={filteredReports.length} note="当前筛选范围" />
-        <MetricCard label="收益为正" value={positiveReports} note="样本外收益 > 0" />
+        <MetricCard label="收益为正" value={positiveReports} note="单独验证收益 > 0" />
         <MetricCard label="已收藏" value={favoriteReports.length} note="保存在当前浏览器" />
         <MetricCard
-          label="最佳样本外收益"
+          label="最佳单独验证收益"
           value={bestReport ? <FormatPercent value={getValidationMetrics(bestReport).netReturn} /> : "-"}
           note={bestReport ? `${bestReport.symbol} / ${bestReport.interval}` : "暂无报告"}
         />
@@ -531,7 +531,7 @@ export function ReportsView() {
                           },
                         },
                         {
-                          title: "样本外收益",
+                          title: "单独验证收益",
                           width: 120,
                           render: (_, row) => <FormatPercent value={getValidationMetrics(row).netReturn} />,
                         },

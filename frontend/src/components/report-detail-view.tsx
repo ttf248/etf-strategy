@@ -40,11 +40,11 @@ const baseParameterLabels: Record<string, string> = {
   LotSize: "每手数量",
   Market: "市场",
   max_position_ratio: "最大仓位",
-  NetPnl: "样本外盈亏",
+  NetPnl: "单独验证盈亏",
   parameter_space: "可尝试的参数范围",
   PeakDate: "阶段高点时间",
   PeakPrice: "阶段高点价格",
-  ReturnPct: "样本外收益",
+  ReturnPct: "单独验证收益",
   Scenario: "回测场景",
   Score: "策略评分",
   slippage_bps: "滑点假设",
@@ -627,8 +627,8 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
       value: `${netReturn >= 0 ? "盈利" : "亏损"} ${netReturn.toFixed(2)}%`,
       description:
         netReturn > 0
-          ? "先确认这是样本外收益，再继续看回撤是否也能接受；只看赚钱与否还不够。"
-          : "样本外收益为负，说明这套组合至少在当前测试区间没有证明自己有效。",
+          ? "先确认这是单独验证收益，再继续看回撤是否也能接受；只看赚钱与否还不够。"
+          : "单独验证收益为负，说明这套组合至少在当前测试区间没有证明自己有效。",
     },
     riskGuide(maxDrawdown),
     benchmarkGuide(validation),
@@ -660,11 +660,11 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
       <Card size="small" className="section-card result-verdict-card">
         <div className="result-verdict-main">
           <Tag color={verdict.color}>{verdict.label}</Tag>
-          <Typography.Title level={3}>这次回测{netReturn >= 0 ? "没有亏损" : "出现亏损"}，样本外收益为 {netReturn.toFixed(2)}%</Typography.Title>
+          <Typography.Title level={3}>这次回测{netReturn >= 0 ? "没有亏损" : "出现亏损"}，单独验证收益为 {netReturn.toFixed(2)}%</Typography.Title>
           <Typography.Paragraph>{verdict.summary}</Typography.Paragraph>
         </div>
         <div className="result-verdict-metrics">
-          <DetailItem label="样本外收益" value={<FormatPercent value={netReturn} />} tone={returnTone} />
+          <DetailItem label="单独验证收益" value={<FormatPercent value={netReturn} />} tone={returnTone} />
           <DetailItem label="最大回撤" value={`${maxDrawdown.toFixed(2)}%`} tone={maxDrawdown > 0 ? "negative" : undefined} />
           <DetailItem label="成交笔数" value={String(closedTrades)} />
         </div>
