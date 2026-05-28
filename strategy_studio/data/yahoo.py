@@ -13,6 +13,8 @@ import pandas as pd
 import yfinance as yf
 from loguru import logger
 
+from strategy_studio.config import DEFAULT_RUNTIME_DATA_DIR
+
 
 STANDARD_COLUMNS = ["Date", "Open", "High", "Low", "Close", "Volume"]
 INTRADAY_INTERVALS = {"1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h"}
@@ -87,7 +89,7 @@ def build_default_output_path(symbol: str, interval: str) -> Path:
     """根据标的和周期生成默认输出路径。"""
     normalized_symbol = symbol.lower().replace(".", "_")
     normalized_interval = interval.lower().replace(" ", "")
-    return Path("data/processed") / f"{normalized_symbol}_{normalized_interval}.csv"
+    return DEFAULT_RUNTIME_DATA_DIR / f"{normalized_symbol}_{normalized_interval}.csv"
 
 
 def is_intraday_interval(interval: str) -> bool:

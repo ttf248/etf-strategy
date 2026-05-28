@@ -112,7 +112,7 @@ py -3.13 main.py init-db
 导入本地 CSV：
 
 ```powershell
-py -3.13 main.py import-csv --source-dir data/processed
+py -3.13 main.py import-csv --source-dir data/samples
 ```
 
 如果 CSV 导入失败，优先检查：
@@ -145,4 +145,4 @@ $env:STRATEGY_STUDIO_PROXY="http://127.0.0.1:7897"
 - `log/`
 - 前端构建缓存。
 
-正式样例报告位于 `reports/`，是否提交应由维护者按任务目标决定。
+正式样例报告位于 `reports/examples/`；平台运行报告位于 `reports/platform/`，默认不提交。

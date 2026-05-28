@@ -7,7 +7,7 @@
 行情有两种来源：
 
 - Yahoo 同步：通过 `sync-now`、Scheduler 或前端同步按钮触发。
-- CSV 导入：通过 `import-csv` 把 `data/processed/` 下的历史文件导入数据库。
+- CSV 导入：通过 `import-csv` 把 `data/samples/` 或 `data/processed/` 下的标准化历史文件导入数据库。
 
 标准流程：
 
@@ -72,7 +72,7 @@ Worker 执行完成后写入：
 - 结构化报告：存储在 PostgreSQL，供前端查询和绘图。
 - 文件报告：由研究工作流生成 Markdown、图片和 CSV，适合离线阅读和批量归档。
 
-`reports/report_index.md` 是样例和批量报告的统一入口。平台运行时生成的 `reports/platform/` 默认视为运行产物。
+`reports/examples/report_index.md` 是开源样例报告入口。平台运行时生成的 `reports/platform/` 默认视为运行产物，不纳入版本控制。
 
 ## 数据边界
 

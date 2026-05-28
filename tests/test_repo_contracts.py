@@ -23,7 +23,11 @@ class RepoContractTests(unittest.TestCase):
             REPO_ROOT / "README.md",
             REPO_ROOT / "CONTRIBUTING.md",
             REPO_ROOT / "CHANGELOG.md",
+            REPO_ROOT / "SECURITY.md",
+            REPO_ROOT / "SUPPORT.md",
+            REPO_ROOT / "data" / "README.md",
             REPO_ROOT / "frontend" / "README.md",
+            REPO_ROOT / "reports" / "README.md",
             REPO_ROOT / "doc" / "index.md",
             REPO_ROOT / "doc" / "architecture.md",
             REPO_ROOT / "doc" / "data-flow.md",
@@ -32,6 +36,7 @@ class RepoContractTests(unittest.TestCase):
             REPO_ROOT / "doc" / "development.md",
             REPO_ROOT / "doc" / "api.md",
             REPO_ROOT / "doc" / "strategy-engine.md",
+            REPO_ROOT / "doc" / "open-source-readiness.md",
             REPO_ROOT / "doc" / "frontend-ux-audit.md",
         ]
 
@@ -57,10 +62,15 @@ class RepoContractTests(unittest.TestCase):
             "doc/development.md",
             "doc/api.md",
             "doc/strategy-engine.md",
+            "doc/open-source-readiness.md",
             "frontend/README.md",
             "CONTRIBUTING.md",
             "LICENSE",
-            "reports/report_index.md",
+            "SECURITY.md",
+            "SUPPORT.md",
+            "data/README.md",
+            "reports/README.md",
+            "reports/examples/report_index.md",
         ]
         for link in required_links:
             self.assertIn(link, content)
@@ -117,10 +127,10 @@ class RepoContractTests(unittest.TestCase):
 
     def test_reports_keep_two_layer_structure(self) -> None:
         report_files = [
-            REPO_ROOT / "reports" / "1810_hk" / "daily" / "1810_hk_grid_report.md",
-            REPO_ROOT / "reports" / "1810_hk" / "minute" / "1810_hk_15m_grid_report.md",
-            REPO_ROOT / "reports" / "1810_hk" / "daily" / "1810_hk_daily_strategy_compare_report.md",
-            REPO_ROOT / "reports" / "1810_hk" / "minute" / "1810_hk_15m_strategy_compare_report.md",
+            REPO_ROOT / "reports" / "examples" / "1810_hk" / "daily" / "1810_hk_grid_report.md",
+            REPO_ROOT / "reports" / "examples" / "1810_hk" / "minute" / "1810_hk_15m_grid_report.md",
+            REPO_ROOT / "reports" / "examples" / "1810_hk" / "daily" / "1810_hk_daily_strategy_compare_report.md",
+            REPO_ROOT / "reports" / "examples" / "1810_hk" / "minute" / "1810_hk_15m_strategy_compare_report.md",
         ]
         required_sections = [
             "## 第一层：先看结论",

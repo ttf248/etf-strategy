@@ -21,7 +21,7 @@ npm install
 
 ```powershell
 py -3.13 main.py init-db
-py -3.13 main.py import-csv --source-dir data/processed
+py -3.13 main.py import-csv --source-dir data/samples
 ```
 
 4. 使用 VS Code 一键启动，或按 [部署指南](doc/deployment.md) 分别启动 API、Worker、Scheduler 和前端。
@@ -64,7 +64,7 @@ git diff --check
 - 文档默认使用中文。
 - 用户文档只描述当前仓库真实能力，不提前承诺未实现功能。
 - 架构、数据流、部署、运维和开发说明分别维护，避免 README 过长。
-- 自动生成报告位于 `reports/`，通常不手工改写。
+- 开源样例报告位于 `reports/examples/`，平台运行产物默认写入 `reports/platform/`。
 
 ## 数据和策略口径
 

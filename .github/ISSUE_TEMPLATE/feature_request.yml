@@ -1,0 +1,27 @@
+name: 功能建议
+description: 提出新的能力、工程改造或文档改进建议。
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: background
+    attributes:
+      label: 需求背景
+      description: 说明当前痛点、使用场景和为什么现有方案不够。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 请给出你期望的行为、接口或页面变化。
+    validations:
+      required: true
+  - type: textarea
+    id: tradeoff
+    attributes:
+      label: 影响与取舍
+      description: 是否会影响数据口径、默认样例、报告结构、部署或兼容性。
+    validations:
+      required: true

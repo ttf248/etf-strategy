@@ -57,10 +57,10 @@ postgresql+psycopg://postgres:tian@localhost:5432/strategy_studio
 
 ```powershell
 py -3.13 main.py init-db
-py -3.13 main.py import-csv --source-dir data/processed
+py -3.13 main.py import-csv --source-dir data/samples
 ```
 
-`init-db` 会创建项目数据库并执行 Alembic 迁移。`import-csv` 用于把仓库已有的标准化行情导入 PostgreSQL。
+`init-db` 会创建项目数据库并执行 Alembic 迁移。`import-csv` 用于把仓库样例或你自己整理好的标准化行情导入 PostgreSQL。
 
 ## 启动后端
 

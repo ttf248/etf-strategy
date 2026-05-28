@@ -21,13 +21,13 @@ class PlatformFeatureTests(unittest.TestCase):
         parser = build_parser()
 
         init_args = parser.parse_args(["init-db"])
-        import_args = parser.parse_args(["import-csv", "--source-dir", "data/processed"])
+        import_args = parser.parse_args(["import-csv", "--source-dir", "data/samples"])
         api_args = parser.parse_args(["api", "--host", "127.0.0.1", "--port", "8000"])
         replace_args = parser.parse_args(["api", "--replace-existing"])
 
         self.assertEqual(init_args.command, "init-db")
         self.assertEqual(import_args.command, "import-csv")
-        self.assertEqual(import_args.source_dir, "data/processed")
+        self.assertEqual(import_args.source_dir, "data/samples")
         self.assertEqual(api_args.command, "api")
         self.assertEqual(api_args.host, "127.0.0.1")
         self.assertEqual(api_args.port, 8000)

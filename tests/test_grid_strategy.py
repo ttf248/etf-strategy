@@ -113,7 +113,7 @@ class GridStrategyTests(unittest.TestCase):
             [
                 "backtest",
                 "--data",
-                "data/processed/1810_hk_daily.csv",
+                "data/samples/1810_hk_daily.csv",
                 "--grid-spacing",
                 "0.05",
                 "--grid-count",
@@ -150,7 +150,7 @@ class GridStrategyTests(unittest.TestCase):
             [
                 "report",
                 "--data",
-                "data/processed/1810_hk_15m.csv",
+                "data/samples/1810_hk_15m.csv",
                 "--interval",
                 "15m",
                 "--strategy",
@@ -269,9 +269,9 @@ class GridStrategyTests(unittest.TestCase):
             patch("strategy_studio.cli.run_minute_full_workflow", return_value=workflow_result) as mock_workflow,
             patch(
                 "strategy_studio.cli.build_minute_report_markdown",
-                return_value="reports/1810_hk/minute/1810_hk_15m_grid_report.md",
+                return_value="reports/platform/1810_hk/minute/1810_hk_15m_grid_report.md",
             ),
-            patch("strategy_studio.cli._refresh_unified_report_index", return_value=Path("reports") / "report_index.md"),
+            patch("strategy_studio.cli._refresh_unified_report_index", return_value=Path("reports") / "platform" / "report_index.md"),
             patch("builtins.print"),
         ):
             result = handle_run(args)
@@ -337,9 +337,9 @@ class GridStrategyTests(unittest.TestCase):
                 patch("strategy_studio.cli.run_minute_full_workflow", return_value=workflow_result) as mock_workflow,
                 patch(
                     "strategy_studio.cli.build_minute_report_markdown",
-                    return_value="reports/1810_hk/minute/1810_hk_15m_grid_report.md",
+                    return_value="reports/platform/1810_hk/minute/1810_hk_15m_grid_report.md",
                 ),
-                patch("strategy_studio.cli._refresh_unified_report_index", return_value=Path("reports") / "report_index.md"),
+                patch("strategy_studio.cli._refresh_unified_report_index", return_value=Path("reports") / "platform" / "report_index.md"),
                 patch("builtins.print"),
             ):
                 result = handle_run(args)
@@ -777,7 +777,7 @@ class GridStrategyTests(unittest.TestCase):
             [
                 "backtest",
                 "--data",
-                "data/processed/1810_hk_daily.csv",
+                "data/samples/1810_hk_daily.csv",
                 "--symbol",
                 "1810.HK",
                 "--grid-spacing",
@@ -790,7 +790,7 @@ class GridStrategyTests(unittest.TestCase):
         )
 
         self.assertEqual(args.command, "backtest")
-        self.assertEqual(args.data, "data/processed/1810_hk_daily.csv")
+        self.assertEqual(args.data, "data/samples/1810_hk_daily.csv")
         self.assertEqual(args.symbol, "1810.HK")
         self.assertAlmostEqual(args.grid_spacing, 0.06)
         self.assertEqual(args.grid_count, 7)
