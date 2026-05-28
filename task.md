@@ -3140,3 +3140,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页失败状态提示口径补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理最近任务卡 `failed` 状态对应的阅读提示，把“失败”这类后台结果口吻收成更贴近用户看到这轮没跑成时的自然表达。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将失败提示从“这次失败先看错误提示，通常是数据不足、模板不匹配，或参数不适合当前标的。”改成“这轮没跑成，先看错误提示；通常是数据不足、模板不匹配，或参数不适合当前标的。”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不改变任务状态判断逻辑，也不改 `queued / running / cancelled / succeeded` 其他分支，只调整 `failed` 这一条提示文案。
+- 这轮不改卡片标题、主按钮、次级动作或完整历史表格，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`

@@ -70,7 +70,7 @@ function buildJobReadingHint(job: BacktestJob) {
     return job.reports?.length ? "这次已经生成报告，优先打开结果看收益、回撤和交易记录。" : "任务执行完成，但报告还没挂上时，先去报告列表刷新确认。";
   }
   if (job.status === "failed") {
-    return "这次失败先看错误提示，通常是数据不足、模板不匹配，或参数不适合当前标的。";
+    return "这轮没跑成，先看错误提示；通常是数据不足、模板不匹配，或参数不适合当前标的。";
   }
   if (job.status === "queued") {
     return "这轮还没开始跑，先不用重复提交；等它真的开始后，再决定要不要停掉这次。";
