@@ -670,7 +670,7 @@ export function BacktestsView() {
                         pagination={{ pageSize: 12, showSizeChanger: false }}
                         scroll={{ x: 1180 }}
                         columns={[
-                          { title: "任务编号", dataIndex: "id", width: 88, fixed: "left" },
+                          { title: "回测编号", dataIndex: "id", width: 88, fixed: "left" },
                           { title: "标的", render: (_, row) => String(row.request_payload.symbol ?? "-"), width: 120 },
                           { title: "周期", render: (_, row) => String(row.request_payload.interval ?? "-"), width: 90 },
                           { title: "策略", render: (_, row) => strategyLabel(String(row.request_payload.strategy_kind ?? "-")), width: 160, ellipsis: true },
