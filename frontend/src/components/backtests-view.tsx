@@ -106,6 +106,43 @@ function backtestStatusLabel(status: string) {
   return status || "-";
 }
 
+function buildJobPrimaryAction(job: BacktestJob) {
+  const reportId = job.reports?.[0]?.id;
+  if (reportId) {
+    return {
+      disabled: false,
+      href: `/reports/${reportId}`,
+      label: "先看这份结果",
+    };
+  }
+  if (job.status === "succeeded") {
+    return {
+      disabled: false,
+      href: "/reports",
+      label: "去结果列表里找",
+    };
+  }
+  if (job.status === "failed") {
+    return {
+      disabled: true,
+      href: null,
+      label: "这次没生成结果",
+    };
+  }
+  if (job.status === "cancelled" || job.status === "cancel_requested") {
+    return {
+      disabled: true,
+      href: null,
+      label: "这轮已经停掉",
+    };
+  }
+  return {
+    disabled: true,
+    href: null,
+    label: "先等结果出来",
+  };
+}
+
 export function BacktestsView() {
   const [form] = Form.useForm();
   const [jobs, setJobs] = useState<BacktestJob[]>([]);
@@ -613,8 +650,8 @@ export function BacktestsView() {
             <div className="job-mobile-list">
               {recentJobs.map((job) => {
                 const payload = job.request_payload;
-                const reportId = job.reports?.[0]?.id;
                 const templateName = (payload.template_snapshot as { template_name?: string } | undefined)?.template_name;
+                const primaryAction = buildJobPrimaryAction(job);
                 return (
                   <article key={job.id} className="job-mobile-card">
                     <div className="job-mobile-card-head">
@@ -631,16 +668,12 @@ export function BacktestsView() {
                     </div>
                     {job.error_message ? <p className="job-mobile-error">{job.error_message}</p> : null}
                     <div className="job-mobile-actions">
-                      {reportId ? (
+                      {primaryAction.href ? (
                         <Button type="primary">
-                          <Link href={`/reports/${reportId}`}>先看这份结果</Link>
-                        </Button>
-                      ) : job.status === "succeeded" ? (
-                        <Button type="primary">
-                          <Link href="/reports">去结果列表里找</Link>
+                          <Link href={primaryAction.href}>{primaryAction.label}</Link>
                         </Button>
                       ) : (
-                        <Button disabled>先等结果出来</Button>
+                        <Button disabled={primaryAction.disabled}>{primaryAction.label}</Button>
                       )}
                       <Button disabled={!["queued", "running"].includes(job.status)} onClick={() => void cancelJob(job.id)}>
                         先停掉这次
