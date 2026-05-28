@@ -1,13 +1,13 @@
 # 数据流转
 
-本平台的数据链路围绕 PostgreSQL 设计。CSV 和 Markdown 报告仍可保留，但不再承担长期主存储职责。
+本平台的数据链路围绕 PostgreSQL 设计。CSV 只作为导入或离线研究输入，平台报告不再以本地 Markdown 作为长期主存储。
 
 ## 行情进入系统
 
 行情有两种来源：
 
 - Yahoo 同步：通过 `sync-now`、Scheduler 或前端同步按钮触发。
-- CSV 导入：通过 `import-csv` 把 `data/samples/` 或 `data/processed/` 下的标准化历史文件导入数据库。
+- CSV 导入：通过 `import-csv` 把 `data/processed/` 下的标准化历史文件导入数据库。
 
 标准流程：
 
@@ -67,12 +67,12 @@ Worker 执行完成后写入：
 
 ## 报告流
 
-平台报告有两种表现形式：
+报告有两种表现形式：
 
 - 结构化报告：存储在 PostgreSQL，供前端查询和绘图。
-- 文件报告：由研究工作流生成 Markdown、图片和 CSV，适合离线阅读和批量归档。
+- 文件报告：由 CLI 研究工作流临时生成 Markdown、图片和 CSV，适合离线阅读，但不再作为平台长期事实来源。
 
-`reports/examples/report_index.md` 是开源样例报告入口。平台运行时生成的 `reports/platform/` 默认视为运行产物，不纳入版本控制。
+`reports/platform/` 默认视为运行产物，不纳入版本控制。平台 worker 执行回测时只写数据库，不再落地本地 Markdown 报告。
 
 ## 数据边界
 

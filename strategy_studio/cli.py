@@ -545,7 +545,7 @@ def _validate_daily_date_range(args: argparse.Namespace, command_name: str) -> N
 def _resolve_download_output_path(symbol: str, interval: str, period: str | None, output: str | None) -> Path:
     """统一计算下载落盘路径。
 
-    默认样本仍保留固定文件名，方便 README、文档和报告复用；
+    默认标的仍保留固定文件名，方便 README、文档和导入命令复用；
     其余标的或周期则按 `symbol + interval` 自动生成路径。
     """
     if output is not None:

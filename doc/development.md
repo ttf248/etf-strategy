@@ -27,12 +27,10 @@ admin user: postgres
 
 密码和连接串可以通过 `STRATEGY_STUDIO_DATABASE_URL` 覆盖。
 
-提交样例与运行产物分离：
+本地导入目录与运行产物分离：
 
-- `data/samples/`：随仓库提交的最小 CSV 样例。
 - `data/processed/`：下载、清洗和批量导入过程产生的运行数据，默认不提交。
-- `reports/examples/`：README 和文档引用的正式样例报告。
-- `reports/platform/`：平台运行时导出的报告，默认不提交。
+- `reports/platform/`：CLI 临时导出的报告，默认不提交。
 
 ## 开发启动
 
@@ -119,7 +117,7 @@ npm run test:smoke
 - 新增或修改 API。
 - 修改数据库表或数据流。
 - 修改启动方式、端口、环境变量。
-- 修改策略口径、报告口径或默认样本。
+- 修改策略口径、报告口径或默认导入路径。
 - 修改前端页面或主要工作流。
 
 ## 提交约定

@@ -35,7 +35,10 @@ def load_price_frame(data_path: str | Path) -> pd.DataFrame:
 
 
 def save_run_artifacts(output_dir: str | Path, prefix: str, run_result: dict[str, object]) -> dict[str, Path]:
-    """保存单次回测产生的明细文件。"""
+    """保存单次回测产生的明细文件。
+
+    仅供离线 CLI 研究使用；平台 worker 会直接把结构化结果写入数据库。
+    """
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -61,7 +64,10 @@ def save_run_artifacts(output_dir: str | Path, prefix: str, run_result: dict[str
 
 
 def save_decline_window(output_dir: str | Path, decline_window: DeclineWindow) -> Path:
-    """保存样本内区间定位结果。"""
+    """保存样本内区间定位结果。
+
+    仅供离线 CLI 研究使用；平台 worker 不再依赖本地窗口文件。
+    """
     target = Path(output_dir)
     target.mkdir(parents=True, exist_ok=True)
     window_path = target / "in_sample_window.csv"

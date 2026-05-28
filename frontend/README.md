@@ -45,7 +45,7 @@ npm run start
 
 ## 冒烟验证
 
-先确保本地 API 已启动，并且已经执行过 `init-db` 与 `import-csv` 导入样例行情。
+先确保本地 API 已启动，并且已经执行过 `init-db`，同时数据库里已经有可回测行情；你可以通过 `import-csv --source-dir data/processed` 或 `sync-now` 预先准备数据。
 
 首次执行需要安装浏览器：
 

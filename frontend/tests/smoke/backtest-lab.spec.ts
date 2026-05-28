@@ -29,9 +29,9 @@ type LaunchPreset = {
 
 async function pickLaunchPreset(request: APIRequestContext): Promise<LaunchPreset> {
   const statsResponse = await request.get(`${apiBaseUrl}/api/market-data/stats`);
-  expect(statsResponse.ok(), "后端 `/api/market-data/stats` 不可用，请先启动 API 并导入样例行情。").toBeTruthy();
+  expect(statsResponse.ok(), "后端 `/api/market-data/stats` 不可用，请先启动 API 并准备数据库行情。").toBeTruthy();
   const stats = (await statsResponse.json()) as MarketDataStats;
-  expect(stats.instrument_count, "当前数据库没有可回测标的，请先执行 `py -3.13 main.py import-csv --source-dir data/samples`。").toBeGreaterThan(0);
+  expect(stats.instrument_count, "当前数据库没有可回测标的，请先执行 `py -3.13 main.py import-csv --source-dir data/processed` 或 `py -3.13 main.py sync-now --symbol 1810.HK --interval 1d`。").toBeGreaterThan(0);
 
   const templatesResponse = await request.get(`${apiBaseUrl}/api/templates?active_only=true`);
   expect(templatesResponse.ok(), "后端 `/api/templates` 不可用，请先完成 `init-db`。").toBeTruthy();
@@ -58,7 +58,7 @@ async function pickLaunchPreset(request: APIRequestContext): Promise<LaunchPrese
     }
   }
 
-  throw new Error("未找到同时具备样例行情和启用模板的回测组合，无法执行前端冒烟验证。");
+  throw new Error("未找到同时具备数据库行情和启用模板的回测组合，无法执行前端冒烟验证。");
 }
 
 test("首页到回测提交主路径可用", async ({ page, request }) => {

@@ -12,7 +12,7 @@ Strategy Studio 是一个中文优先的开源策略研究平台，用于从 Yah
 - 多策略研究：网格、定投、日线反弹、分钟反抽和指数回落网格共用同一套工作流。
 - Web 前端：新手首页、创建回测、查看报告、数据准备、策略模板和系统状态；数据准备页会直接推荐适合首跑的标的和应补周期，报告详情可直接带去对比同标的结果，模板页也能按目标筛选和对比后再开跑。
 - CLI 研究：保留下载、寻参、验证、报告和批量研究入口。
-- 报告样例：[统一报告索引](reports/examples/report_index.md)、[日线多策略报告](reports/examples/1810_hk/daily/1810_hk_daily_strategy_compare_report.md)、[15 分钟多策略报告](reports/examples/1810_hk/minute/1810_hk_15m_strategy_compare_report.md)、[15 分钟网格基线报告](reports/examples/1810_hk/minute/1810_hk_15m_grid_report.md)。
+- 仓库边界：历史行情、历史 Markdown 报告和平台回测结果不再随仓库提交，数据库是唯一长期事实来源。
 
 ## 架构
 
@@ -59,14 +59,25 @@ npm install
 postgresql+psycopg://postgres:tian@localhost:5432/strategy_studio
 ```
 
-初始化并导入本地样例行情：
+初始化数据库：
 
 ```powershell
 py -3.13 main.py init-db
-py -3.13 main.py import-csv --source-dir data/samples
 ```
 
-生产环境请通过 `STRATEGY_STUDIO_DATABASE_URL` 覆盖默认连接。仓库只提交 `data/samples/` 下的最小样例，运行时下载或整理出的 CSV 默认写入 `data/processed/`。
+如需导入你自己整理的标准化 CSV：
+
+```powershell
+py -3.13 main.py import-csv --source-dir data/processed
+```
+
+如需直接同步 Yahoo 行情：
+
+```powershell
+py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
+```
+
+生产环境请通过 `STRATEGY_STUDIO_DATABASE_URL` 覆盖默认连接。仓库不再提交样例行情和历史报告；运行时整理出的 CSV 默认写入 `data/processed/`，平台回测结果默认只写入数据库。
 
 ### 3. 启动平台
 
@@ -103,31 +114,31 @@ VS Code 用户可以直接使用 `启动平台前后端全套`。
 手动同步行情：
 
 ```powershell
-py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
+py -3.13 main.py sync-now --symbol 1810.HK --interval 15m --period 60d
 ```
 
-提交本地报告研究：
+导入你本地准备好的 CSV：
 
 ```powershell
-py -3.13 main.py report --data data/samples/1810_hk_15m.csv --symbol 1810.HK --interval 15m --compare-strategies --jobs auto --cache-dir outputs/cache/minute_compare
+py -3.13 main.py import-csv --source-dir data/processed
 ```
 
-运行日线定投回测：
+提交平台回测任务后由 Worker 异步执行，前端从数据库读取报告；CLI 仍可在你自己的本地 CSV 上生成临时文件报告：
 
 ```powershell
-py -3.13 main.py report --data data/samples/1810_hk_daily.csv --symbol 1810.HK --interval 1d --strategy dca --jobs auto --cache-dir outputs/cache/dca
+py -3.13 main.py report --data data/processed/1810_hk_15m.csv --symbol 1810.HK --interval 15m --compare-strategies --jobs auto --cache-dir outputs/cache/minute_compare
 ```
 
 批量研究：
 
 ```powershell
-py -3.13 main.py batch --symbol-set southbound_shanghai_all --interval 1d --download --proxy http://127.0.0.1:7897 --jobs auto --cache-dir outputs/cache/southbound_daily
+py -3.13 main.py batch --symbol-set hstech_plus_513050 --interval 1d --download --proxy http://127.0.0.1:7897 --jobs auto --cache-dir outputs/cache/hstech_daily
 ```
 
 离线批量重跑：
 
 ```powershell
-py -3.13 main.py batch --symbol-set southbound_shanghai_all --interval 15m --local-only --cache-dir outputs/cache/southbound_15m
+py -3.13 main.py batch --symbol-set hstech_plus_513050 --interval 15m --local-only --cache-dir outputs/cache/hstech_15m
 ```
 
 ## 项目结构
@@ -136,8 +147,8 @@ py -3.13 main.py batch --symbol-set southbound_shanghai_all --interval 15m --loc
 strategy_studio/    Python 后端、策略、数据、服务和运行时
 frontend/        Next.js 前端控制台
 alembic/         PostgreSQL 迁移
-data/            reference / samples / processed 三层数据目录
-reports/         examples / platform 双层报告目录
+data/            本地导入暂存目录与目录说明
+reports/         临时文件报告目录与目录说明
 outputs/         运行中间产物，默认不提交
 doc/             长期维护文档
 tests/           unittest 测试
@@ -145,11 +156,8 @@ tests/           unittest 测试
 
 其中：
 
-- `data/samples/`：随仓库提交的最小可复现样例。
-- `data/reference/`：不会频繁变化的参考快照。
 - `data/processed/`：下载、清洗和导入过程产生的运行数据，默认不提交。
-- `reports/examples/`：开源文档引用的正式样例报告。
-- `reports/platform/`：平台运行时导出的报告目录，默认不提交。
+- `reports/platform/`：CLI 临时文件报告和索引目录，默认不提交。
 
 ## 文档
 
@@ -175,8 +183,6 @@ tests/           unittest 测试
 - `STRATEGY_STUDIO_ADMIN_DATABASE`
 - `STRATEGY_STUDIO_API_HOST`
 - `STRATEGY_STUDIO_API_PORT`
-- `STRATEGY_STUDIO_PLATFORM_OUTPUT_DIR`
-- `STRATEGY_STUDIO_PLATFORM_REPORT_DIR`
 - `STRATEGY_STUDIO_PROXY`
 - `STRATEGY_STUDIO_ENABLE_PROCESS_CONTROL`
 - `NEXT_PUBLIC_API_BASE_URL`

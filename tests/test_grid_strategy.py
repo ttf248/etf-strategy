@@ -113,7 +113,7 @@ class GridStrategyTests(unittest.TestCase):
             [
                 "backtest",
                 "--data",
-                "data/samples/1810_hk_daily.csv",
+                "data/processed/1810_hk_daily.csv",
                 "--grid-spacing",
                 "0.05",
                 "--grid-count",
@@ -150,7 +150,7 @@ class GridStrategyTests(unittest.TestCase):
             [
                 "report",
                 "--data",
-                "data/samples/1810_hk_15m.csv",
+                "data/processed/1810_hk_15m.csv",
                 "--interval",
                 "15m",
                 "--strategy",
@@ -391,13 +391,13 @@ class GridStrategyTests(unittest.TestCase):
 
         self.assertTrue(args.local_only)
 
-    def test_batch_parser_reads_southbound_shanghai_symbol_set(self) -> None:
+    def test_batch_parser_reads_hstech_symbol_set(self) -> None:
         parser = build_parser()
 
-        args = parser.parse_args(["batch", "--symbol-set", "southbound_shanghai_all", "--interval", "1d"])
+        args = parser.parse_args(["batch", "--symbol-set", "hstech_plus_513050", "--interval", "1d"])
 
         self.assertEqual(args.command, "batch")
-        self.assertEqual(args.symbol_set, "southbound_shanghai_all")
+        self.assertEqual(args.symbol_set, "hstech_plus_513050")
         self.assertEqual(args.interval, "1d")
 
     def test_batch_parser_reads_compare_strategy_arguments(self) -> None:
@@ -462,6 +462,7 @@ class GridStrategyTests(unittest.TestCase):
                 ]
             )
             with (
+                patch("strategy_studio.cli._resolve_download_output_path", return_value=data_path),
                 patch("strategy_studio.cli.run_full_workflow", return_value=workflow_result) as mock_workflow,
                 patch(
                     "strategy_studio.cli.build_report_markdown",
@@ -557,6 +558,7 @@ class GridStrategyTests(unittest.TestCase):
                 ]
             )
             with (
+                patch("strategy_studio.cli._resolve_download_output_path", return_value=data_path),
                 patch("strategy_studio.cli._run_comparison_workflows", return_value=comparison_results),
                 patch(
                     "strategy_studio.cli.build_strategy_comparison_report",
@@ -607,7 +609,7 @@ class GridStrategyTests(unittest.TestCase):
                 [
                     "batch",
                     "--symbol-set",
-                    "southbound_shanghai_all",
+                    "hstech_plus_513050",
                     "--interval",
                     "1d",
                     "--output-dir",
@@ -777,7 +779,7 @@ class GridStrategyTests(unittest.TestCase):
             [
                 "backtest",
                 "--data",
-                "data/samples/1810_hk_daily.csv",
+                "data/processed/1810_hk_daily.csv",
                 "--symbol",
                 "1810.HK",
                 "--grid-spacing",
@@ -790,7 +792,7 @@ class GridStrategyTests(unittest.TestCase):
         )
 
         self.assertEqual(args.command, "backtest")
-        self.assertEqual(args.data, "data/samples/1810_hk_daily.csv")
+        self.assertEqual(args.data, "data/processed/1810_hk_daily.csv")
         self.assertEqual(args.symbol, "1810.HK")
         self.assertAlmostEqual(args.grid_spacing, 0.06)
         self.assertEqual(args.grid_count, 7)

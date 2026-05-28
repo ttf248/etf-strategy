@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from pathlib import Path
 
 
 DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres:tian@localhost:5432/strategy_studio"
@@ -13,8 +12,6 @@ DEFAULT_API_HOST = "127.0.0.1"
 DEFAULT_API_PORT = 8000
 DEFAULT_FRONTEND_HOST = "127.0.0.1"
 DEFAULT_FRONTEND_PORT = 3000
-DEFAULT_PLATFORM_OUTPUT_DIR = Path("outputs") / "platform"
-DEFAULT_PLATFORM_REPORT_DIR = Path("reports") / "platform"
 DEFAULT_SYNC_INTERVALS = ("1d", "15m", "1m")
 
 
@@ -35,8 +32,6 @@ class PlatformSettings:
     api_port: int = DEFAULT_API_PORT
     frontend_host: str = DEFAULT_FRONTEND_HOST
     frontend_port: int = DEFAULT_FRONTEND_PORT
-    output_dir: Path = DEFAULT_PLATFORM_OUTPUT_DIR
-    report_dir: Path = DEFAULT_PLATFORM_REPORT_DIR
     sync_intervals: tuple[str, ...] = DEFAULT_SYNC_INTERVALS
 
 
@@ -51,7 +46,5 @@ def load_platform_settings() -> PlatformSettings:
         api_port=int(os.getenv("STRATEGY_STUDIO_API_PORT", str(DEFAULT_API_PORT))),
         frontend_host=os.getenv("STRATEGY_STUDIO_FRONTEND_HOST", DEFAULT_FRONTEND_HOST),
         frontend_port=int(os.getenv("STRATEGY_STUDIO_FRONTEND_PORT", str(DEFAULT_FRONTEND_PORT))),
-        output_dir=Path(os.getenv("STRATEGY_STUDIO_PLATFORM_OUTPUT_DIR", str(DEFAULT_PLATFORM_OUTPUT_DIR))),
-        report_dir=Path(os.getenv("STRATEGY_STUDIO_PLATFORM_REPORT_DIR", str(DEFAULT_PLATFORM_REPORT_DIR))),
     )
 

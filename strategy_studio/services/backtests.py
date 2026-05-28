@@ -9,8 +9,6 @@ from pathlib import Path
 import pandas as pd
 
 from strategy_studio.db.session import open_session
-from strategy_studio.db.settings import load_platform_settings
-from strategy_studio.reporting import build_minute_report_markdown, build_report_markdown
 from strategy_studio.repositories.backtests import (
     claim_next_queued_job,
     create_backtest_job,
@@ -77,7 +75,6 @@ def _pseudo_data_path(symbol: str, interval: str) -> Path:
 
 def _normalize_artifacts(
     workflow_result: dict[str, object],
-    report_path: Path,
     template_snapshot: dict[str, object] | None = None,
 ) -> dict[str, object]:
     def _stringify(value: object) -> object:
@@ -96,10 +93,12 @@ def _normalize_artifacts(
         return value
 
     payload = {
+        "storage_mode": "database_only",
+        "data_source": "database",
         "combined_summary_path": workflow_result.get("combined_summary_path"),
         "optimization_paths": workflow_result["optimization"].get("best_paths", {}),
         "validation_paths": workflow_result["validation"].get("paths", {}),
-        "report_path": report_path,
+        "in_sample_window": asdict(workflow_result["optimization"]["decline_window"]),
         "template_snapshot": template_snapshot,
     }
     return _stringify(payload)
@@ -202,6 +201,12 @@ def _requeue_failed_job(job_id: int) -> int | None:
     return job_id
 
 
+def _build_database_report_name(job_id: int, symbol: str, interval: str, strategy_kind: str | None) -> str:
+    symbol_slug = symbol.lower().replace(".", "_")
+    strategy_slug = (strategy_kind or "strategy").lower().replace(".", "_")
+    return f"job_{job_id}_{symbol_slug}_{interval}_{strategy_slug}"
+
+
 def _cancel_if_requested(session, job) -> bool:
     session.refresh(job)
     if job.status != "cancel_requested":
@@ -212,7 +217,6 @@ def _cancel_if_requested(session, job) -> bool:
 
 
 def execute_next_job(preferred_job_id: int | None = None) -> int | None:
-    settings = load_platform_settings()
     with open_session() as session:
         if preferred_job_id is not None:
             job = get_backtest_job(session, preferred_job_id)
@@ -257,8 +261,6 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                 left_side_policy=payload.left_side_policy,
                 force_exit_loss_pct=payload.force_exit_loss_pct,
             )
-            output_dir = settings.output_dir / f"job_{job.id}"
-            report_dir = settings.report_dir / payload.symbol.lower().replace(".", "_") / payload.interval
             pseudo_data_path = _pseudo_data_path(payload.symbol, payload.interval)
 
             if _cancel_if_requested(session, job):
@@ -269,7 +271,6 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                 run_minute_full_workflow(
                     data_path=pseudo_data_path,
                     symbol=payload.symbol,
-                    output_dir=output_dir,
                     interval=payload.interval,
                     validation_ratio=payload.validation_ratio,
                     strategy_kind=payload.strategy_kind,
@@ -277,12 +278,12 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                     jobs=payload.jobs,
                     parameter_space=payload.parameter_space,
                     data=price_frame,
+                    write_artifacts=False,
                 )
                 if _is_intraday(payload.interval)
                 else run_full_workflow(
                     data_path=pseudo_data_path,
                     symbol=payload.symbol,
-                    output_dir=output_dir,
                     validation_start=payload.validation_start,
                     lookback_days=payload.lookback_days,
                     strategy_kind=payload.strategy_kind,
@@ -290,6 +291,7 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                     jobs=payload.jobs,
                     parameter_space=payload.parameter_space,
                     data=price_frame,
+                    write_artifacts=False,
                 )
             )
             if _cancel_if_requested(session, job):
@@ -297,11 +299,6 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
             mark_job_progress(session, job, 75.0)
             session.commit()
 
-            report_path = (
-                build_minute_report_markdown(workflow_result, report_dir=report_dir)
-                if _is_intraday(payload.interval)
-                else build_report_markdown(workflow_result, report_dir=report_dir)
-            )
             best_summary = workflow_result["optimization"]["best_run"]["summary"]
             validation_summary = workflow_result["validation"]["run"]["summary"]
             report = create_backtest_report(
@@ -310,7 +307,7 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                 instrument=instrument,
                 interval=payload.interval,
                 strategy_kind=payload.strategy_kind,
-                report_name=report_path.name,
+                report_name=_build_database_report_name(job.id, payload.symbol, payload.interval, payload.strategy_kind),
                 dataset_start=pd.Timestamp(best_summary["StartDate"]).to_pydatetime(),
                 dataset_end=pd.Timestamp(validation_summary["EndDate"]).to_pydatetime(),
                 validation_start=payload.validation_start if not _is_intraday(payload.interval) else str(payload.validation_ratio),
@@ -321,7 +318,6 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                 parameters={key: _to_jsonable(value) for key, value in best_summary.items() if isinstance(key, str)},
                 artifacts=_normalize_artifacts(
                     workflow_result,
-                    report_path=report_path,
                     template_snapshot=payload.template_snapshot,
                 ),
             )

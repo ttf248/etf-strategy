@@ -33,7 +33,6 @@ from strategy_studio.symbols import (
     INDEX_GRID_159605,
     INDEX_GRID_159866,
     INDEX_GRID_159941,
-    SOUTHBOUND_SHANGHAI_CONSTITUENTS,
     SymbolSpec,
 )
 
@@ -73,8 +72,6 @@ def _symbol_specs_by_symbol() -> dict[str, SymbolSpec]:
     specs[INDEX_GRID_159941.symbol.upper()] = INDEX_GRID_159941
     specs[INDEX_GRID_159605.symbol.upper()] = INDEX_GRID_159605
     specs[INDEX_GRID_159866.symbol.upper()] = INDEX_GRID_159866
-    for spec in SOUTHBOUND_SHANGHAI_CONSTITUENTS:
-        specs.setdefault(spec.symbol.upper(), spec)
     return specs
 
 
@@ -84,7 +81,7 @@ def resolve_symbol_spec(symbol: str) -> SymbolSpec:
     if normalized in specs:
         return specs[normalized]
     if normalized == DEFAULT_SYMBOL:
-        return SymbolSpec(symbol=normalized, name=normalized, category="默认样本", source="项目默认样本")
+        return SymbolSpec(symbol=normalized, name=normalized, category="默认标的", source="项目默认标的")
     return SymbolSpec(symbol=normalized, name=normalized, category="自定义标的", source="命令行或本地报告")
 
 

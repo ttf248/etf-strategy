@@ -60,7 +60,7 @@ class OpenSourceReadinessTests(unittest.TestCase):
                 if tracked_file.startswith(prefix) and tracked_file not in allowed_exact:
                     self.fail(f"{tracked_file} 属于运行产物，不应纳入版本控制")
 
-    def test_repo_only_keeps_curated_examples(self) -> None:
+    def test_repo_keeps_only_directory_scaffolding_under_data_and_reports(self) -> None:
         tracked_files = subprocess.run(
             ["git", "ls-files"],
             cwd=REPO_ROOT,
@@ -69,23 +69,18 @@ class OpenSourceReadinessTests(unittest.TestCase):
             text=True,
             encoding="utf-8",
         ).stdout.splitlines()
-        tracked_sample_csvs = [item for item in tracked_files if item.startswith("data/samples/") and item.endswith(".csv")]
-        tracked_example_reports = [item for item in tracked_files if item.startswith("reports/examples/") and item.endswith(".md")]
         self.assertEqual(
-            sorted(tracked_sample_csvs),
+            sorted([item for item in tracked_files if item.startswith("data/")]),
             [
-                "data/samples/1810_hk_15m.csv",
-                "data/samples/1810_hk_daily.csv",
+                "data/README.md",
+                "data/processed/.gitkeep",
             ],
         )
         self.assertEqual(
-            sorted(tracked_example_reports),
+            sorted([item for item in tracked_files if item.startswith("reports/")]),
             [
-                "reports/examples/1810_hk/daily/1810_hk_daily_strategy_compare_report.md",
-                "reports/examples/1810_hk/daily/1810_hk_grid_report.md",
-                "reports/examples/1810_hk/minute/1810_hk_15m_grid_report.md",
-                "reports/examples/1810_hk/minute/1810_hk_15m_strategy_compare_report.md",
-                "reports/examples/report_index.md",
+                "reports/README.md",
+                "reports/platform/.gitkeep",
             ],
         )
 

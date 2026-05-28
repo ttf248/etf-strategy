@@ -209,6 +209,7 @@ def run_optimization_workflow(
     parameter_space: dict[str, object] | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
+    write_artifacts: bool = True,
 ) -> dict[str, object]:
     """执行样本内参数搜索并保存结果。"""
     started_at = perf_counter()
@@ -254,13 +255,17 @@ def run_optimization_workflow(
         cache_dir=cache_dir,
     )
 
-    target_dir = Path(output_dir)
-    target_dir.mkdir(parents=True, exist_ok=True)
     prefix = _artifact_prefix(strategy_kind, "daily", "optimization")
-    results_path = target_dir / f"{prefix}_search.csv"
-    results.to_csv(results_path, index=False, encoding="utf-8-sig")
-    window_path = save_decline_window(target_dir, decline_window)
-    best_paths = save_run_artifacts(target_dir, f"{prefix}_best", best_run)
+    results_path: Path | None = None
+    window_path: Path | None = None
+    best_paths: dict[str, Path] = {}
+    if write_artifacts:
+        target_dir = Path(output_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        results_path = target_dir / f"{prefix}_search.csv"
+        results.to_csv(results_path, index=False, encoding="utf-8-sig")
+        window_path = save_decline_window(target_dir, decline_window)
+        best_paths = save_run_artifacts(target_dir, f"{prefix}_best", best_run)
     logger.info(
         "[1/2] 日线样本内寻参完成: strategy={} score={:.2f} elapsed={:.2f}s",
         strategy_kind,
@@ -293,6 +298,7 @@ def run_validation_workflow(
     execution_config: ExecutionConfig | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
+    write_artifacts: bool = True,
 ) -> dict[str, object]:
     """执行 2026 样本外验证。"""
     validate_strategy_interval(strategy_kind, "1d")
@@ -334,7 +340,7 @@ def run_validation_workflow(
         execution_config=execution,
     )
     prefix = _artifact_prefix(strategy_kind, "daily", "validation")
-    paths = save_run_artifacts(output_dir, prefix, validation_run)
+    paths = save_run_artifacts(output_dir, prefix, validation_run) if write_artifacts else {}
     logger.info(
         "[2/2] 日线样本外验证完成: return={:.2f}% max_drawdown={:.2f}% elapsed={:.2f}s",
         float(validation_run["summary"]["ReturnPct"]),
@@ -362,6 +368,7 @@ def run_full_workflow(
     parameter_space: dict[str, object] | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
+    write_artifacts: bool = True,
 ) -> dict[str, object]:
     """串联样本内寻参和样本外验证。
 
@@ -391,6 +398,7 @@ def run_full_workflow(
         parameter_space=parameter_space,
         data=price_frame,
         lot_rule=effective_lot_rule,
+        write_artifacts=write_artifacts,
     )
     best_summary = optimization["best_run"]["summary"]
     spec = get_strategy_spec(strategy_kind)
@@ -408,6 +416,7 @@ def run_full_workflow(
         execution_config=execution_config,
         data=price_frame,
         lot_rule=effective_lot_rule,
+        write_artifacts=write_artifacts,
     )
 
     combined_summary = pd.DataFrame(
@@ -416,9 +425,11 @@ def run_full_workflow(
             validation["run"]["summary"],
         ]
     )
-    combined_path = Path(output_dir) / "combined_summary.csv"
-    combined_path.parent.mkdir(parents=True, exist_ok=True)
-    combined_summary.to_csv(combined_path, index=False, encoding="utf-8-sig")
+    combined_path: Path | None = None
+    if write_artifacts:
+        combined_path = Path(output_dir) / "combined_summary.csv"
+        combined_path.parent.mkdir(parents=True, exist_ok=True)
+        combined_summary.to_csv(combined_path, index=False, encoding="utf-8-sig")
     logger.info("日线完整工作流完成: summary={} elapsed={:.2f}s", combined_path, perf_counter() - started_at)
 
     return {
@@ -447,6 +458,7 @@ def run_minute_optimization_workflow(
     parameter_space: dict[str, object] | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
+    write_artifacts: bool = True,
 ) -> dict[str, object]:
     """执行分钟线样本内参数搜索并保存结果。"""
     started_at = perf_counter()
@@ -492,13 +504,17 @@ def run_minute_optimization_workflow(
         cache_dir=cache_dir,
     )
 
-    target_dir = Path(output_dir)
-    target_dir.mkdir(parents=True, exist_ok=True)
     prefix = _artifact_prefix(strategy_kind, "minute", "optimization")
-    results_path = target_dir / f"{prefix}_search.csv"
-    results.to_csv(results_path, index=False, encoding="utf-8-sig")
-    window_path = save_decline_window(target_dir, decline_window)
-    best_paths = save_run_artifacts(target_dir, f"{prefix}_best", best_run)
+    results_path: Path | None = None
+    window_path: Path | None = None
+    best_paths: dict[str, Path] = {}
+    if write_artifacts:
+        target_dir = Path(output_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        results_path = target_dir / f"{prefix}_search.csv"
+        results.to_csv(results_path, index=False, encoding="utf-8-sig")
+        window_path = save_decline_window(target_dir, decline_window)
+        best_paths = save_run_artifacts(target_dir, f"{prefix}_best", best_run)
     logger.info(
         "[1/2] 分钟线样本内寻参完成: strategy={} score={:.2f} elapsed={:.2f}s",
         strategy_kind,
@@ -531,6 +547,7 @@ def run_minute_validation_workflow(
     execution_config: ExecutionConfig | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
+    write_artifacts: bool = True,
 ) -> dict[str, object]:
     """执行分钟线样本外验证。"""
     started_at = perf_counter()
@@ -563,7 +580,7 @@ def run_minute_validation_workflow(
         execution_config=execution,
     )
     prefix = _artifact_prefix(strategy_kind, "minute", "validation")
-    paths = save_run_artifacts(output_dir, prefix, validation_run)
+    paths = save_run_artifacts(output_dir, prefix, validation_run) if write_artifacts else {}
     logger.info(
         "[2/2] 分钟线样本外验证完成: return={:.2f}% max_drawdown={:.2f}% elapsed={:.2f}s",
         float(validation_run["summary"]["ReturnPct"]),
@@ -591,6 +608,7 @@ def run_minute_full_workflow(
     parameter_space: dict[str, object] | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
+    write_artifacts: bool = True,
 ) -> dict[str, object]:
     """串联分钟线样本内寻参和样本外验证。"""
     started_at = perf_counter()
@@ -616,6 +634,7 @@ def run_minute_full_workflow(
         parameter_space=parameter_space,
         data=price_frame,
         lot_rule=effective_lot_rule,
+        write_artifacts=write_artifacts,
     )
     best_summary = optimization["best_run"]["summary"]
     spec = get_strategy_spec(strategy_kind)
@@ -633,6 +652,7 @@ def run_minute_full_workflow(
         execution_config=execution_config,
         data=price_frame,
         lot_rule=effective_lot_rule,
+        write_artifacts=write_artifacts,
     )
 
     combined_summary = pd.DataFrame(
@@ -641,9 +661,11 @@ def run_minute_full_workflow(
             validation["run"]["summary"],
         ]
     )
-    combined_path = Path(output_dir) / "combined_summary.csv"
-    combined_path.parent.mkdir(parents=True, exist_ok=True)
-    combined_summary.to_csv(combined_path, index=False, encoding="utf-8-sig")
+    combined_path: Path | None = None
+    if write_artifacts:
+        combined_path = Path(output_dir) / "combined_summary.csv"
+        combined_path.parent.mkdir(parents=True, exist_ok=True)
+        combined_summary.to_csv(combined_path, index=False, encoding="utf-8-sig")
     logger.info("分钟线完整工作流完成: summary={} elapsed={:.2f}s", combined_path, perf_counter() - started_at)
 
     return {

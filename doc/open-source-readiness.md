@@ -27,10 +27,9 @@
 
 ## 本轮改造
 
-### 1. 收敛仓库体积，明确样例与运行产物边界
+### 1. 收敛仓库体积，明确数据库与运行产物边界
 
-- 只保留 `data/samples/` 下两份最小 CSV 样例。
-- 只保留 `reports/examples/` 下的代表性正式报告。
+- 删除仓库内历史样例 CSV、参考快照和 Markdown 报告。
 - `data/processed/` 与 `reports/platform/` 明确改为运行产物目录，并在 `.gitignore` 中排除。
 - 删除不再适合开源仓库存放的大批量历史 CSV、批量报告和 `task.md`。
 
@@ -40,9 +39,9 @@
 - 新增 GitHub Issue 模板、PR 模板和 CI 工作流。
 - 新增 `.editorconfig`、`.gitattributes`、`pyproject.toml`。
 
-### 3. 把文档改成“开源仓库视角”
+### 3. 把文档改成“数据库优先的开源仓库视角”
 
-- README 改成以 `data/samples/` 和 `reports/examples/` 为默认入口。
+- README 改成以数据库、`data/processed/` 和平台前端为默认入口。
 - 新增 `data/README.md` 和 `reports/README.md` 说明目录边界。
 - 各长期文档同步更新示例导入路径和报告路径。
 

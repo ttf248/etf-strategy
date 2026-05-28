@@ -1,17 +1,10 @@
 from __future__ import annotations
 """默认研究标的池。
 
-标的池用于批量研究入口，保持名单固定可以让报告结果可复现。
+标的池用于批量研究入口，只保留无需仓库内数据文件的静态名单。
 """
 
 from dataclasses import dataclass
-
-from strategy_studio.data.southbound import (
-    build_southbound_source_label,
-    load_southbound_shanghai_snapshot,
-    normalize_southbound_symbol,
-)
-
 
 @dataclass(frozen=True)
 class SymbolSpec:
@@ -63,29 +56,7 @@ INDEX_GRID_159941 = SymbolSpec("159941.SZ", "纳指ETF", "指数ETF", INDEX_GRID
 INDEX_GRID_159605 = SymbolSpec("159605.SZ", "中概互联网ETF", "指数ETF", INDEX_GRID_ETF_SOURCE)
 INDEX_GRID_159866 = SymbolSpec("159866.SZ", "日经ETF", "指数ETF", INDEX_GRID_ETF_SOURCE)
 
-
-def _build_southbound_shanghai_constituents() -> tuple[SymbolSpec, ...]:
-    rows = load_southbound_shanghai_snapshot()
-    constituents: list[SymbolSpec] = []
-    for row in rows:
-        security_type = row["SecurityType"] or "股票"
-        category = "港股通沪ETF" if security_type.upper() == "ETF" else "港股通沪股票"
-        name = row["AbbrCn"] or row["AbbrEn"] or row["SecurityCode"]
-        constituents.append(
-            SymbolSpec(
-                normalize_southbound_symbol(row["SecurityCode"]),
-                name,
-                category,
-                build_southbound_source_label(row["UpdateDate"]),
-            )
-        )
-    return tuple(constituents)
-
-
-SOUTHBOUND_SHANGHAI_CONSTITUENTS: tuple[SymbolSpec, ...] = _build_southbound_shanghai_constituents()
-
 SYMBOL_SETS: dict[str, tuple[SymbolSpec, ...]] = {
     "hstech_plus_513050": (*HSTECH_CONSTITUENTS, CN_ETF_513050),
-    "southbound_shanghai_all": SOUTHBOUND_SHANGHAI_CONSTITUENTS,
     "index_grid_etfs": (INDEX_GRID_159941, INDEX_GRID_159605, INDEX_GRID_159866),
 }

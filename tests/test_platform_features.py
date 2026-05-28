@@ -8,9 +8,11 @@ from fastapi.testclient import TestClient
 
 from strategy_studio.cli import build_parser
 from strategy_studio.platform_cli import handle_api
+from strategy_studio.services.backtests import _normalize_artifacts
 from strategy_studio.services.market_data import infer_interval_from_data_path
 from strategy_studio.services.platform import record_platform_heartbeat
 from strategy_studio.services.templates import build_seed_templates, normalize_parameter_space, resolve_backtest_request_payload
+from strategy_studio.strategy.sampling import DeclineWindow
 from strategy_studio.web.app import create_app
 
 
@@ -21,13 +23,13 @@ class PlatformFeatureTests(unittest.TestCase):
         parser = build_parser()
 
         init_args = parser.parse_args(["init-db"])
-        import_args = parser.parse_args(["import-csv", "--source-dir", "data/samples"])
+        import_args = parser.parse_args(["import-csv", "--source-dir", "data/processed"])
         api_args = parser.parse_args(["api", "--host", "127.0.0.1", "--port", "8000"])
         replace_args = parser.parse_args(["api", "--replace-existing"])
 
         self.assertEqual(init_args.command, "init-db")
         self.assertEqual(import_args.command, "import-csv")
-        self.assertEqual(import_args.source_dir, "data/samples")
+        self.assertEqual(import_args.source_dir, "data/processed")
         self.assertEqual(api_args.command, "api")
         self.assertEqual(api_args.host, "127.0.0.1")
         self.assertEqual(api_args.port, 8000)
@@ -38,6 +40,32 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(infer_interval_from_data_path("data/processed/1810_hk_daily.csv"), "1d")
         self.assertEqual(infer_interval_from_data_path("data/processed/1810_hk_15m.csv"), "15m")
         self.assertIsNone(infer_interval_from_data_path("data/processed/xiaomi_test.csv"))
+
+    def test_backtest_artifacts_use_database_only_payload(self) -> None:
+        payload = _normalize_artifacts(
+            {
+                "combined_summary_path": None,
+                "optimization": {
+                    "decline_window": DeclineWindow(
+                        peak_price=32.5,
+                        peak_date="2026-01-05",
+                        entry_date="2026-01-08",
+                        entry_price=31.2,
+                        sample_start="2025-09-01",
+                        sample_end="2025-12-31",
+                        validation_start="2026-01-01",
+                    ),
+                    "best_paths": {},
+                },
+                "validation": {"paths": {}},
+            },
+            template_snapshot={"template_key": "grid_15m_realistic_default"},
+        )
+
+        self.assertEqual(payload["storage_mode"], "database_only")
+        self.assertEqual(payload["data_source"], "database")
+        self.assertNotIn("report_path", payload)
+        self.assertEqual(payload["template_snapshot"]["template_key"], "grid_15m_realistic_default")
 
     def test_web_api_health_and_stats(self) -> None:
         app = create_app()

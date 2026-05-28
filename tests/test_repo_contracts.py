@@ -11,12 +11,11 @@ MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 
 
 class RepoContractTests(unittest.TestCase):
-    """覆盖默认样本、Markdown 链接和报告结构这些仓库级契约。"""
+    """覆盖默认路径、Markdown 链接和仓库入口这些仓库级契约。"""
 
-    def test_default_sample_paths_exist(self) -> None:
-        self.assertTrue((REPO_ROOT / DEFAULT_DATA_PATH).exists())
-        self.assertTrue((REPO_ROOT / DEFAULT_MINUTE_DATA_PATH).exists())
-        self.assertTrue((REPO_ROOT / "data" / "reference" / "southbound_shanghai_eligible_snapshot.csv").exists())
+    def test_default_runtime_paths_point_to_untracked_processed_dir(self) -> None:
+        self.assertEqual(DEFAULT_DATA_PATH.parent.as_posix(), "data/processed")
+        self.assertEqual(DEFAULT_MINUTE_DATA_PATH.parent.as_posix(), "data/processed")
 
     def test_document_links_resolve_to_existing_files(self) -> None:
         markdown_files = [
@@ -70,7 +69,6 @@ class RepoContractTests(unittest.TestCase):
             "SUPPORT.md",
             "data/README.md",
             "reports/README.md",
-            "reports/examples/report_index.md",
         ]
         for link in required_links:
             self.assertIn(link, content)
@@ -125,23 +123,10 @@ class RepoContractTests(unittest.TestCase):
             ["-NoProfile"],
         )
 
-    def test_reports_keep_two_layer_structure(self) -> None:
-        report_files = [
-            REPO_ROOT / "reports" / "examples" / "1810_hk" / "daily" / "1810_hk_grid_report.md",
-            REPO_ROOT / "reports" / "examples" / "1810_hk" / "minute" / "1810_hk_15m_grid_report.md",
-            REPO_ROOT / "reports" / "examples" / "1810_hk" / "daily" / "1810_hk_daily_strategy_compare_report.md",
-            REPO_ROOT / "reports" / "examples" / "1810_hk" / "minute" / "1810_hk_15m_strategy_compare_report.md",
-        ]
-        required_sections = [
-            "## 第一层：先看结论",
-            "## 第二层：展开细节",
-            "## 最终结论",
-        ]
-
-        for report_file in report_files:
-            content = report_file.read_text(encoding="utf-8")
-            for section in required_sections:
-                self.assertIn(section, content, msg=f"{report_file.relative_to(REPO_ROOT)} 缺少 {section}")
+    def test_reports_readme_describes_database_first_boundary(self) -> None:
+        content = (REPO_ROOT / "reports" / "README.md").read_text(encoding="utf-8")
+        self.assertIn("数据库中的结构化记录", content)
+        self.assertIn("历史 Markdown 报告不应再随仓库提交", content)
 
 
 if __name__ == "__main__":

@@ -13,9 +13,6 @@ from pathlib import Path
 
 import requests
 
-from strategy_studio.config import DEFAULT_SOUTHBOUND_SHANGHAI_SNAPSHOT_PATH
-
-
 SSE_SOUTHBOUND_SHANGHAI_PAGE_URL = "https://www.sse.com.cn/services/hkexsc/disclo/eligible/"
 SSE_SOUTHBOUND_QUERY_URL = "https://query.sse.com.cn/commonQuery.do"
 SSE_SOUTHBOUND_SQL_ID = "COMMON_SSE_JYFW_HGT_XXPL_BDZQQD_L"
@@ -104,10 +101,10 @@ def fetch_southbound_shanghai_eligible_rows(timeout: int = 20) -> list[dict[str,
 
 
 def refresh_southbound_shanghai_snapshot(
-    snapshot_path: str | Path = DEFAULT_SOUTHBOUND_SHANGHAI_SNAPSHOT_PATH,
+    snapshot_path: str | Path,
     timeout: int = 20,
 ) -> Path:
-    """抓取官方名单并刷新仓库内默认快照。"""
+    """抓取官方名单并导出到显式指定的快照文件。"""
     target = Path(snapshot_path)
     target.parent.mkdir(parents=True, exist_ok=True)
     rows = fetch_southbound_shanghai_eligible_rows(timeout=timeout)
@@ -119,9 +116,9 @@ def refresh_southbound_shanghai_snapshot(
 
 
 def load_southbound_shanghai_snapshot(
-    snapshot_path: str | Path = DEFAULT_SOUTHBOUND_SHANGHAI_SNAPSHOT_PATH,
+    snapshot_path: str | Path,
 ) -> list[dict[str, str]]:
-    """读取仓库内的港股通沪名单快照。"""
+    """读取显式指定的港股通沪名单快照。"""
     target = Path(snapshot_path)
     if not target.exists():
         raise FileNotFoundError(f"港股通沪名单快照不存在: {target}")

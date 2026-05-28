@@ -17,11 +17,12 @@ cd frontend
 npm install
 ```
 
-3. 初始化数据库并导入样例数据：
+3. 初始化数据库，并按需导入你自己的 CSV 或同步 Yahoo 数据：
 
 ```powershell
 py -3.13 main.py init-db
-py -3.13 main.py import-csv --source-dir data/samples
+py -3.13 main.py import-csv --source-dir data/processed
+py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
 ```
 
 4. 使用 VS Code 一键启动，或按 [部署指南](doc/deployment.md) 分别启动 API、Worker、Scheduler 和前端。
@@ -64,7 +65,7 @@ git diff --check
 - 文档默认使用中文。
 - 用户文档只描述当前仓库真实能力，不提前承诺未实现功能。
 - 架构、数据流、部署、运维和开发说明分别维护，避免 README 过长。
-- 开源样例报告位于 `reports/examples/`，平台运行产物默认写入 `reports/platform/`。
+- 仓库不再提交样例行情或历史 Markdown 报告；需要复盘时应以数据库中的平台结果或你本地临时运行产物为准。
 
 ## 数据和策略口径
 
