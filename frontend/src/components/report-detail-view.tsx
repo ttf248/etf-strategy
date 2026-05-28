@@ -238,7 +238,7 @@ function tradeGuide(closedTrades: number, validation: Record<string, unknown>) {
     return {
       title: "交易活跃度",
       value: "没有成交",
-      description: "样本外阶段没有形成完整交易，先检查标的是否太平、周期是否不匹配，或参数是否过于保守。",
+      description: "单独验证阶段没有形成完整交易，先检查标的是否太平、周期是否不匹配，或参数是否过于保守。",
     };
   }
   if (winRate === null) {
