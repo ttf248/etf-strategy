@@ -31,8 +31,8 @@ function latestSuccessGuides(report: ReportSummary) {
       value: netReturn > 0 ? "先继续看" : "先别急着采用",
       description:
         netReturn > 0
-          ? `样本外收益 ${netReturn.toFixed(2)}%，说明这套组合至少在这段测试区间里跑出了正收益。`
-          : `样本外收益 ${netReturn.toFixed(2)}%，先不要直接采用，优先对比别的模板或周期。`,
+          ? `单独验证收益 ${netReturn.toFixed(2)}%，说明这套组合至少在这段测试区间里跑出了正收益。`
+          : `单独验证收益 ${netReturn.toFixed(2)}%，先不要直接采用，优先对比别的模板或周期。`,
     },
     {
       title: "中途波动大不大",
@@ -364,7 +364,7 @@ export function DashboardView() {
           <Card className="action-card" size="small">
             <div className="action-card-icon"><FileSearchOutlined /></div>
             <Typography.Title level={4}>3. 查看报告</Typography.Title>
-            <p>优先看样本外收益、最大回撤、净值曲线和交易记录，再决定重跑还是做对比。</p>
+            <p>优先看单独验证收益、最大回撤、净值曲线和交易记录，再决定重跑还是做对比。</p>
             <Button type="link">
               <Link href="/reports">看报告 <ArrowRightOutlined /></Link>
             </Button>
@@ -514,7 +514,7 @@ export function DashboardView() {
                       </div>
                     </div>
                     <div className="home-report-metrics">
-                      <span>样本外收益 <FormatPercent value={validation.NetReturnPct ?? validation.ReturnPct ?? 0} /></span>
+                      <span>单独验证收益 <FormatPercent value={validation.NetReturnPct ?? validation.ReturnPct ?? 0} /></span>
                       <span>最大回撤 {Number(validation.MaxDrawdownPct ?? 0).toFixed(2)}%</span>
                     </div>
                     <div className="home-report-spotlight">

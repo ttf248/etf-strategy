@@ -3635,3 +3635,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 已执行 `cd frontend && npm run test:smoke`
+
+## 首页单独验证收益口径补充
+
+### 状态
+
+已完成：代码修改与本轮验证均已完成，待单独提交。
+
+### 修改方案
+
+继续按主路径页面局部体验边界优化，只处理首页仍然直接暴露 `样本外收益` 的结果文案，把它和报告页已经统一过的“单独验证收益”口径对齐。
+
+### 修改内容
+
+- `frontend/src/components/dashboard-view.tsx`
+  - 最近一次成功路径解释卡里的收益判断句，从“样本外收益”改成“单独验证收益”。
+  - 首页“3. 查看报告”步骤说明里的收益阅读提示，从“样本外收益”改成“单独验证收益”。
+  - 首页报告卡指标第一项标签，从“样本外收益”改成“单独验证收益”。
+
+### 设计取舍
+
+- 不改首页排序逻辑、收益计算、报告卡结构或其他页面的结果解释，只统一首页这一组显眼结果口径。
+- 这轮不顺手处理首页其他编号、状态或高级明细文案，避免扩大提交边界。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 已执行 `cd frontend && npm run test:smoke`
