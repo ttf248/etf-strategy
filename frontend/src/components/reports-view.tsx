@@ -313,7 +313,7 @@ export function ReportsView() {
         <p>如果你只想先找一份最值得细看的报告，不用先把这几张卡都看懂。更自然的顺序通常是先看下面的卡片，再回头用这些数字确认当前结果池的大致分布。</p>
       </div>
       <div className="summary-grid">
-        <MetricCard label="当前能看的报告" value={filteredReports.length} note="按现在筛选条件算" />
+        <MetricCard label="现在这批里有" value={filteredReports.length} note="按现在筛选条件算" />
         <MetricCard label="先看赚钱的" value={positiveReports} note="更适合优先细看" />
         <MetricCard label="你标记过的" value={favoriteReports.length} note="保存在当前浏览器" />
         <MetricCard
