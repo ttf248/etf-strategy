@@ -3169,3 +3169,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页已停止状态提示口径补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理最近任务卡 `cancelled / cancel_requested` 状态对应的阅读提示，把“任务已经取消”这类后台操作口吻收成更贴近用户主动停掉这一轮后的自然表达。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将已停止提示从“这次任务已经取消。如果你还想继续验证，直接按原配置重跑就行。”改成“这轮已经停掉；如果你还想继续验证，直接按原配置再跑一次就行。”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不改变任务状态判断逻辑，也不改 `queued / running / failed / succeeded` 其他分支，只调整 `cancelled / cancel_requested` 这一条提示文案。
+- 这轮不改卡片标题、主按钮、次级动作或完整历史表格，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
