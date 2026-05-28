@@ -25,12 +25,22 @@ type ReportSpotlight = {
   reason: string;
 };
 
+type QualityBucket = "all" | "steady_winner" | "beat_buy_hold" | "no_trade" | "needs_review";
+
 function getValidationMetrics(report: ReportSummary) {
   const validation = report.summary_metrics.validation ?? {};
   const netReturn = Number(validation.NetReturnPct ?? validation.ReturnPct ?? 0);
   const maxDrawdown = Number(validation.MaxDrawdownPct ?? 0);
   const closedTrades = Number(validation.ClosedTrades ?? 0);
-  return { netReturn, maxDrawdown, closedTrades };
+  const relativeValue = validation.StrategyVsBuyHold ?? validation.GridVsBuyHold;
+  const vsBuyHold = typeof relativeValue === "number" && Number.isFinite(relativeValue) ? relativeValue : null;
+  const outperformBuyHold =
+    typeof validation.OutperformBuyHold === "boolean"
+      ? validation.OutperformBuyHold
+      : typeof vsBuyHold === "number"
+        ? vsBuyHold > 0
+        : false;
+  return { netReturn, maxDrawdown, closedTrades, vsBuyHold, outperformBuyHold };
 }
 
 function buildVerdict(netReturn: number, maxDrawdown: number): Verdict {
@@ -55,9 +65,12 @@ function buildRerunHref(report: ReportSummary) {
 }
 
 function buildCardHint(report: ReportSummary) {
-  const { netReturn, maxDrawdown, closedTrades } = getValidationMetrics(report);
+  const { netReturn, maxDrawdown, closedTrades, outperformBuyHold } = getValidationMetrics(report);
   if (closedTrades === 0) {
     return "该结果更适合先判断触发条件为何未满足，再决定调整标的还是周期。";
+  }
+  if (netReturn > 0 && maxDrawdown <= 8 && outperformBuyHold) {
+    return "该结果已同时体现出正收益、相对可控的回撤，并且跑赢买入持有，适合作为第一优先级复盘对象。";
   }
   if (netReturn > 0 && maxDrawdown <= 8) {
     return "该结果适合优先复盘，再与同标的其他报告做稳健性比较。";
@@ -66,6 +79,39 @@ function buildCardHint(report: ReportSummary) {
     return "该结果取得正收益，但应先确认回撤与净值波动是否在可接受范围内。";
   }
   return "该结果更适合作为反向对照，重跑时应优先调整模板、参数或周期。";
+}
+
+function matchesQualityBucket(report: ReportSummary, bucket: QualityBucket): boolean {
+  const metrics = getValidationMetrics(report);
+  if (bucket === "steady_winner") {
+    return metrics.closedTrades > 0 && metrics.netReturn > 0 && metrics.maxDrawdown <= 8;
+  }
+  if (bucket === "beat_buy_hold") {
+    return metrics.closedTrades > 0 && metrics.outperformBuyHold;
+  }
+  if (bucket === "no_trade") {
+    return metrics.closedTrades === 0;
+  }
+  if (bucket === "needs_review") {
+    return metrics.closedTrades === 0 || metrics.netReturn < 0 || metrics.maxDrawdown > 12;
+  }
+  return true;
+}
+
+function qualityBucketLabel(bucket: QualityBucket): string {
+  if (bucket === "steady_winner") {
+    return "稳健正收益";
+  }
+  if (bucket === "beat_buy_hold") {
+    return "跑赢买入持有";
+  }
+  if (bucket === "no_trade") {
+    return "未触发交易";
+  }
+  if (bucket === "needs_review") {
+    return "优先排查";
+  }
+  return "全部结果";
 }
 
 function buildReportSpotlight(report: ReportSummary, isFavorite: boolean): ReportSpotlight {
@@ -127,6 +173,7 @@ export function ReportsView() {
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [keyword, setKeyword] = useState("");
   const [interval, setInterval] = useState<string | undefined>(undefined);
+  const [qualityBucket, setQualityBucket] = useState<QualityBucket>("all");
   const [selectedReportIds, setSelectedReportIds] = useState<number[]>([]);
   const [favoriteReportIds, setFavoriteReportIds] = useState<number[]>([]);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
@@ -211,7 +258,7 @@ export function ReportsView() {
     [reports],
   );
 
-  const filteredReports = useMemo(() => {
+  const baseFilteredReports = useMemo(() => {
     return reports.filter((item) => {
       const matchesKeyword =
         !keyword ||
@@ -222,6 +269,11 @@ export function ReportsView() {
       return matchesKeyword && matchesInterval && matchesFavorite;
     });
   }, [reports, keyword, interval, showFavoritesOnly, validFavoriteReportIds]);
+
+  const filteredReports = useMemo(
+    () => baseFilteredReports.filter((item) => matchesQualityBucket(item, qualityBucket)),
+    [baseFilteredReports, qualityBucket],
+  );
 
   const latestReport = filteredReports[0];
   const positiveReports = filteredReports.filter((item) => getValidationMetrics(item).netReturn > 0).length;
@@ -281,6 +333,17 @@ export function ReportsView() {
       return right.id - left.id;
     });
   }, [filteredReports, validFavoriteReportIds]);
+  const quickFilterStats = useMemo(
+    () => ({
+      steady_winner: baseFilteredReports.filter((item) => matchesQualityBucket(item, "steady_winner")).length,
+      beat_buy_hold: baseFilteredReports.filter((item) => matchesQualityBucket(item, "beat_buy_hold")).length,
+      no_trade: baseFilteredReports.filter((item) => matchesQualityBucket(item, "no_trade")).length,
+      needs_review: baseFilteredReports.filter((item) => matchesQualityBucket(item, "needs_review")).length,
+    }),
+    [baseFilteredReports],
+  );
+  const recommendedReport = sortedCardReports[0] ?? null;
+  const recommendedMetrics = recommendedReport ? getValidationMetrics(recommendedReport) : null;
 
   function toggleCompare(reportId: number) {
     setSelectedReportIds((current) => {
@@ -323,6 +386,100 @@ export function ReportsView() {
         />
         <MetricCard label="最近生成" value={latestReport?.symbol ?? "-"} note={latestReport?.created_at ?? "暂无报告"} />
       </div>
+
+      <Card size="small" title="结果快筛" className="section-card">
+        <div className="detail-secondary-hint">
+          <strong>先按判断目标收窄结果，再决定要不要通读全部卡片</strong>
+          <p>如果你当前只想找“最值得先看”的结果，通常不需要浏览完整列表。先切到更贴近当前判断目标的视角，能更快得到可执行结论。</p>
+        </div>
+        <div className="template-persona-grid">
+          {[
+            {
+              key: "all" as const,
+              title: "全部结果",
+              count: baseFilteredReports.length,
+              description: "保留当前关键词、周期与收藏条件，只是不额外按表现分层。",
+            },
+            {
+              key: "steady_winner" as const,
+              title: "稳健正收益",
+              count: quickFilterStats.steady_winner,
+              description: "优先看正收益且回撤相对可控的样本，更适合作为第一批复盘对象。",
+            },
+            {
+              key: "beat_buy_hold" as const,
+              title: "跑赢买入持有",
+              count: quickFilterStats.beat_buy_hold,
+              description: "优先筛出已证明自己优于最简单持有方案的结果。",
+            },
+            {
+              key: "no_trade" as const,
+              title: "未触发交易",
+              count: quickFilterStats.no_trade,
+              description: "集中排查为什么没成交，避免把时间花在无效样本上。",
+            },
+            {
+              key: "needs_review" as const,
+              title: "优先排查",
+              count: quickFilterStats.needs_review,
+              description: "把负收益、深回撤或未触发交易结果集中出来，便于做反向对照。",
+            },
+          ].map((item) => (
+            <article key={item.key} className="template-persona-card">
+              <strong>{item.title}</strong>
+              <span>当前 {item.count} 份</span>
+              <p>{item.description}</p>
+              <Button type={qualityBucket === item.key ? "primary" : "default"} onClick={() => setQualityBucket(item.key)}>
+                {qualityBucket === item.key ? `当前视角：${item.title}` : `切到${item.title}`}
+              </Button>
+            </article>
+          ))}
+        </div>
+      </Card>
+
+      {recommendedReport && recommendedMetrics ? (
+        <Card size="small" title="当前推荐先看" className="section-card">
+          <div className="start-path-main">
+            <strong>
+              编号 {recommendedReport.id} {recommendedReport.symbol} / {strategyLabel(recommendedReport.strategy_kind)} / {recommendedReport.interval}
+            </strong>
+            <p>{buildCardHint(recommendedReport)}</p>
+            <div className="start-path-guide-grid">
+              <article className="start-path-guide-card">
+                <span>当前视角</span>
+                <strong>{qualityBucketLabel(qualityBucket)}</strong>
+                <p>当前推荐结果是按这个视角下的优先级排序挑出来的，不是简单按时间取第一条。</p>
+              </article>
+              <article className="start-path-guide-card">
+                <span>收益与回撤</span>
+                <strong>
+                  收益 <FormatPercent value={recommendedMetrics.netReturn} /> / 回撤 {recommendedMetrics.maxDrawdown.toFixed(2)}%
+                </strong>
+                <p>如果这里已经不符合你的风险预期，通常无需再深入读交易细节。</p>
+              </article>
+              <article className="start-path-guide-card">
+                <span>相对买入持有</span>
+                <strong>
+                  {typeof recommendedMetrics.vsBuyHold === "number"
+                    ? recommendedMetrics.outperformBuyHold
+                      ? `期末多赚 ${Math.abs(recommendedMetrics.vsBuyHold).toFixed(2)}`
+                      : `期末少赚 ${Math.abs(recommendedMetrics.vsBuyHold).toFixed(2)}`
+                    : "暂无对照"}
+                </strong>
+                <p>这能直接回答“这套策略值不值得替代最简单持有方案”。</p>
+              </article>
+            </div>
+          </div>
+          <div className="start-path-actions">
+            <Button type="primary">
+              <Link href={`/reports/${recommendedReport.id}`}>先打开这份结果</Link>
+            </Button>
+            <Button>
+              <Link href={buildRerunHref(recommendedReport)}>按这套配置重跑</Link>
+            </Button>
+          </div>
+        </Card>
+      ) : null}
 
       <Card
         size="small"
@@ -436,11 +593,16 @@ export function ReportsView() {
             >
               {showFavoritesOnly ? "仅显示收藏报告" : "只看收藏报告"}
             </Button>
+            {qualityBucket !== "all" ? <Button onClick={() => setQualityBucket("all")}>清除结果快筛</Button> : null}
           </Space>
-          <ToolbarCount>当前结果 {filteredReports.length} 份，已收藏 {favoriteReports.length} 份</ToolbarCount>
+          <ToolbarCount>
+            当前结果 {filteredReports.length} 份
+            {qualityBucket !== "all" ? `，当前视角：${qualityBucketLabel(qualityBucket)}` : ""}
+            ，已收藏 {favoriteReports.length} 份
+          </ToolbarCount>
         </div>
         {filteredReports.length === 0 ? (
-          <Empty description={showFavoritesOnly ? "暂无收藏报告" : "暂无报告"} />
+          <Empty description={showFavoritesOnly ? "当前筛选下暂无收藏报告" : qualityBucket === "all" ? "暂无报告" : `当前没有“${qualityBucketLabel(qualityBucket)}”结果`} />
         ) : (
           <>
             <div className="report-library-banner">
