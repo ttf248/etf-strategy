@@ -562,7 +562,7 @@ export function BacktestsView() {
         className="section-card"
       >
         {jobs.length === 0 ? (
-          <Empty description="还没有回测任务，先按上面的步骤提交第一轮。" />
+          <Empty description="你还没跑过回测，先按上面的步骤提交第一轮，结果会出现在这里。" />
         ) : (
           <>
             <div className="job-summary-banner">

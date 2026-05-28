@@ -3198,3 +3198,32 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 创建回测页最近任务空态提示补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按创建回测页局部体验边界优化，只处理“最近回测任务”区在空态时的提示文案，把“还没有回测任务”这类系统状态播报收成更像第一次使用时的下一步引导。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 将最近任务区空态从“还没有回测任务，先按上面的步骤提交第一轮。”改成“你还没跑过回测，先按上面的步骤提交第一轮，结果会出现在这里。”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不删除空态，也不改最近任务区标题、摘要横幅、任务卡或完整历史表格，只调整空态提示文案。
+- 这轮不改摘要动作、状态提示或批量处理入口，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
