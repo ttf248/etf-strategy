@@ -631,6 +631,10 @@ export function BacktestsView() {
                 );
               })}
             </div>
+            <div className="detail-secondary-hint">
+              <strong>只有在你想逐条核对、或者确实要一次处理多条任务时，再展开下面这块</strong>
+              <p>如果你只是确认这轮有没有成功生成报告、有没有还在跑、失败是不是同一个原因，前面的最近任务卡通常已经够用。</p>
+            </div>
 
             <Collapse
               className="advanced-table-panel"
@@ -638,7 +642,12 @@ export function BacktestsView() {
               items={[
                 {
                   key: "history",
-                  label: "高级明细：多选处理与完整历史",
+                  label: (
+                    <div className="advanced-trace-label">
+                      <strong>需要批量处理或逐条核对时，再看完整历史</strong>
+                      <span>这里更适合多选取消、多选重试，或按列核对每条任务的状态、时间和错误信息。</span>
+                    </div>
+                  ),
                   children: (
                     <>
                       <div className="table-toolbar">

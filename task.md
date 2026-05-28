@@ -2907,3 +2907,33 @@
 - 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
 - 已执行 `git diff --check`
 - 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
+
+## 回测任务完整历史入口降噪补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+切回创建回测页后，继续按局部体验边界优化，只处理“完整历史与批量处理”折叠入口的叙事与存在感，把它更明确地降成例外场景入口。
+
+### 修改内容
+
+- `frontend/src/components/backtests-view.tsx`
+  - 在完整历史折叠区前新增弱提示，明确第一次查看任务时通常先看最近任务卡即可。
+  - 将折叠标题改成“需要批量处理或逐条核对时，再看完整历史”，并补充一行用途说明。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮体验收口背景、边界和取舍。
+
+### 设计取舍
+
+- 不删除完整历史、多选取消、多选重试或桌面表格能力，只调整入口叙事，让它们更像排查和例外处理入口。
+- 这轮不改任务卡、任务状态提示、页头动作或批量逻辑，只处理折叠入口这一层，保持提交边界清晰。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`
+- 复用已存活的本地 API 后执行 `cd frontend && npm run test:smoke`
