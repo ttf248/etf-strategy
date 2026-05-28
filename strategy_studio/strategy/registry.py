@@ -23,6 +23,11 @@ from strategy_studio.settings import (
     DAILY_DONCHIAN_EXIT_WINDOWS,
     DAILY_DONCHIAN_STOP_LOSSES,
     DAILY_GRID_COUNTS,
+    DAILY_MACD_FAST_WINDOWS,
+    DAILY_MACD_HISTOGRAM_CONFIRMS,
+    DAILY_MACD_SIGNAL_WINDOWS,
+    DAILY_MACD_SLOW_WINDOWS,
+    DAILY_MACD_STOP_LOSSES,
     DAILY_REBOUND_DEVIATIONS,
     DAILY_REBOUND_MA_WINDOWS,
     DAILY_REBOUND_MAX_HOLD_BARS,
@@ -57,6 +62,7 @@ from strategy_studio.strategy.dca import optimize_dca_parameters, run_dca_backte
 from strategy_studio.strategy.donchian import optimize_donchian_breakout_parameters, run_donchian_breakout_backtest
 from strategy_studio.strategy.grid import optimize_grid_parameters, run_grid_backtest
 from strategy_studio.strategy.index_grid import run_index_grid_backtest
+from strategy_studio.strategy.macd import optimize_macd_trend_parameters, run_macd_trend_backtest
 from strategy_studio.strategy.rebound import optimize_rebound_parameters, run_rebound_backtest
 from strategy_studio.strategy.trend import optimize_ma_cross_parameters, run_ma_cross_backtest
 
@@ -215,6 +221,16 @@ def _donchian_breakout_parameter_space(interval: str) -> dict[str, object]:
     }
 
 
+def _macd_trend_parameter_space(interval: str) -> dict[str, object]:
+    return {
+        "fast_window": [int(item) for item in DAILY_MACD_FAST_WINDOWS],
+        "slow_window": [int(item) for item in DAILY_MACD_SLOW_WINDOWS],
+        "signal_window": [int(item) for item in DAILY_MACD_SIGNAL_WINDOWS],
+        "histogram_confirm_pct": [float(item) for item in DAILY_MACD_HISTOGRAM_CONFIRMS],
+        "stop_loss_pct": [float(item) for item in DAILY_MACD_STOP_LOSSES],
+    }
+
+
 def _empty_parameter_space(interval: str) -> dict[str, object]:
     return {}
 
@@ -330,6 +346,24 @@ def _extract_ma_cross_params(summary: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _optimize_macd_trend(**kwargs: object) -> tuple[pd.DataFrame, dict[str, object]]:
+    return optimize_macd_trend_parameters(**kwargs)
+
+
+def _run_macd_trend_once(params: dict[str, object], **kwargs: object) -> dict[str, object]:
+    return run_macd_trend_backtest(params=params, **kwargs)
+
+
+def _extract_macd_trend_params(summary: dict[str, object]) -> dict[str, object]:
+    return {
+        "fast_window": int(summary["fast_window"]),
+        "slow_window": int(summary["slow_window"]),
+        "signal_window": int(summary["signal_window"]),
+        "histogram_confirm_pct": float(summary["histogram_confirm_pct"]),
+        "stop_loss_pct": float(summary["stop_loss_pct"]),
+    }
+
+
 def _optimize_donchian_breakout(**kwargs: object) -> tuple[pd.DataFrame, dict[str, object]]:
     return optimize_donchian_breakout_parameters(**kwargs)
 
@@ -412,6 +446,23 @@ STRATEGY_SPECS: dict[str, StrategySpec] = {
         optimize=_optimize_ma_cross,
         run_once=_run_ma_cross_once,
         extract_params=_extract_ma_cross_params,
+    ),
+    "macd_trend": StrategySpec(
+        kind="macd_trend",
+        display_name="MACD 趋势",
+        signal_family="trend",
+        supported_intervals=("1d",),
+        parameter_fields=(
+            ParameterFieldSpec("fast_window", "快线窗口", "int"),
+            ParameterFieldSpec("slow_window", "慢线窗口", "int"),
+            ParameterFieldSpec("signal_window", "信号线窗口", "int"),
+            ParameterFieldSpec("histogram_confirm_pct", "柱体确认阈值", "float"),
+            ParameterFieldSpec("stop_loss_pct", "止损比例", "float"),
+        ),
+        default_parameter_space=_macd_trend_parameter_space,
+        optimize=_optimize_macd_trend,
+        run_once=_run_macd_trend_once,
+        extract_params=_extract_macd_trend_params,
     ),
     "donchian_breakout": StrategySpec(
         kind="donchian_breakout",
@@ -535,5 +586,5 @@ def strategy_display_name(strategy_kind: str) -> str:
 
 def compare_strategy_kinds(interval: str) -> list[str]:
     if interval == "1d":
-        return ["grid", "dca", "ma_cross", "donchian_breakout", "bollinger_reversion", "daily_rebound"]
+        return ["grid", "dca", "ma_cross", "macd_trend", "donchian_breakout", "bollinger_reversion", "daily_rebound"]
     return ["grid", "minute_rebound", "minute_rebound_with_fade_filter"]

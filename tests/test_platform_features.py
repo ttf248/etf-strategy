@@ -320,6 +320,30 @@ class StrategyTemplateServiceTests(unittest.TestCase):
             },
         )
 
+    def test_normalize_parameter_space_for_macd_trend(self) -> None:
+        payload = normalize_parameter_space(
+            "macd_trend",
+            {
+                "fast_window": [8, "12"],
+                "slow_window": [21, "26"],
+                "signal_window": [5, "9"],
+                "histogram_confirm_pct": [0, "0.05"],
+                "stop_loss_pct": [4, "6"],
+            },
+            "1d",
+        )
+
+        self.assertEqual(
+            payload,
+            {
+                "fast_window": [8, 12],
+                "slow_window": [21, 26],
+                "signal_window": [5, 9],
+                "histogram_confirm_pct": [0.0, 0.05],
+                "stop_loss_pct": [4.0, 6.0],
+            },
+        )
+
     def test_normalize_parameter_space_for_donchian_breakout(self) -> None:
         payload = normalize_parameter_space(
             "donchian_breakout",
@@ -422,6 +446,7 @@ class StrategyTemplateServiceTests(unittest.TestCase):
         keys = [item.template_key for item in seeds]
         self.assertEqual(len(keys), len(set(keys)))
         self.assertIn("ma_cross_1d_realistic_default", keys)
+        self.assertIn("macd_trend_1d_realistic_default", keys)
         self.assertIn("donchian_breakout_1d_realistic_default", keys)
         self.assertIn("bollinger_reversion_1d_realistic_default", keys)
 

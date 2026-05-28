@@ -22,6 +22,7 @@ from strategy_studio.strategy.dca import run_dca_backtest
 from strategy_studio.strategy.index_grid import resolve_index_grid_spec, run_index_grid_backtest
 from strategy_studio.strategy.bollinger import run_bollinger_reversion_backtest
 from strategy_studio.strategy.donchian import run_donchian_breakout_backtest
+from strategy_studio.strategy.macd import run_macd_trend_backtest
 from strategy_studio.strategy.rebound import run_rebound_backtest
 from strategy_studio.strategy.trend import run_ma_cross_backtest
 
@@ -685,6 +686,51 @@ class GridStrategyTests(unittest.TestCase):
         self.assertIn("ma_cross_buy", set(events["EventType"]))
         self.assertIn("ma_cross_sell", set(events["EventType"]))
         self.assertTrue((events[events["EventType"] == "ma_cross_buy"]["Units"] % 200 == 0).all())
+
+    def test_run_macd_trend_backtest_generates_macd_buy_and_sell(self) -> None:
+        prices = [10.0, 9.0, 8.0, 9.0, 10.0, 11.0, 10.5, 9.5, 8.8]
+        frame = build_test_frame(prices, start="2025-02-17")
+
+        result = run_macd_trend_backtest(
+            data=frame,
+            scenario_name="macd_trend_unit_test",
+            symbol="1810.HK",
+            market="HK",
+            lot_size=200,
+            lot_size_source="unit test",
+            params={
+                "fast_window": 2,
+                "slow_window": 4,
+                "signal_window": 2,
+                "histogram_confirm_pct": 0.0,
+                "stop_loss_pct": 20.0,
+            },
+            execution_config=build_execution_config(
+                "research",
+                commission_bps=0,
+                slippage_bps=0,
+                max_position_ratio=0.8,
+                cooldown_bars=0,
+            ),
+        )
+
+        summary = result["summary"]
+        events = result["events"]
+        trades = result["trades"]
+
+        self.assertEqual(summary["StrategyKind"], "macd_trend")
+        self.assertEqual(summary["StrategyName"], "MACD 趋势")
+        self.assertTrue(summary["TriggeredEntry"])
+        self.assertEqual(summary["MacdEntryEvents"], 1)
+        self.assertEqual(summary["MacdExitEvents"], 1)
+        self.assertEqual(summary["PositionUnits"], 0)
+        self.assertNotIn("BaseOnlyUnits", summary)
+        self.assertNotIn("GridVsBaseOnly", summary)
+        self.assertFalse(trades.empty)
+        self.assertIn("macd_trend", set(trades["Tag"]))
+        self.assertIn("macd_buy", set(events["EventType"]))
+        self.assertIn("macd_sell", set(events["EventType"]))
+        self.assertTrue((events[events["EventType"] == "macd_buy"]["Units"] % 200 == 0).all())
 
     def test_run_bollinger_reversion_backtest_generates_buy_and_mean_revert_exit(self) -> None:
         prices = [100.0, 100.0, 100.0, 100.0, 95.0, 90.0, 91.0, 95.0, 99.0]

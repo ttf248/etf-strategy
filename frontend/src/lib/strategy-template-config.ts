@@ -4,6 +4,7 @@ export const strategyOptions = [
   { label: "网格", value: "grid" },
   { label: "定投", value: "dca" },
   { label: "双均线趋势", value: "ma_cross" },
+  { label: "MACD 趋势", value: "macd_trend" },
   { label: "唐奇安突破", value: "donchian_breakout" },
   { label: "布林带均值回归", value: "bollinger_reversion" },
   { label: "日线超跌反弹", value: "daily_rebound" },
@@ -40,6 +41,13 @@ const strategyDefaults: Record<string, Record<string, number[]>> = {
     short_window: [5, 10, 20],
     long_window: [20, 30, 60],
     signal_buffer_pct: [0, 0.002, 0.005],
+  },
+  macd_trend: {
+    fast_window: [8, 12, 15],
+    slow_window: [21, 26, 35],
+    signal_window: [5, 9],
+    histogram_confirm_pct: [0, 0.05, 0.1],
+    stop_loss_pct: [4, 6, 8],
   },
   donchian_breakout: {
     breakout_window: [20, 40, 55],
@@ -108,6 +116,13 @@ export const parameterFieldSpecsByStrategy: Record<string, ParameterFieldSpec[]>
     { key: "short_window", label: "短均线窗口", kind: "int" },
     { key: "long_window", label: "长均线窗口", kind: "int" },
     { key: "signal_buffer_pct", label: "信号缓冲比例", kind: "float" },
+  ],
+  macd_trend: [
+    { key: "fast_window", label: "快线窗口", kind: "int" },
+    { key: "slow_window", label: "慢线窗口", kind: "int" },
+    { key: "signal_window", label: "信号线窗口", kind: "int" },
+    { key: "histogram_confirm_pct", label: "柱体确认阈值", kind: "float" },
+    { key: "stop_loss_pct", label: "止损比例", kind: "float" },
   ],
   donchian_breakout: [
     { key: "breakout_window", label: "突破窗口", kind: "int" },

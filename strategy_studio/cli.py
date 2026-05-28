@@ -80,7 +80,7 @@ def _add_strategy_arguments(parser: argparse.ArgumentParser) -> None:
         "--strategy",
         choices=strategy_choices(),
         default="grid",
-        help="策略类型，例如 grid、dca、ma_cross、donchian_breakout、bollinger_reversion、daily_rebound、minute_rebound",
+        help="策略类型，例如 grid、dca、ma_cross、macd_trend、donchian_breakout、bollinger_reversion、daily_rebound、minute_rebound",
     )
 
 

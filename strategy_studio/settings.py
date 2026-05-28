@@ -20,6 +20,7 @@ StrategyKind = Literal[
     "grid",
     "dca",
     "ma_cross",
+    "macd_trend",
     "donchian_breakout",
     "bollinger_reversion",
     "daily_rebound",
@@ -68,6 +69,12 @@ DCA_MAX_POSITION_RATIOS = (0.95,)
 DAILY_TREND_SHORT_WINDOWS = (5, 10, 20)
 DAILY_TREND_LONG_WINDOWS = (20, 30, 60)
 DAILY_TREND_SIGNAL_BUFFERS = (0.0, 0.002, 0.005)
+
+DAILY_MACD_FAST_WINDOWS = (8, 12, 15)
+DAILY_MACD_SLOW_WINDOWS = (21, 26, 35)
+DAILY_MACD_SIGNAL_WINDOWS = (5, 9)
+DAILY_MACD_HISTOGRAM_CONFIRMS = (0.0, 0.05, 0.1)
+DAILY_MACD_STOP_LOSSES = (4.0, 6.0, 8.0)
 
 DAILY_DONCHIAN_BREAKOUT_WINDOWS = (20, 40, 55)
 DAILY_DONCHIAN_EXIT_WINDOWS = (10, 20)

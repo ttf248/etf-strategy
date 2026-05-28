@@ -39,14 +39,19 @@ const baseParameterLabels: Record<string, string> = {
   exit_window: "退出窗口",
   ExitWindow: "退出窗口",
   execution_profile: "成交假设",
+  fast_window: "快线窗口",
   force_exit_loss_pct: "达到多大亏损时强制离场",
   GridCount: "最多开几层网格",
   GridMode: "开始时先怎么买",
+  HistogramConfirmPct: "柱体确认阈值",
+  histogram_confirm_pct: "柱体确认阈值",
   jobs: "同时试几组参数",
   left_side_policy: "行情先走弱时怎么处理",
   lookback_days: "回看多少天历史",
   LotSize: "每次最少按多少份交易",
   LongWindow: "长均线窗口",
+  MacdEntryEvents: "MACD 入场次数",
+  MacdExitEvents: "MACD 退出次数",
   Market: "在哪个市场交易",
   max_position_ratio: "最大仓位",
   MaxHoldBars: "最大持仓 K 线数",
@@ -64,6 +69,10 @@ const baseParameterLabels: Record<string, string> = {
   ShortWindow: "短均线窗口",
   signal_buffer_pct: "信号缓冲比例",
   SignalBufferPct: "信号缓冲比例",
+  SignalWindow: "信号线窗口",
+  signal_window: "信号线窗口",
+  SlowWindow: "慢线窗口",
+  slow_window: "慢线窗口",
   Symbol: "标的代码",
   template_id: "模板编号",
   total_capital: "初始资金",
@@ -81,6 +90,8 @@ const eventTypeLabels: Record<string, string> = {
   grid_sell: "网格止盈卖出",
   ma_cross_buy: "均线金叉买入",
   ma_cross_sell: "均线死叉卖出",
+  macd_buy: "MACD 金叉买入",
+  macd_sell: "MACD 死叉卖出",
   max_hold_sell: "到期离场",
   mean_revert_sell: "回到均值卖出",
   risk_cooldown: "冷却期跳过",
@@ -115,6 +126,7 @@ const tradeTypeLabels: Record<string, string> = {
   grid: "网格交易",
   grid_sell: "网格止盈",
   ma_cross: "双均线趋势",
+  macd_trend: "MACD 趋势",
 };
 
 const valueLabels: Record<string, Record<string, string>> = {
@@ -514,6 +526,9 @@ function strategyBeginnerSummary(strategyKind: string, interval: string): string
   if (strategyKind === "ma_cross") {
     return "用短长均线的金叉和死叉跟随中期趋势，适合先判断这只标的更像趋势市还是震荡市。";
   }
+  if (strategyKind === "macd_trend") {
+    return "用 MACD 金叉和柱体转强确认动量，适合先判断这只标的的趋势延续性是否足够稳定。";
+  }
   if (strategyKind === "donchian_breakout") {
     return "专门等价格突破一段时间内的高点再顺势跟随，更适合判断这只标的是否具备持续性趋势。";
   }
@@ -540,6 +555,9 @@ function rerunFocusGuide(strategyKind: string): string {
   }
   if (strategyKind === "ma_cross") {
     return "优先改短长均线窗口，以及金叉确认时的信号缓冲比例。";
+  }
+  if (strategyKind === "macd_trend") {
+    return "优先改快慢线窗口、信号线窗口、柱体确认阈值，以及固定止损比例。";
   }
   if (strategyKind === "donchian_breakout") {
     return "优先改突破窗口、退出窗口、突破确认比例，以及固定止损阈值。";
