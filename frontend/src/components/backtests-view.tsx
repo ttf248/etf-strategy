@@ -654,10 +654,10 @@ export function BacktestsView() {
                         <ToolbarCount>已选 {selectedJobIds.length} 条，只有在确实需要一次处理多条任务时再操作。</ToolbarCount>
                         <Space>
                           <Button size="small" disabled={selectedJobIds.length === 0} onClick={() => void bulkCancelJobs()}>
-                            取消所选
+                            停掉所选这些
                           </Button>
                           <Button size="small" disabled={selectedJobIds.length === 0} onClick={() => void bulkRetryJobs()}>
-                            重试所选
+                            按原再跑所选
                           </Button>
                         </Space>
                       </div>
