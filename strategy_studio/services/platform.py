@@ -6,7 +6,6 @@ import os
 import socket
 import subprocess
 from datetime import UTC, datetime
-from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -189,22 +188,12 @@ def fetch_platform_processes() -> list[dict[str, object]]:
 def fetch_platform_logs(service: str = "api", limit: int = 200) -> dict[str, object]:
     normalized_service = service if service in SERVICE_LOG_KEYWORDS else "api"
     bounded_limit = min(max(limit, 1), 500)
-    log_dir = Path("log").resolve()
-    candidates = sorted(log_dir.glob("*.log"), key=lambda item: item.stat().st_mtime, reverse=True) if log_dir.exists() else []
-    lines: list[str] = []
-    keywords = SERVICE_LOG_KEYWORDS[normalized_service]
-    for path in candidates[:5]:
-        if not path.resolve().is_relative_to(log_dir):
-            continue
-        try:
-            content = path.read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError:
-            continue
-        matched = [line for line in content if any(keyword in line.lower() for keyword in keywords)]
-        lines.extend(matched[-bounded_limit:])
-        if len(lines) >= bounded_limit:
-            break
-    return {"service": normalized_service, "lines": lines[-bounded_limit:]}
+    return {
+        "service": normalized_service,
+        "lines": [
+            "当前平台默认只输出终端日志，不再从本地日志文件目录读取记录。"
+        ][:bounded_limit],
+    }
 
 
 def restart_platform_process(service_name: str) -> dict[str, object]:

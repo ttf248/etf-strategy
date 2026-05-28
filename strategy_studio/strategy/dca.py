@@ -6,13 +6,9 @@ from __future__ import annotations
 和买入持有基准，保证它可以和网格、反弹策略放在同一张报告里比较。
 """
 
-import hashlib
 import json
-import pickle
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import asdict
 from itertools import product
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -379,34 +375,6 @@ def run_dca_backtest(
     }
 
 
-def _data_fingerprint(data: pd.DataFrame) -> str:
-    hash_value = int(pd.util.hash_pandas_object(data.reset_index(), index=False).sum())
-    return f"{len(data)}:{format_timestamp(data.index.min())}:{format_timestamp(data.index.max())}:{hash_value}"
-
-
-def _candidate_cache_path(cache_dir: str | Path | None, payload: dict[str, object]) -> Path | None:
-    if cache_dir is None:
-        return None
-    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
-    digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-    return Path(cache_dir) / f"{digest}.pkl"
-
-
-def _load_cached_candidate(cache_path: Path | None) -> dict[str, object] | None:
-    if cache_path is None or not cache_path.exists():
-        return None
-    with cache_path.open("rb") as handle:
-        return pickle.load(handle)
-
-
-def _save_cached_candidate(cache_path: Path | None, run_result: dict[str, object]) -> None:
-    if cache_path is None:
-        return
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    with cache_path.open("wb") as handle:
-        pickle.dump(run_result, handle)
-
-
 def _set_dca_optimization_context(context: dict[str, object] | None) -> None:
     global _DCA_OPTIMIZATION_CONTEXT
     _DCA_OPTIMIZATION_CONTEXT = context
@@ -441,22 +409,6 @@ def _run_dca_candidate_task(params: dict[str, object]) -> dict[str, object]:
     context = _DCA_OPTIMIZATION_CONTEXT
     if context is None:
         raise RuntimeError("定投寻参上下文尚未初始化。")
-    cache_payload = {
-        "data": context["data_fingerprint"],
-        "scenario": context["scenario_name"],
-        "strategy_kind": "dca",
-        "symbol": context["symbol"],
-        "market": context["market"],
-        "lot_size": context["lot_size"],
-        "params": params,
-        "execution": asdict(context["execution"]),
-        "wf_window_count": context["wf_window_count"],
-        "wf_min_window_size": context["wf_min_window_size"],
-    }
-    cache_path = _candidate_cache_path(context["cache_dir"], cache_payload)
-    cached = _load_cached_candidate(cache_path)
-    if cached is not None:
-        return cached
     run_result = run_dca_backtest(
         data=context["data"],
         scenario_name=str(context["scenario_name"]),
@@ -481,7 +433,6 @@ def _run_dca_candidate_task(params: dict[str, object]) -> dict[str, object]:
         for index, window in enumerate(context["walk_forward_windows"])
     ]
     run_result["summary"].update(_summarize_dca_walk_forward(walk_forward_runs))
-    _save_cached_candidate(cache_path, run_result)
     return run_result
 
 
@@ -497,7 +448,6 @@ def optimize_dca_parameters(
     wf_window_count: int = DEFAULT_WALK_FORWARD_WINDOW_COUNT,
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     jobs: int = DEFAULT_JOBS,
-    cache_dir: str | Path | None = None,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """穷举定投参数，并用多窗口稳健性排序。"""
     execution = execution_config or build_execution_config("research")
@@ -520,8 +470,6 @@ def optimize_dca_parameters(
         "execution": execution,
         "wf_window_count": wf_window_count,
         "wf_min_window_size": wf_min_window_size,
-        "cache_dir": cache_dir,
-        "data_fingerprint": _data_fingerprint(data),
     }
     effective_jobs = max(1, int(jobs))
     if effective_jobs == 1 or len(candidate_params) <= 1:

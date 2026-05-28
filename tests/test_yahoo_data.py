@@ -6,11 +6,8 @@ from unittest.mock import Mock, patch
 import pandas as pd
 
 from strategy_studio.data.southbound import (
-    build_southbound_source_label,
     fetch_southbound_shanghai_eligible_rows,
-    load_southbound_shanghai_snapshot,
     normalize_southbound_symbol,
-    refresh_southbound_shanghai_snapshot,
 )
 from strategy_studio.data.yahoo import DEFAULT_DAILY_PERIOD, download_price_bars, merge_price_bars, save_price_bars
 
@@ -125,27 +122,6 @@ class YahooDataTests(unittest.TestCase):
         self.assertEqual(rows[1]["SecurityType"], "ETF")
         self.assertEqual(normalize_southbound_symbol(rows[0]["SecurityCode"]), "0001.HK")
         self.assertEqual(normalize_southbound_symbol(rows[1]["SecurityCode"]), "2800.HK")
-
-    @patch("strategy_studio.data.southbound.requests.get")
-    def test_refresh_and_load_southbound_shanghai_snapshot(self, mock_get: Mock) -> None:
-        mock_response = Mock()
-        mock_response.raise_for_status.return_value = None
-        mock_response.text = (
-            'jsonpCallback({"pageHelp":{"data":['
-            '{"SECURITY_CODE":"5","ABBR_EN":"HSBC HOLDINGS","ABBR_CN":"汇丰控股","SECURITY_TYPE":"股票","UPDATE_DATE":"2026-05-21"}]}})'
-        )
-        mock_get.return_value = mock_response
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            snapshot_path = Path(temp_dir) / "southbound.csv"
-            refresh_southbound_shanghai_snapshot(snapshot_path=snapshot_path)
-            rows = load_southbound_shanghai_snapshot(snapshot_path=snapshot_path)
-
-        self.assertEqual(rows[0]["SecurityCode"], "00005")
-        self.assertEqual(rows[0]["AbbrCn"], "汇丰控股")
-        self.assertEqual(build_southbound_source_label(rows[0]["UpdateDate"]), "上交所港股通沪名单，数据截至 2026-05-21")
-        self.assertEqual(normalize_southbound_symbol(rows[0]["SecurityCode"]), "0005.HK")
-
 
 if __name__ == "__main__":
     unittest.main()

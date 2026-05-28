@@ -8,7 +8,7 @@ import pandas as pd
 
 from strategy_studio.data.yahoo import DEFAULT_DAILY_PERIOD, download_price_bars, is_intraday_interval
 from strategy_studio.db.session import open_session
-from strategy_studio.reporting import resolve_symbol_spec
+from strategy_studio.symbols import resolve_symbol_spec
 from strategy_studio.repositories.market_data import (
     create_sync_run,
     create_sync_run_item,
@@ -31,7 +31,7 @@ def sync_market_data(
         else:
             symbols = [str(item["symbol"]) for item in list_instruments(session)]
         if not symbols:
-            raise ValueError("当前数据库中没有可同步的标的，请先导入 CSV 或手动新增标的。")
+            raise ValueError("当前数据库中没有可同步的标的，请先在数据库中创建标的或显式传入 --symbol。")
 
         run = create_sync_run(session, job_type="manual" if symbol else "scheduled", interval=interval)
         run.symbols_count = len(symbols)

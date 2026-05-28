@@ -241,7 +241,6 @@ def _optimize_index_grid(**kwargs: object) -> tuple[pd.DataFrame, dict[str, obje
     kwargs.pop("wf_window_count", None)
     kwargs.pop("wf_min_window_size", None)
     kwargs.pop("jobs", None)
-    kwargs.pop("cache_dir", None)
     run = run_index_grid_backtest(**kwargs)
     return pd.DataFrame([run["summary"]]), run
 

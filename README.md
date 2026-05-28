@@ -127,7 +127,6 @@ frontend/        Next.js 前端控制台
 alembic/         PostgreSQL 迁移
 data/            数据边界说明
 reports/         报告边界说明
-outputs/         运行中间产物，默认不提交
 doc/             长期维护文档
 tests/           unittest 测试
 ```
@@ -136,6 +135,7 @@ tests/           unittest 测试
 
 - `data/`：只保留边界说明，不存放正式行情数据。
 - `reports/`：只保留边界说明，不存放正式回测报告。
+- 本地工作区不再约定任何正式数据或正式报告目录。
 
 ## 文档
 

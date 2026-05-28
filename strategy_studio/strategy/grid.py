@@ -9,12 +9,9 @@ from __future__ import annotations
 样本切分和产物落盘已经拆到相邻模块，避免策略撮合文件继续膨胀。
 """
 
-import hashlib
 import json
-import pickle
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import asdict, replace
-from pathlib import Path
+from dataclasses import replace
 
 import pandas as pd
 from backtesting import Backtest, Strategy
@@ -26,7 +23,6 @@ from strategy_studio.settings import (
     ExecutionConfig,
     build_execution_config,
 )
-from strategy_studio.strategy.artifacts import load_price_frame, save_decline_window, save_run_artifacts
 from strategy_studio.strategy.metrics import compute_score, summarize_walk_forward_runs
 from strategy_studio.strategy.sampling import (
     DeclineWindow,
@@ -601,41 +597,6 @@ def _build_benchmark_metrics(
     }
 
 
-def _data_fingerprint(data: pd.DataFrame) -> str:
-    """为缓存构造行情样本指纹。"""
-    hash_value = int(pd.util.hash_pandas_object(data.reset_index(), index=False).sum())
-    return f"{len(data)}:{format_timestamp(data.index.min())}:{format_timestamp(data.index.max())}:{hash_value}"
-
-
-def _candidate_cache_path(
-    cache_dir: str | Path | None,
-    payload: dict[str, object],
-) -> Path | None:
-    """根据候选参数和样本口径生成缓存路径。"""
-    if cache_dir is None:
-        return None
-    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
-    digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-    return Path(cache_dir) / f"{digest}.pkl"
-
-
-def _load_cached_candidate(cache_path: Path | None) -> dict[str, object] | None:
-    """读取单个候选参数缓存。"""
-    if cache_path is None or not cache_path.exists():
-        return None
-    with cache_path.open("rb") as handle:
-        return pickle.load(handle)
-
-
-def _save_cached_candidate(cache_path: Path | None, run_result: dict[str, object]) -> None:
-    """写入单个候选参数缓存。"""
-    if cache_path is None:
-        return
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    with cache_path.open("wb") as handle:
-        pickle.dump(run_result, handle)
-
-
 def _set_grid_optimization_context(context: dict[str, object] | None) -> None:
     """为串行和多进程寻参统一准备只读上下文。"""
     global _GRID_OPTIMIZATION_CONTEXT
@@ -652,24 +613,6 @@ def _run_grid_candidate_task(spec: tuple[float, int, float]) -> dict[str, object
         raise RuntimeError("网格寻参上下文尚未初始化。")
 
     spacing, grid_count, take_profit = spec
-    cache_payload = {
-        "data": context["data_fingerprint"],
-        "scenario": context["scenario_name"],
-        "symbol": context["symbol"],
-        "market": context["market"],
-        "lot_size": context["lot_size"],
-        "spacing": spacing,
-        "grid_count": grid_count,
-        "take_profit": take_profit,
-        "execution": asdict(context["execution"]),
-        "wf_window_count": context["wf_window_count"],
-        "wf_min_window_size": context["wf_min_window_size"],
-    }
-    cache_path = _candidate_cache_path(context["cache_dir"], cache_payload)
-    cached = _load_cached_candidate(cache_path)
-    if cached is not None:
-        return cached
-
     run_result = run_grid_backtest(
         data=context["data"],
         scenario_name=str(context["scenario_name"]),
@@ -699,7 +642,6 @@ def _run_grid_candidate_task(spec: tuple[float, int, float]) -> dict[str, object
     ]
     robust_summary = summarize_walk_forward_runs(walk_forward_runs)
     run_result["summary"].update(robust_summary)
-    _save_cached_candidate(cache_path, run_result)
     return run_result
 
 
@@ -951,7 +893,6 @@ def optimize_grid_parameters(
     wf_window_count: int = DEFAULT_WALK_FORWARD_WINDOW_COUNT,
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     jobs: int = DEFAULT_JOBS,
-    cache_dir: str | Path | None = None,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """对网格参数做穷举搜索并返回最优结果。
 
@@ -972,7 +913,6 @@ def optimize_grid_parameters(
         for take_profit in take_profits
     ]
     effective_jobs = max(1, int(jobs))
-    data_fingerprint = _data_fingerprint(data)
     context = {
         "data": data,
         "walk_forward_windows": walk_forward_windows,
@@ -984,8 +924,6 @@ def optimize_grid_parameters(
         "execution": execution,
         "wf_window_count": wf_window_count,
         "wf_min_window_size": wf_min_window_size,
-        "cache_dir": cache_dir,
-        "data_fingerprint": data_fingerprint,
     }
 
     if effective_jobs == 1 or len(candidate_specs) <= 1:

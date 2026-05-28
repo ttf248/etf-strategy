@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-
 import pandas as pd
 
 from strategy_studio.db.session import open_session
@@ -69,8 +68,8 @@ def submit_backtest(request: BacktestRequest) -> dict[str, object]:
         return {"job_id": job.id, "status": job.status}
 
 
-def _pseudo_data_path(symbol: str, interval: str) -> Path:
-    return Path("db") / f"{symbol.lower().replace('.', '_')}_{interval}.csv"
+def _database_source_label(symbol: str, interval: str) -> str:
+    return f"database://price_bars/{symbol.upper()}/{interval}"
 
 
 def _normalize_artifacts(
@@ -95,9 +94,7 @@ def _normalize_artifacts(
     payload = {
         "storage_mode": "database_only",
         "data_source": "database",
-        "combined_summary_path": workflow_result.get("combined_summary_path"),
-        "optimization_paths": workflow_result["optimization"].get("best_paths", {}),
-        "validation_paths": workflow_result["validation"].get("paths", {}),
+        "artifact_transport": "embedded_database_rows",
         "in_sample_window": asdict(workflow_result["optimization"]["decline_window"]),
         "template_snapshot": template_snapshot,
     }
@@ -261,7 +258,7 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                 left_side_policy=payload.left_side_policy,
                 force_exit_loss_pct=payload.force_exit_loss_pct,
             )
-            pseudo_data_path = _pseudo_data_path(payload.symbol, payload.interval)
+            database_source = _database_source_label(payload.symbol, payload.interval)
 
             if _cancel_if_requested(session, job):
                 return job.id
@@ -269,7 +266,7 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
             session.commit()
             workflow_result = (
                 run_minute_full_workflow(
-                    data_path=pseudo_data_path,
+                    data_path=database_source,
                     symbol=payload.symbol,
                     interval=payload.interval,
                     validation_ratio=payload.validation_ratio,
@@ -278,11 +275,10 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                     jobs=payload.jobs,
                     parameter_space=payload.parameter_space,
                     data=price_frame,
-                    write_artifacts=False,
                 )
                 if _is_intraday(payload.interval)
                 else run_full_workflow(
-                    data_path=pseudo_data_path,
+                    data_path=database_source,
                     symbol=payload.symbol,
                     validation_start=payload.validation_start,
                     lookback_days=payload.lookback_days,
@@ -291,7 +287,6 @@ def execute_next_job(preferred_job_id: int | None = None) -> int | None:
                     jobs=payload.jobs,
                     parameter_space=payload.parameter_space,
                     data=price_frame,
-                    write_artifacts=False,
                 )
             )
             if _cancel_if_requested(session, job):

@@ -8,18 +8,11 @@ from __future__ import annotations
 """
 
 import re
-import json
 from dataclasses import dataclass
-from pathlib import Path
 
 import requests
 
-from strategy_studio.config import DEFAULT_HK_LOT_SIZE_CACHE_PATH
-
-INTRADAY_INTERVAL_SUFFIXES = {"1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h"}
-DATA_INTERVAL_SUFFIXES = INTRADAY_INTERVAL_SUFFIXES | {"1d", "daily"}
 AASTOCKS_SNAPSHOT_URL = "https://product1.aastocks.com/Snapshot/WHBL/Quote.aspx"
-HK_LOT_SIZE_CACHE_PATH: Path | None = DEFAULT_HK_LOT_SIZE_CACHE_PATH
 _HK_LOT_SIZE_CACHE: dict[str, int] | None = None
 
 
@@ -31,28 +24,6 @@ class LotSizeRule:
     market: str
     lot_size: int
     source: str
-
-
-def infer_symbol_from_data_path(data_path: str | Path) -> str | None:
-    """尝试从标准化 CSV 文件名推断 Yahoo 标的代码。
-
-    推断逻辑只覆盖当前项目常见命名，不追求支持所有随意文件名；
-    推断失败时让上层显式要求 `--symbol`，比静默猜错更安全。
-    """
-    stem = Path(data_path).stem
-    normalized_stem = stem.lower()
-
-    exchange_match = re.search(r"(?P<code>[a-z0-9\-\^=]+)_(?P<suffix>hk|ss|sz)(?:_|$)", normalized_stem)
-    if exchange_match:
-        return f"{exchange_match.group('code').upper()}.{exchange_match.group('suffix').upper()}"
-
-    parts = stem.split("_")
-    if len(parts) >= 2 and parts[-1].lower() in DATA_INTERVAL_SUFFIXES:
-        symbol_part = "_".join(parts[:-1]).strip()
-        if symbol_part and re.fullmatch(r"[A-Za-z0-9\-\^=.]+", symbol_part):
-            return symbol_part.upper()
-
-    return None
 
 
 def resolve_lot_size_rule(symbol: str) -> LotSizeRule:
@@ -128,30 +99,12 @@ def _fetch_hk_lot_size(symbol: str) -> int:
     return lot_size
 
 
-def _load_hk_lot_size_cache(cache_path: str | Path | None = None) -> dict[str, int]:
+def _load_hk_lot_size_cache() -> dict[str, int]:
     global _HK_LOT_SIZE_CACHE
     if _HK_LOT_SIZE_CACHE is not None:
         return _HK_LOT_SIZE_CACHE
-    target_path = cache_path if cache_path is not None else HK_LOT_SIZE_CACHE_PATH
-    if target_path is None:
-        _HK_LOT_SIZE_CACHE = {}
-        return _HK_LOT_SIZE_CACHE
-    target = Path(target_path)
-    if not target.exists():
-        _HK_LOT_SIZE_CACHE = {}
-        return _HK_LOT_SIZE_CACHE
-    payload = json.loads(target.read_text(encoding="utf-8"))
-    _HK_LOT_SIZE_CACHE = {str(symbol).upper(): int(lot_size) for symbol, lot_size in payload.items()}
+    _HK_LOT_SIZE_CACHE = {}
     return _HK_LOT_SIZE_CACHE
-
-
-def _save_hk_lot_size_cache(cache: dict[str, int], cache_path: str | Path | None = None) -> None:
-    target_path = cache_path if cache_path is not None else HK_LOT_SIZE_CACHE_PATH
-    if target_path is None:
-        return
-    target = Path(target_path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(cache, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")
 
 
 def _resolve_cached_hk_lot_size(symbol: str) -> int:
@@ -162,5 +115,4 @@ def _resolve_cached_hk_lot_size(symbol: str) -> int:
         return cached
     lot_size = _fetch_hk_lot_size(normalized_symbol)
     cache[normalized_symbol] = lot_size
-    _save_hk_lot_size_cache(cache)
     return lot_size

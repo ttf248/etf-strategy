@@ -60,3 +60,24 @@ SYMBOL_SETS: dict[str, tuple[SymbolSpec, ...]] = {
     "hstech_plus_513050": (*HSTECH_CONSTITUENTS, CN_ETF_513050),
     "index_grid_etfs": (INDEX_GRID_159941, INDEX_GRID_159605, INDEX_GRID_159866),
 }
+
+
+def symbol_specs_by_symbol() -> dict[str, SymbolSpec]:
+    """按标的代码返回内置元信息映射。"""
+    specs = {spec.symbol.upper(): spec for spec in HSTECH_CONSTITUENTS}
+    specs[CN_ETF_513050.symbol.upper()] = CN_ETF_513050
+    specs[INDEX_GRID_159941.symbol.upper()] = INDEX_GRID_159941
+    specs[INDEX_GRID_159605.symbol.upper()] = INDEX_GRID_159605
+    specs[INDEX_GRID_159866.symbol.upper()] = INDEX_GRID_159866
+    return specs
+
+
+def resolve_symbol_spec(symbol: str, default_symbol: str = "1810.HK") -> SymbolSpec:
+    """解析标的展示名、分类和来源说明。"""
+    normalized = symbol.strip().upper()
+    specs = symbol_specs_by_symbol()
+    if normalized in specs:
+        return specs[normalized]
+    if normalized == default_symbol:
+        return SymbolSpec(symbol=normalized, name=normalized, category="默认标的", source="项目默认标的")
+    return SymbolSpec(symbol=normalized, name=normalized, category="自定义标的", source="命令行输入")

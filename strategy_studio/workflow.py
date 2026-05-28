@@ -1,20 +1,18 @@
 from __future__ import annotations
 """工作流编排层。
 
-这里负责把“数据加载、样本切分、最小交易单位解析、参数搜索、验证、产物落盘”
+这里负责把“数据读取、样本切分、最小交易单位解析、参数搜索、验证、结果汇总”
 组织成可直接被 CLI 调用的高层流程。
 
 策略细节不放在这里实现，避免 CLI 和报告层直接依赖回测内部状态。
 """
 
-from pathlib import Path
 from time import perf_counter
 
 import pandas as pd
 from loguru import logger
 
-from strategy_studio.config import DEFAULT_OUTPUT_DIR
-from strategy_studio.data.market_rules import LotSizeRule, infer_symbol_from_data_path, resolve_lot_size_rule
+from strategy_studio.data.market_rules import LotSizeRule, resolve_lot_size_rule
 from strategy_studio.settings import (
     DAILY_REBOUND_DEVIATIONS,
     DAILY_REBOUND_MA_WINDOWS,
@@ -47,7 +45,6 @@ from strategy_studio.settings import (
     StrategyKind,
     build_execution_config,
 )
-from strategy_studio.strategy.artifacts import load_price_frame, save_decline_window, save_run_artifacts
 from strategy_studio.strategy.grid import optimize_grid_parameters
 from strategy_studio.strategy.index_grid import run_index_grid_backtest
 from strategy_studio.strategy.registry import (
@@ -181,20 +178,20 @@ def _resolve_strategy_parameter_space(
     return {key: list(value) for key, value in default_parameter_space_for_strategy(strategy_kind, interval).items()}
 
 
-def _artifact_prefix(strategy_kind: str, workflow_type: str, scenario: str) -> str:
-    if workflow_type == "minute":
-        if scenario == "optimization":
-            return "minute_in_sample_grid" if strategy_kind == "grid" else f"minute_in_sample_{strategy_kind}"
-        return "minute_validation" if strategy_kind == "grid" else f"minute_validation_{strategy_kind}"
-    if scenario == "optimization":
-        return "in_sample_grid" if strategy_kind == "grid" else f"in_sample_{strategy_kind}"
-    return "validation_2026" if strategy_kind == "grid" else f"validation_{strategy_kind}"
+def _require_price_frame(data: pd.DataFrame | None, data_path: str | None = None) -> pd.DataFrame:
+    """数据库优先模式下要求调用方直接提供内存行情。"""
+    if data is None:
+        source_hint = data_path or "未提供 data_path"
+        raise ValueError(
+            "当前仓库已切换到数据库优先模式，不再支持从本地 CSV 读取正式行情；"
+            f"请直接传入数据库中加载好的 DataFrame。source={source_hint}"
+        )
+    return data
 
 
 def run_optimization_workflow(
     data_path: str | Path,
     symbol: str | None = None,
-    output_dir: str | Path = DEFAULT_OUTPUT_DIR / "optimize",
     validation_start: str = DEFAULT_VALIDATION_START,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     strategy_kind: StrategyKind = "grid",
@@ -205,20 +202,18 @@ def run_optimization_workflow(
     wf_window_count: int = DEFAULT_WALK_FORWARD_WINDOW_COUNT,
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     jobs: int = DEFAULT_JOBS,
-    cache_dir: str | Path | None = None,
     parameter_space: dict[str, object] | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
-    write_artifacts: bool = True,
 ) -> dict[str, object]:
-    """执行样本内参数搜索并保存结果。"""
+    """执行样本内参数搜索并返回结构化结果。"""
     started_at = perf_counter()
     validate_strategy_interval(strategy_kind, "1d")
     spec = get_strategy_spec(strategy_kind)
     execution = execution_config or build_execution_config("research")
     resolved_symbol = _resolve_symbol(symbol, data_path)
     effective_lot_rule = lot_rule or resolve_lot_size_rule(resolved_symbol)
-    price_frame = data if data is not None else load_price_frame(data_path)
+    price_frame = _require_price_frame(data, str(data_path))
     decline_window, in_sample, _ = split_in_sample_and_validation(
         data=price_frame,
         validation_start=validation_start,
@@ -252,20 +247,7 @@ def run_optimization_workflow(
         wf_window_count=wf_window_count,
         wf_min_window_size=wf_min_window_size,
         jobs=jobs,
-        cache_dir=cache_dir,
     )
-
-    prefix = _artifact_prefix(strategy_kind, "daily", "optimization")
-    results_path: Path | None = None
-    window_path: Path | None = None
-    best_paths: dict[str, Path] = {}
-    if write_artifacts:
-        target_dir = Path(output_dir)
-        target_dir.mkdir(parents=True, exist_ok=True)
-        results_path = target_dir / f"{prefix}_search.csv"
-        results.to_csv(results_path, index=False, encoding="utf-8-sig")
-        window_path = save_decline_window(target_dir, decline_window)
-        best_paths = save_run_artifacts(target_dir, f"{prefix}_best", best_run)
     logger.info(
         "[1/2] 日线样本内寻参完成: strategy={} score={:.2f} elapsed={:.2f}s",
         strategy_kind,
@@ -277,10 +259,10 @@ def run_optimization_workflow(
         "strategy_kind": strategy_kind,
         "decline_window": decline_window,
         "results": results,
-        "results_path": results_path,
-        "window_path": window_path,
+        "results_path": None,
+        "window_path": None,
         "best_run": best_run,
-        "best_paths": best_paths,
+        "best_paths": {},
     }
 
 
@@ -290,7 +272,6 @@ def run_validation_workflow(
     grid_count: int,
     take_profit_pct: float,
     symbol: str | None = None,
-    output_dir: str | Path = DEFAULT_OUTPUT_DIR / "validation",
     validation_start: str = DEFAULT_VALIDATION_START,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     strategy_kind: StrategyKind = "grid",
@@ -298,7 +279,6 @@ def run_validation_workflow(
     execution_config: ExecutionConfig | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
-    write_artifacts: bool = True,
 ) -> dict[str, object]:
     """执行 2026 样本外验证。"""
     validate_strategy_interval(strategy_kind, "1d")
@@ -307,7 +287,7 @@ def run_validation_workflow(
     resolved_symbol = _resolve_symbol(symbol, data_path)
     effective_lot_rule = lot_rule or resolve_lot_size_rule(resolved_symbol)
     execution = execution_config or build_execution_config("research")
-    price_frame = data if data is not None else load_price_frame(data_path)
+    price_frame = _require_price_frame(data, str(data_path))
     logger.info(
         "[2/2] 开始执行日线样本外验证: symbol={} data={} spacing={:.2f}% grid_count={} take_profit={:.2f}%",
         effective_lot_rule.symbol,
@@ -339,21 +319,18 @@ def run_validation_workflow(
         params=strategy_params,
         execution_config=execution,
     )
-    prefix = _artifact_prefix(strategy_kind, "daily", "validation")
-    paths = save_run_artifacts(output_dir, prefix, validation_run) if write_artifacts else {}
     logger.info(
         "[2/2] 日线样本外验证完成: return={:.2f}% max_drawdown={:.2f}% elapsed={:.2f}s",
         float(validation_run["summary"]["ReturnPct"]),
         float(validation_run["summary"]["MaxDrawdownPct"]),
         perf_counter() - started_at,
     )
-    return {"strategy_kind": strategy_kind, "run": validation_run, "paths": paths}
+    return {"strategy_kind": strategy_kind, "run": validation_run, "paths": {}}
 
 
 def run_full_workflow(
     data_path: str | Path,
     symbol: str | None = None,
-    output_dir: str | Path = DEFAULT_OUTPUT_DIR,
     validation_start: str = DEFAULT_VALIDATION_START,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     strategy_kind: StrategyKind = "grid",
@@ -364,11 +341,9 @@ def run_full_workflow(
     wf_window_count: int = DEFAULT_WALK_FORWARD_WINDOW_COUNT,
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     jobs: int = DEFAULT_JOBS,
-    cache_dir: str | Path | None = None,
     parameter_space: dict[str, object] | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
-    write_artifacts: bool = True,
 ) -> dict[str, object]:
     """串联样本内寻参和样本外验证。
 
@@ -376,14 +351,13 @@ def run_full_workflow(
     目的是让报告清楚区分“历史上调出来的参数”和“新样本上的延续性”。
     """
     started_at = perf_counter()
-    logger.info("开始执行日线完整工作流: data={} output_dir={}", data_path, output_dir)
+    logger.info("开始执行日线完整工作流: data={}", data_path)
     resolved_symbol = _resolve_symbol(symbol, data_path)
     effective_lot_rule = lot_rule or resolve_lot_size_rule(resolved_symbol)
-    price_frame = data if data is not None else load_price_frame(data_path)
+    price_frame = _require_price_frame(data, str(data_path))
     optimization = run_optimization_workflow(
         data_path=data_path,
         symbol=resolved_symbol,
-        output_dir=Path(output_dir) / "optimize",
         validation_start=validation_start,
         lookback_days=lookback_days,
         strategy_kind=strategy_kind,
@@ -394,11 +368,9 @@ def run_full_workflow(
         wf_window_count=wf_window_count,
         wf_min_window_size=wf_min_window_size,
         jobs=jobs,
-        cache_dir=cache_dir,
         parameter_space=parameter_space,
         data=price_frame,
         lot_rule=effective_lot_rule,
-        write_artifacts=write_artifacts,
     )
     best_summary = optimization["best_run"]["summary"]
     spec = get_strategy_spec(strategy_kind)
@@ -408,7 +380,6 @@ def run_full_workflow(
         grid_count=int(best_summary["GridCount"]),
         take_profit_pct=float(best_summary["TakeProfitPct"]) / 100,
         symbol=resolved_symbol,
-        output_dir=Path(output_dir) / "validation",
         validation_start=validation_start,
         lookback_days=lookback_days,
         strategy_kind=strategy_kind,
@@ -416,7 +387,6 @@ def run_full_workflow(
         execution_config=execution_config,
         data=price_frame,
         lot_rule=effective_lot_rule,
-        write_artifacts=write_artifacts,
     )
 
     combined_summary = pd.DataFrame(
@@ -425,25 +395,19 @@ def run_full_workflow(
             validation["run"]["summary"],
         ]
     )
-    combined_path: Path | None = None
-    if write_artifacts:
-        combined_path = Path(output_dir) / "combined_summary.csv"
-        combined_path.parent.mkdir(parents=True, exist_ok=True)
-        combined_summary.to_csv(combined_path, index=False, encoding="utf-8-sig")
-    logger.info("日线完整工作流完成: summary={} elapsed={:.2f}s", combined_path, perf_counter() - started_at)
+    logger.info("日线完整工作流完成: rows={} elapsed={:.2f}s", len(combined_summary), perf_counter() - started_at)
 
     return {
         "strategy_kind": strategy_kind,
         "optimization": optimization,
         "validation": validation,
-        "combined_summary_path": combined_path,
+        "combined_summary_path": None,
     }
 
 
 def run_minute_optimization_workflow(
     data_path: str | Path,
     symbol: str | None = None,
-    output_dir: str | Path = DEFAULT_OUTPUT_DIR / "minute" / "optimize",
     interval: str = "15m",
     validation_ratio: float = DEFAULT_VALIDATION_RATIO,
     strategy_kind: StrategyKind = "grid",
@@ -454,13 +418,11 @@ def run_minute_optimization_workflow(
     wf_window_count: int = DEFAULT_WALK_FORWARD_WINDOW_COUNT,
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     jobs: int = DEFAULT_JOBS,
-    cache_dir: str | Path | None = None,
     parameter_space: dict[str, object] | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
-    write_artifacts: bool = True,
 ) -> dict[str, object]:
-    """执行分钟线样本内参数搜索并保存结果。"""
+    """执行分钟线样本内参数搜索并返回结构化结果。"""
     started_at = perf_counter()
     validate_strategy_interval(strategy_kind, interval)
     spec = get_strategy_spec(strategy_kind)
@@ -468,7 +430,7 @@ def run_minute_optimization_workflow(
 
     resolved_symbol = _resolve_symbol(symbol, data_path)
     effective_lot_rule = lot_rule or resolve_lot_size_rule(resolved_symbol)
-    price_frame = data if data is not None else load_price_frame(data_path)
+    price_frame = _require_price_frame(data, str(data_path))
     decline_window, in_sample, _ = split_intraday_in_sample_and_validation(
         data=price_frame,
         validation_ratio=validation_ratio,
@@ -501,20 +463,7 @@ def run_minute_optimization_workflow(
         wf_window_count=wf_window_count,
         wf_min_window_size=wf_min_window_size,
         jobs=jobs,
-        cache_dir=cache_dir,
     )
-
-    prefix = _artifact_prefix(strategy_kind, "minute", "optimization")
-    results_path: Path | None = None
-    window_path: Path | None = None
-    best_paths: dict[str, Path] = {}
-    if write_artifacts:
-        target_dir = Path(output_dir)
-        target_dir.mkdir(parents=True, exist_ok=True)
-        results_path = target_dir / f"{prefix}_search.csv"
-        results.to_csv(results_path, index=False, encoding="utf-8-sig")
-        window_path = save_decline_window(target_dir, decline_window)
-        best_paths = save_run_artifacts(target_dir, f"{prefix}_best", best_run)
     logger.info(
         "[1/2] 分钟线样本内寻参完成: strategy={} score={:.2f} elapsed={:.2f}s",
         strategy_kind,
@@ -526,10 +475,10 @@ def run_minute_optimization_workflow(
         "strategy_kind": strategy_kind,
         "decline_window": decline_window,
         "results": results,
-        "results_path": results_path,
-        "window_path": window_path,
+        "results_path": None,
+        "window_path": None,
         "best_run": best_run,
-        "best_paths": best_paths,
+        "best_paths": {},
     }
 
 
@@ -539,7 +488,6 @@ def run_minute_validation_workflow(
     grid_count: int,
     take_profit_pct: float,
     symbol: str | None = None,
-    output_dir: str | Path = DEFAULT_OUTPUT_DIR / "minute" / "validation",
     interval: str = "15m",
     validation_ratio: float = DEFAULT_VALIDATION_RATIO,
     strategy_kind: StrategyKind = "grid",
@@ -547,7 +495,6 @@ def run_minute_validation_workflow(
     execution_config: ExecutionConfig | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
-    write_artifacts: bool = True,
 ) -> dict[str, object]:
     """执行分钟线样本外验证。"""
     started_at = perf_counter()
@@ -556,7 +503,7 @@ def run_minute_validation_workflow(
     resolved_symbol = _resolve_symbol(symbol, data_path)
     effective_lot_rule = lot_rule or resolve_lot_size_rule(resolved_symbol)
     execution = execution_config or build_execution_config("research")
-    price_frame = data if data is not None else load_price_frame(data_path)
+    price_frame = _require_price_frame(data, str(data_path))
     _, _, validation = split_intraday_in_sample_and_validation(
         data=price_frame,
         validation_ratio=validation_ratio,
@@ -579,21 +526,18 @@ def run_minute_validation_workflow(
         params=strategy_params,
         execution_config=execution,
     )
-    prefix = _artifact_prefix(strategy_kind, "minute", "validation")
-    paths = save_run_artifacts(output_dir, prefix, validation_run) if write_artifacts else {}
     logger.info(
         "[2/2] 分钟线样本外验证完成: return={:.2f}% max_drawdown={:.2f}% elapsed={:.2f}s",
         float(validation_run["summary"]["ReturnPct"]),
         float(validation_run["summary"]["MaxDrawdownPct"]),
         perf_counter() - started_at,
     )
-    return {"strategy_kind": strategy_kind, "run": validation_run, "paths": paths}
+    return {"strategy_kind": strategy_kind, "run": validation_run, "paths": {}}
 
 
 def run_minute_full_workflow(
     data_path: str | Path,
     symbol: str | None = None,
-    output_dir: str | Path = DEFAULT_OUTPUT_DIR / "minute",
     interval: str = "15m",
     validation_ratio: float = DEFAULT_VALIDATION_RATIO,
     strategy_kind: StrategyKind = "grid",
@@ -604,22 +548,19 @@ def run_minute_full_workflow(
     wf_window_count: int = DEFAULT_WALK_FORWARD_WINDOW_COUNT,
     wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE,
     jobs: int = DEFAULT_JOBS,
-    cache_dir: str | Path | None = None,
     parameter_space: dict[str, object] | None = None,
     data: pd.DataFrame | None = None,
     lot_rule: LotSizeRule | None = None,
-    write_artifacts: bool = True,
 ) -> dict[str, object]:
     """串联分钟线样本内寻参和样本外验证。"""
     started_at = perf_counter()
-    logger.info("开始执行分钟线完整工作流: data={} output_dir={}", data_path, output_dir)
+    logger.info("开始执行分钟线完整工作流: data={}", data_path)
     resolved_symbol = _resolve_symbol(symbol, data_path)
     effective_lot_rule = lot_rule or resolve_lot_size_rule(resolved_symbol)
-    price_frame = data if data is not None else load_price_frame(data_path)
+    price_frame = _require_price_frame(data, str(data_path))
     optimization = run_minute_optimization_workflow(
         data_path=data_path,
         symbol=resolved_symbol,
-        output_dir=Path(output_dir) / "optimize",
         interval=interval,
         validation_ratio=validation_ratio,
         strategy_kind=strategy_kind,
@@ -630,11 +571,9 @@ def run_minute_full_workflow(
         wf_window_count=wf_window_count,
         wf_min_window_size=wf_min_window_size,
         jobs=jobs,
-        cache_dir=cache_dir,
         parameter_space=parameter_space,
         data=price_frame,
         lot_rule=effective_lot_rule,
-        write_artifacts=write_artifacts,
     )
     best_summary = optimization["best_run"]["summary"]
     spec = get_strategy_spec(strategy_kind)
@@ -644,7 +583,6 @@ def run_minute_full_workflow(
         grid_count=int(best_summary["GridCount"]),
         take_profit_pct=float(best_summary["TakeProfitPct"]) / 100,
         symbol=resolved_symbol,
-        output_dir=Path(output_dir) / "validation",
         interval=interval,
         validation_ratio=validation_ratio,
         strategy_kind=strategy_kind,
@@ -652,7 +590,6 @@ def run_minute_full_workflow(
         execution_config=execution_config,
         data=price_frame,
         lot_rule=effective_lot_rule,
-        write_artifacts=write_artifacts,
     )
 
     combined_summary = pd.DataFrame(
@@ -661,12 +598,7 @@ def run_minute_full_workflow(
             validation["run"]["summary"],
         ]
     )
-    combined_path: Path | None = None
-    if write_artifacts:
-        combined_path = Path(output_dir) / "combined_summary.csv"
-        combined_path.parent.mkdir(parents=True, exist_ok=True)
-        combined_summary.to_csv(combined_path, index=False, encoding="utf-8-sig")
-    logger.info("分钟线完整工作流完成: summary={} elapsed={:.2f}s", combined_path, perf_counter() - started_at)
+    logger.info("分钟线完整工作流完成: rows={} elapsed={:.2f}s", len(combined_summary), perf_counter() - started_at)
 
     return {
         "workflow_type": "minute",
@@ -675,21 +607,12 @@ def run_minute_full_workflow(
         "validation_ratio": validation_ratio,
         "optimization": optimization,
         "validation": validation,
-        "combined_summary_path": combined_path,
+        "combined_summary_path": None,
     }
 
 
 def _resolve_symbol(symbol: str | None, data_path: str | Path) -> str:
-    """统一处理显式 symbol 与文件名推断。
-
-    对非标准文件名直接报错，而不是静默猜测，
-    是为了避免把错误标的代码带进最小交易单位查询和最终报告。
-    """
+    """统一处理显式 symbol。"""
     if symbol:
         return symbol.strip().upper()
-
-    inferred_symbol = infer_symbol_from_data_path(data_path)
-    if inferred_symbol:
-        return inferred_symbol
-
-    raise ValueError("无法从数据文件名推断标的代码，请显式传入 --symbol。")
+    raise ValueError(f"当前数据库优先工作流要求显式传入 symbol。source={data_path}")

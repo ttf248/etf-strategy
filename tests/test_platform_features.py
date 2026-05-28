@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 from strategy_studio.cli import build_parser
 from strategy_studio.platform_cli import handle_api
 from strategy_studio.services.backtests import _normalize_artifacts
-from strategy_studio.services.market_data import infer_interval_from_data_path
 from strategy_studio.services.platform import record_platform_heartbeat
 from strategy_studio.services.templates import build_seed_templates, normalize_parameter_space, resolve_backtest_request_payload
 from strategy_studio.strategy.sampling import DeclineWindow
@@ -34,13 +33,8 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertTrue(replace_args.replace_existing)
         self.assertEqual(parser.parse_args(["scheduler"]).command, "scheduler")
 
-    def test_infer_interval_from_data_path_supports_daily_alias(self) -> None:
-        self.assertEqual(infer_interval_from_data_path("scratch/1810_hk_daily.csv"), "1d")
-        self.assertEqual(infer_interval_from_data_path("scratch/1810_hk_15m.csv"), "15m")
-        self.assertIsNone(infer_interval_from_data_path("scratch/xiaomi_test.csv"))
-
-    def test_hk_lot_size_cache_is_not_persisted_by_default(self) -> None:
-        self.assertIsNone(market_rules.HK_LOT_SIZE_CACHE_PATH)
+    def test_hk_lot_size_cache_only_keeps_process_memory(self) -> None:
+        self.assertFalse(hasattr(market_rules, "HK_LOT_SIZE_CACHE_PATH"))
 
     def test_backtest_artifacts_use_database_only_payload(self) -> None:
         payload = _normalize_artifacts(
@@ -65,6 +59,7 @@ class PlatformFeatureTests(unittest.TestCase):
 
         self.assertEqual(payload["storage_mode"], "database_only")
         self.assertEqual(payload["data_source"], "database")
+        self.assertEqual(payload["artifact_transport"], "embedded_database_rows")
         self.assertNotIn("report_path", payload)
         self.assertEqual(payload["template_snapshot"]["template_key"], "grid_15m_realistic_default")
 

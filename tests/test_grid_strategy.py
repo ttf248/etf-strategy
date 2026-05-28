@@ -7,14 +7,7 @@ import pandas as pd
 
 import strategy_studio.data.market_rules as market_rules
 from strategy_studio.cli import build_parser, handle_batch, handle_run
-from strategy_studio.data.market_rules import infer_symbol_from_data_path, resolve_lot_size_rule
-from strategy_studio.reporting import (
-    build_minute_report_markdown,
-    build_report_index_entry,
-    build_unified_report_index,
-    load_report_registry,
-    register_report_index_entries,
-)
+from strategy_studio.data.market_rules import resolve_lot_size_rule
 from strategy_studio.settings import build_execution_config
 from strategy_studio.symbols import SymbolSpec
 from strategy_studio.strategy.grid import (
@@ -260,88 +253,6 @@ class GridStrategyTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             parser.parse_args(["batch", "--symbols", "1810.HK", "--interval", "15m", "--compare-strategies"])
 
-    def test_register_report_index_entries_prefers_new_record_over_legacy(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            report_root = Path(temp_dir) / "reports"
-            legacy_entry = build_report_index_entry(
-                report_path=report_root / "1810_hk" / "minute" / "legacy_report.md",
-                symbol="1810.HK",
-                interval="15m",
-                report_view="grid",
-                strategy_kind="grid",
-                strategy_name="网格",
-                validation_return_pct=0.0,
-                max_drawdown_pct=0.0,
-                note="旧记录",
-                generated_at="legacy",
-                report_root=report_root,
-            )
-            current_entry = build_report_index_entry(
-                report_path=report_root / "1810_hk" / "minute" / "current_report.md",
-                symbol="1810.HK",
-                interval="15m",
-                report_view="grid",
-                strategy_kind="grid",
-                strategy_name="网格",
-                validation_return_pct=1.5,
-                max_drawdown_pct=2.0,
-                note="新记录",
-                generated_at="2026-05-22 04:50:17",
-                report_root=report_root,
-            )
-
-            register_report_index_entries([legacy_entry], report_root=report_root)
-            register_report_index_entries([current_entry], report_root=report_root)
-            registry = load_report_registry(report_root=report_root)
-
-        self.assertEqual(len(registry), 1)
-        self.assertEqual(registry.iloc[0]["Note"], "新记录")
-        self.assertEqual(registry.iloc[0]["ReportPath"], "1810_hk/minute/current_report.md")
-
-    def test_build_unified_report_index_bolds_good_return_rows(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            report_root = Path(temp_dir) / "reports"
-            good_entry = build_report_index_entry(
-                report_path=report_root / "good.md",
-                symbol="00001.HK",
-                interval="1d",
-                report_view="grid",
-                strategy_kind="grid",
-                strategy_name="网格",
-                validation_return_pct=6.8,
-                max_drawdown_pct=3.2,
-                note="高收益样本",
-                category="港股通沪股票",
-                name="长和",
-                source="上交所港股通沪名单，数据截至 2026-05-21",
-                report_root=report_root,
-            )
-            normal_entry = build_report_index_entry(
-                report_path=report_root / "normal.md",
-                symbol="00002.HK",
-                interval="1d",
-                report_view="grid",
-                strategy_kind="grid",
-                strategy_name="网格",
-                validation_return_pct=4.9,
-                max_drawdown_pct=2.1,
-                note="普通样本",
-                category="港股通沪股票",
-                name="中电控股",
-                source="上交所港股通沪名单，数据截至 2026-05-21",
-                report_root=report_root,
-            )
-            register_report_index_entries([good_entry, normal_entry], report_root=report_root)
-            index_path = build_unified_report_index(report_root=report_root)
-            index_content = index_path.read_text(encoding="utf-8")
-
-        self.assertIn("**00001.HK**", index_content)
-        self.assertIn("**长和**", index_content)
-        self.assertIn("**6.80%**", index_content)
-        self.assertIn("**高收益样本**", index_content)
-        self.assertIn("00002.HK", index_content)
-        self.assertNotIn("**00002.HK**", index_content)
-
     def test_handle_batch_returns_failed_when_database_sync_fails(self) -> None:
         parser = build_parser()
 
@@ -360,12 +271,6 @@ class GridStrategyTests(unittest.TestCase):
 
         with self.assertRaises(SystemExit):
             parser.parse_args(["batch", "--symbols", "1810.HK", "--interval", "15m", "--download", "--local-only"])
-
-    def test_infer_symbol_from_data_path(self) -> None:
-        self.assertEqual(infer_symbol_from_data_path("scratch/1810_hk_daily.csv"), "1810.HK")
-        self.assertEqual(infer_symbol_from_data_path("scratch/513050_ss_15m.csv"), "513050.SS")
-        self.assertEqual(infer_symbol_from_data_path("scratch/spy_1d.csv"), "SPY")
-        self.assertEqual(infer_symbol_from_data_path("scratch/brk-b_15m.csv"), "BRK-B")
 
     def test_resolve_lot_size_rule_for_us_symbol(self) -> None:
         rule = resolve_lot_size_rule("SPY")
@@ -388,18 +293,13 @@ class GridStrategyTests(unittest.TestCase):
         """
         mock_get.return_value = mock_response
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            cache_path = Path(temp_dir) / "hk_lot_size_cache.json"
-            original_cache_path = market_rules.HK_LOT_SIZE_CACHE_PATH
-            original_cache = market_rules._HK_LOT_SIZE_CACHE
-            market_rules.HK_LOT_SIZE_CACHE_PATH = cache_path
-            market_rules._HK_LOT_SIZE_CACHE = None
-            try:
-                rule = resolve_lot_size_rule("1810.HK")
-                cached_rule = resolve_lot_size_rule("1810.HK")
-            finally:
-                market_rules.HK_LOT_SIZE_CACHE_PATH = original_cache_path
-                market_rules._HK_LOT_SIZE_CACHE = original_cache
+        original_cache = market_rules._HK_LOT_SIZE_CACHE
+        market_rules._HK_LOT_SIZE_CACHE = None
+        try:
+            rule = resolve_lot_size_rule("1810.HK")
+            cached_rule = resolve_lot_size_rule("1810.HK")
+        finally:
+            market_rules._HK_LOT_SIZE_CACHE = original_cache
 
         self.assertEqual(rule.market, "HK")
         self.assertEqual(rule.lot_size, 200)
@@ -629,86 +529,6 @@ class GridStrategyTests(unittest.TestCase):
         self.assertIn("retrace_buy", set(events["EventType"]))
         self.assertIn("retrace_sell", set(events["EventType"]))
         self.assertEqual(int(events.iloc[0]["Units"]), int(summary["BasePositionUnits"]))
-
-    def test_build_minute_report_markdown_uses_index_grid_template(self) -> None:
-        prices = [
-            10.0,
-            9.75,
-            9.81,
-            10.06,
-            9.99,
-            10.04,
-            9.78,
-            9.85,
-            10.08,
-            9.96,
-            9.72,
-            9.80,
-            10.02,
-            9.94,
-            9.70,
-            9.79,
-            10.01,
-            9.93,
-            9.74,
-            9.84,
-            10.05,
-            9.97,
-            9.76,
-            9.86,
-        ]
-        dates = pd.date_range(start="2026-04-01 09:30:00", periods=len(prices), freq="1min")
-        frame = pd.DataFrame(
-            {
-                "Open": prices,
-                "High": [price * 1.002 for price in prices],
-                "Low": [price * 0.998 for price in prices],
-                "Close": prices,
-                "Volume": [1000] * len(prices),
-            },
-            index=dates,
-        )
-        frame.index.name = "Date"
-        window, in_sample, validation = split_intraday_in_sample_and_validation(frame, validation_ratio=0.25)
-        in_sample_run = run_index_grid_backtest(
-            data=in_sample,
-            scenario_name="minute_in_sample",
-            symbol="159941.SZ",
-            market="CN",
-            lot_size=100,
-            lot_size_source="unit test",
-            execution_config=build_execution_config("research", commission_bps=0, slippage_bps=0),
-        )
-        validation_run = run_index_grid_backtest(
-            data=validation,
-            scenario_name="minute_validation",
-            symbol="159941.SZ",
-            market="CN",
-            lot_size=100,
-            lot_size_source="unit test",
-            execution_config=build_execution_config("research", commission_bps=0, slippage_bps=0),
-        )
-
-        workflow_result = {
-            "workflow_type": "minute",
-            "interval": "1m",
-            "strategy_kind": "minute_index_grid_retrace",
-            "optimization": {
-                "decline_window": window,
-                "results": pd.DataFrame([in_sample_run["summary"]]),
-                "best_run": in_sample_run,
-            },
-            "validation": {"run": validation_run},
-        }
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            report_path = build_minute_report_markdown(workflow_result, report_dir=Path(temp_dir))
-            content = report_path.read_text(encoding="utf-8")
-
-        self.assertTrue(report_path.name.endswith("_1m_index_grid_report.md"))
-        self.assertIn("## 第一层：先看结论", content)
-        self.assertIn("## 第二层：展开细节", content)
-        self.assertIn("相对买入持有", content)
 
     def test_split_intraday_in_sample_and_validation(self) -> None:
         dates = pd.date_range(start="2026-04-01 09:30:00", periods=40, freq="15min")

@@ -1,15 +1,8 @@
 from __future__ import annotations
-"""上交所港股通沪名单抓取与快照加载。
+"""上交所港股通沪名单抓取。"""
 
-这里把“官方抓取”和“仓库内可复现快照”分开处理：
-- 平时 CLI 直接读取仓库内快照，避免解析参数时联网
-- 需要更新名单时，再显式调用官方接口刷新快照
-"""
-
-import csv
 import json
 import re
-from pathlib import Path
 
 import requests
 
@@ -39,15 +32,15 @@ def normalize_southbound_security_code(code: str) -> str:
 
 
 def normalize_southbound_symbol(code: str) -> str:
-    """把上交所 5 位快照代码转换成 Yahoo 可识别的港股代码。
+    """把上交所 5 位名单代码转换成 Yahoo 可识别的港股代码。
 
-    上交所快照会把港股代码统一补齐成 5 位，例如：
+    上交所名单会把港股代码统一补齐成 5 位，例如：
     - `00001` 表示 `0001.HK`
     - `02800` 表示 `2800.HK`
     - `09988` 表示 `9988.HK`
 
     Yahoo 侧使用的是“去掉额外前导 0 后，至少保留 4 位”的写法，
-    所以这里不能直接把 5 位快照代码拼成 `.HK`。
+    所以这里不能直接把 5 位名单代码拼成 `.HK`。
     """
     normalized = normalize_southbound_security_code(code)
     significant_code = normalized.lstrip("0") or "0"
@@ -81,7 +74,7 @@ def fetch_southbound_shanghai_eligible_rows(timeout: int = 20) -> list[dict[str,
     page_help = payload.get("pageHelp") or {}
     data = page_help.get("data") or []
     if not data:
-        raise ValueError("上交所港股通沪名单返回为空，无法刷新快照。")
+        raise ValueError("上交所港股通沪名单返回为空，无法继续抓取。")
     rows: list[dict[str, str]] = []
     for item in data:
         if not isinstance(item, dict):
@@ -97,36 +90,6 @@ def fetch_southbound_shanghai_eligible_rows(timeout: int = 20) -> list[dict[str,
         )
     if not rows:
         raise ValueError("上交所港股通沪名单没有可用证券记录。")
-    return rows
-
-
-def refresh_southbound_shanghai_snapshot(
-    snapshot_path: str | Path,
-    timeout: int = 20,
-) -> Path:
-    """抓取官方名单并导出到显式指定的快照文件。"""
-    target = Path(snapshot_path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    rows = fetch_southbound_shanghai_eligible_rows(timeout=timeout)
-    with target.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=SNAPSHOT_COLUMNS)
-        writer.writeheader()
-        writer.writerows(rows)
-    return target
-
-
-def load_southbound_shanghai_snapshot(
-    snapshot_path: str | Path,
-) -> list[dict[str, str]]:
-    """读取显式指定的港股通沪名单快照。"""
-    target = Path(snapshot_path)
-    if not target.exists():
-        raise FileNotFoundError(f"港股通沪名单快照不存在: {target}")
-    with target.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        rows = [{column: str(row.get(column, "")).strip() for column in SNAPSHOT_COLUMNS} for row in reader]
-    if not rows:
-        raise ValueError(f"港股通沪名单快照为空: {target}")
     return rows
 
 

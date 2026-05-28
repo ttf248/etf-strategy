@@ -1,23 +1,15 @@
 from __future__ import annotations
 """策略研究运行配置。
 
-这里集中存放会同时影响 CLI、工作流、报告和测试的默认值。
+这里集中存放会同时影响 CLI、工作流和测试的默认值。
 这样后续新增实盘口径、批量研究或多周期配置时，不需要在多个模块里
 分别维护同一组魔法数字。
 """
 
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import Literal
 
-from strategy_studio.config import (
-    DEFAULT_MINUTE_INTERVAL,
-    DEFAULT_MINUTE_OUTPUT_DIR,
-    DEFAULT_MINUTE_PERIOD,
-    DEFAULT_MINUTE_REPORT_DIR,
-    DEFAULT_OUTPUT_DIR,
-    DEFAULT_REPORT_DIR,
-)
+from strategy_studio.config import DEFAULT_MINUTE_INTERVAL, DEFAULT_MINUTE_PERIOD
 
 
 WorkflowMode = Literal["daily", "intraday"]
@@ -91,33 +83,6 @@ class ExecutionConfig:
     force_exit_loss_pct: float = 0.05
 
 
-@dataclass(frozen=True)
-class WorkflowSpec:
-    """工作流规格，供 CLI 和工作流层共享。
-
-    这里不直接执行回测，只描述“用什么数据、什么周期、什么参数空间、什么
-    执行口径”运行，避免日线和分钟线在多个函数里重复分支。
-    """
-
-    mode: WorkflowMode
-    interval: str
-    data_path: Path
-    symbol: str | None
-    output_dir: Path
-    report_dir: Path
-    validation_start: str = DEFAULT_VALIDATION_START
-    lookback_days: int = DEFAULT_LOOKBACK_DAYS
-    validation_ratio: float = DEFAULT_VALIDATION_RATIO
-    spacings: tuple[float, ...] = field(default_factory=tuple)
-    grid_counts: tuple[int, ...] = field(default_factory=tuple)
-    take_profits: tuple[float, ...] = field(default_factory=tuple)
-    execution: ExecutionConfig = field(default_factory=ExecutionConfig)
-    wf_window_count: int = DEFAULT_WALK_FORWARD_WINDOW_COUNT
-    wf_min_window_size: int = DEFAULT_WALK_FORWARD_MIN_WINDOW_SIZE
-    jobs: int = DEFAULT_JOBS
-    cache_dir: Path | None = None
-
-
 def default_execution_config(profile: ExecutionProfile = "research") -> ExecutionConfig:
     """返回默认执行口径。"""
     if profile == "realistic":
@@ -169,16 +134,6 @@ def default_parameter_space(mode: WorkflowMode) -> tuple[tuple[float, ...], tupl
     if mode == "intraday":
         return INTRADAY_SPACINGS, INTRADAY_GRID_COUNTS, INTRADAY_TAKE_PROFITS
     return DAILY_SPACINGS, DAILY_GRID_COUNTS, DAILY_TAKE_PROFITS
-
-
-def default_output_dir(mode: WorkflowMode) -> Path:
-    """按周期返回默认中间结果目录。"""
-    return DEFAULT_MINUTE_OUTPUT_DIR if mode == "intraday" else DEFAULT_OUTPUT_DIR
-
-
-def default_report_dir(mode: WorkflowMode) -> Path:
-    """按周期返回默认报告目录。"""
-    return DEFAULT_MINUTE_REPORT_DIR if mode == "intraday" else DEFAULT_REPORT_DIR
 
 
 def default_interval_and_period(mode: WorkflowMode) -> tuple[str, str | None]:
