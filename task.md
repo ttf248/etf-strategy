@@ -2540,3 +2540,32 @@
 - 已执行 `cd frontend && npm run lint`
 - 已执行 `cd frontend && npm run build`
 - 已执行 `git diff --check`
+
+## 报告详情最小交易单位标签补充
+
+### 状态
+
+已完成代码修改与本轮验证，待提交。
+
+### 修改方案
+
+继续按最小边界总扫报告详情页高级参数区，只处理一处仍偏内部术语的字段标签，不扩大到其他字段和值映射。
+
+### 修改内容
+
+- `frontend/src/components/report-detail-view.tsx`
+  - 将 `LotSize` 的展示标签从“每手数量”改为“每次最少按多少份交易”。
+- `doc/frontend-ux-audit.md`
+  - 记录本轮文案收口背景、边界和取舍。
+
+### 设计取舍
+
+- 保留后端字段名 `LotSize` 不变，只调整前端展示文案，避免影响模板快照、报告数据和接口兼容性。
+- 文案采用“每次最少按多少份交易”，优先解释用户实际会遇到的限制，而不是保留券商或回测引擎内部术语“每手”。
+
+### 验证
+
+- 已执行 `cd frontend && npm run lint`
+- 已执行 `cd frontend && npm run test:smoke`
+- 已执行 `py -3.13 -m unittest tests.test_repo_contracts`
+- 已执行 `git diff --check`

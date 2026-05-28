@@ -37,7 +37,7 @@ const baseParameterLabels: Record<string, string> = {
   jobs: "同时试几组参数",
   left_side_policy: "行情先走弱时怎么处理",
   lookback_days: "回看多少天历史",
-  LotSize: "每手数量",
+  LotSize: "每次最少按多少份交易",
   Market: "市场",
   max_position_ratio: "最大仓位",
   NetPnl: "单独验证盈亏",
