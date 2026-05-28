@@ -317,7 +317,7 @@ export function ReportsView() {
         <MetricCard label="先有正收益的" value={positiveReports} note="更适合优先细看" />
         <MetricCard label="你标记过的" value={favoriteReports.length} note="保存在当前浏览器" />
         <MetricCard
-          label="当前最高收益"
+          label="这批里最赚钱的"
           value={bestReport ? <FormatPercent value={getValidationMetrics(bestReport).netReturn} /> : "-"}
           note={bestReport ? `${bestReport.symbol} / ${bestReport.interval}` : "暂无报告"}
         />
