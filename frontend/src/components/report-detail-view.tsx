@@ -21,8 +21,8 @@ type ParameterHighlight = {
 };
 
 const baseParameterLabels: Record<string, string> = {
-  AnchorDate: "锚定日期",
-  BaseUnits: "基础份额",
+  AnchorDate: "从哪一天开始对齐",
+  BaseUnits: "基础持仓份额",
   benchmark: "对照基准",
   Benchmark: "对照基准",
   commission_bps: "交易佣金",
