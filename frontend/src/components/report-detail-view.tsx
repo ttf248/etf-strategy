@@ -675,7 +675,7 @@ export function ReportDetailView({ reportId }: ReportDetailViewProps) {
           <DetailItem label="标的" value={`${report.symbol} ${report.name}`} />
           <DetailItem label="策略" value={strategyLabel(report.strategy_kind)} />
           <DetailItem label="周期" value={report.interval} />
-          <DetailItem label="样本区间" value={`${report.dataset_start} 至 ${report.dataset_end}`} />
+          <DetailItem label="这次用到的行情区间" value={`${report.dataset_start} 至 ${report.dataset_end}`} />
           <DetailItem label="报告生成时间" value={report.created_at} />
           <DetailItem label="任务编号" value={report.job_id} />
         </div>
