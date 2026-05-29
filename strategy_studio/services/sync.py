@@ -1729,6 +1729,12 @@ def _rebuild_tdx_qfq_market_data(
             targets,
             action_provider,
         )
+        qfq_aliases_by_symbol, qfq_series_by_scope = _preload_tdx_qfq_output_entities(
+            session,
+            targets,
+            provider,
+            interval=interval,
+        )
         pending_targets_since_commit = 0
 
         def commit_batch_progress() -> None:
@@ -1777,31 +1783,55 @@ def _rebuild_tdx_qfq_market_data(
                         rows=segment_rows,
                     )
                     adjusted_frame = apply_qfq_segment_frame(raw_frame, segment_frame)
-                    qfq_alias = get_or_create_instrument_alias(
-                        session,
-                        instrument=instrument,
-                        provider=provider,
-                        source_symbol=raw_alias.source_symbol,
-                        source_name=raw_alias.source_name or instrument.name,
-                        market=raw_alias.market or instrument.exchange,
-                        exchange=raw_alias.exchange or instrument.exchange,
-                        security_type=raw_alias.security_type,
-                        timezone=raw_alias.timezone,
-                    )
-                    qfq_series = get_or_create_market_data_series(
-                        session,
-                        instrument=instrument,
-                        provider=provider,
-                        alias=qfq_alias,
-                        interval=interval,
-                        market=raw_alias.market or instrument.exchange,
-                        exchange=raw_alias.exchange or instrument.exchange,
-                        adjustment_kind="qfq",
-                        session_type="regular",
-                        price_type="trade",
-                        bar_type="time",
-                        timezone=raw_alias.timezone or instrument.timezone,
-                    )
+                    qfq_source_symbol = str(raw_alias.source_symbol or "").strip().upper()
+                    qfq_alias = qfq_aliases_by_symbol.get(qfq_source_symbol)
+                    if qfq_alias is None:
+                        qfq_alias = get_or_create_instrument_alias(
+                            session,
+                            instrument=instrument,
+                            provider=provider,
+                            source_symbol=raw_alias.source_symbol,
+                            source_name=raw_alias.source_name or instrument.name,
+                            market=raw_alias.market or instrument.exchange,
+                            exchange=raw_alias.exchange or instrument.exchange,
+                            security_type=raw_alias.security_type,
+                            timezone=raw_alias.timezone,
+                        )
+                        qfq_aliases_by_symbol[qfq_source_symbol] = qfq_alias
+                    else:
+                        qfq_alias.instrument_id = instrument.id
+                        qfq_alias.source_name = raw_alias.source_name or qfq_alias.source_name or instrument.name
+                        qfq_alias.market = raw_alias.market or qfq_alias.market or instrument.exchange
+                        qfq_alias.exchange = raw_alias.exchange or qfq_alias.exchange or instrument.exchange
+                        qfq_alias.security_type = raw_alias.security_type
+                        qfq_alias.timezone = raw_alias.timezone
+                        qfq_alias.is_primary = True
+
+                    series_scope = _tdx_qfq_series_scope_key(qfq_alias.id, interval=interval)
+                    qfq_series = qfq_series_by_scope.get(series_scope)
+                    if qfq_series is None:
+                        qfq_series = get_or_create_market_data_series(
+                            session,
+                            instrument=instrument,
+                            provider=provider,
+                            alias=qfq_alias,
+                            interval=interval,
+                            market=raw_alias.market or instrument.exchange,
+                            exchange=raw_alias.exchange or instrument.exchange,
+                            adjustment_kind="qfq",
+                            session_type="regular",
+                            price_type="trade",
+                            bar_type="time",
+                            timezone=raw_alias.timezone or instrument.timezone,
+                        )
+                        qfq_series_by_scope[series_scope] = qfq_series
+                    else:
+                        qfq_series.instrument_id = instrument.id
+                        qfq_series.market = raw_alias.market or qfq_series.market or instrument.exchange
+                        qfq_series.exchange = raw_alias.exchange or qfq_series.exchange or instrument.exchange
+                        qfq_series.bar_type = "time"
+                        qfq_series.timezone = raw_alias.timezone or instrument.timezone
+                        qfq_series.is_active = True
                     bars_inserted, bars_updated = upsert_market_data_frame(session, qfq_series, adjusted_frame)
                     qfq_series.metadata_json = {
                         **qfq_series.metadata_json,
@@ -2178,6 +2208,77 @@ def _preload_tdx_qfq_input_frames(
         for instrument_id in ordered_instrument_ids
     }
     return raw_frames_by_series, action_frames_by_instrument
+
+
+def _tdx_qfq_series_scope_key(
+    alias_id: int | None,
+    *,
+    interval: str,
+    adjustment_kind: str = "qfq",
+    session_type: str = "regular",
+    price_type: str = "trade",
+) -> tuple[int | None, str, str, str, str]:
+    return (alias_id, interval, adjustment_kind, session_type, price_type)
+
+
+def _preload_tdx_qfq_output_entities(
+    session,
+    targets: list[dict[str, object]],
+    provider,
+    *,
+    interval: str,
+) -> tuple[dict[str, InstrumentAlias], dict[tuple[int | None, str, str, str, str], MarketDataSeries]]:
+    """批量预加载前复权输出端对象，减少重算过程中每个标的重复查 alias/series。"""
+    if not targets:
+        return {}, {}
+
+    ordered_source_symbols: list[str] = []
+    for item in targets:
+        raw_alias = item["alias"]
+        normalized_symbol = str(raw_alias.source_symbol or "").strip().upper()
+        if normalized_symbol and normalized_symbol not in ordered_source_symbols:
+            ordered_source_symbols.append(normalized_symbol)
+
+    if not ordered_source_symbols:
+        return {}, {}
+
+    alias_rows = session.scalars(
+        select(InstrumentAlias).where(
+            InstrumentAlias.provider_id == provider.id,
+            InstrumentAlias.source_symbol.in_(ordered_source_symbols),
+        )
+    ).all()
+    alias_by_symbol = {
+        str(alias.source_symbol).strip().upper(): alias
+        for alias in alias_rows
+        if str(alias.source_symbol or "").strip()
+    }
+
+    alias_ids = [int(alias.id) for alias in alias_rows if getattr(alias, "id", None) is not None]
+    if not alias_ids:
+        return alias_by_symbol, {}
+
+    series_rows = session.scalars(
+        select(MarketDataSeries).where(
+            MarketDataSeries.provider_id == provider.id,
+            MarketDataSeries.alias_id.in_(alias_ids),
+            MarketDataSeries.interval == interval,
+            MarketDataSeries.adjustment_kind == "qfq",
+            MarketDataSeries.session_type == "regular",
+            MarketDataSeries.price_type == "trade",
+        )
+    ).all()
+    series_by_scope = {
+        _tdx_qfq_series_scope_key(
+            series.alias_id,
+            interval=str(series.interval),
+            adjustment_kind=str(series.adjustment_kind),
+            session_type=str(series.session_type),
+            price_type=str(series.price_type),
+        ): series
+        for series in series_rows
+    }
+    return alias_by_symbol, series_by_scope
 
 
 def _load_raw_market_data_frame(session, series: MarketDataSeries) -> pd.DataFrame:

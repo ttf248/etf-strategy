@@ -1564,6 +1564,93 @@ class PlatformFeatureTests(unittest.TestCase):
             ],
         )
 
+    def test_preload_tdx_qfq_output_entities_groups_existing_aliases_and_series(self) -> None:
+        class _ScalarResult:
+            def __init__(self, rows: list[object]) -> None:
+                self._rows = rows
+
+            def all(self) -> list[object]:
+                return list(self._rows)
+
+        class _BatchSession:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def scalars(self, _statement: object) -> _ScalarResult:
+                self.calls += 1
+                if self.calls == 1:
+                    return _ScalarResult(
+                        [
+                            SimpleNamespace(
+                                id=901,
+                                provider_id=401,
+                                source_symbol="SH600000",
+                                source_name="浦发银行",
+                            ),
+                            SimpleNamespace(
+                                id=902,
+                                provider_id=401,
+                                source_symbol="SZ000001",
+                                source_name="平安银行",
+                            ),
+                        ]
+                    )
+                return _ScalarResult(
+                    [
+                        SimpleNamespace(
+                            id=1001,
+                            provider_id=401,
+                            alias_id=901,
+                            interval="1d",
+                            adjustment_kind="qfq",
+                            session_type="regular",
+                            price_type="trade",
+                        ),
+                        SimpleNamespace(
+                            id=1002,
+                            provider_id=401,
+                            alias_id=902,
+                            interval="1d",
+                            adjustment_kind="qfq",
+                            session_type="regular",
+                            price_type="trade",
+                        ),
+                    ]
+                )
+
+        targets = [
+            {
+                "series": SimpleNamespace(id=701),
+                "instrument": SimpleNamespace(id=801, symbol="SH600000"),
+                "alias": SimpleNamespace(source_symbol="SH600000"),
+            },
+            {
+                "series": SimpleNamespace(id=702),
+                "instrument": SimpleNamespace(id=802, symbol="SZ000001"),
+                "alias": SimpleNamespace(source_symbol="SZ000001"),
+            },
+        ]
+
+        alias_map, series_map = sync_service._preload_tdx_qfq_output_entities(
+            _BatchSession(),
+            targets,
+            SimpleNamespace(id=401, provider_key="tdx_qfq"),
+            interval="1d",
+        )
+
+        self.assertEqual(sorted(alias_map.keys()), ["SH600000", "SZ000001"])
+        self.assertEqual(alias_map["SH600000"].id, 901)
+        self.assertEqual(alias_map["SZ000001"].id, 902)
+        self.assertEqual(
+            sorted(series_map.keys()),
+            [
+                (901, "1d", "qfq", "regular", "trade"),
+                (902, "1d", "qfq", "regular", "trade"),
+            ],
+        )
+        self.assertEqual(series_map[(901, "1d", "qfq", "regular", "trade")].id, 1001)
+        self.assertEqual(series_map[(902, "1d", "qfq", "regular", "trade")].id, 1002)
+
     def test_rebuild_tdx_qfq_market_data_uses_preloaded_frames_for_batch_targets(self) -> None:
         registry: dict[int, object] = {}
 
@@ -1676,10 +1763,54 @@ class PlatformFeatureTests(unittest.TestCase):
             ),
             802: pd.DataFrame(columns=["ex_date", "cash_dividend", "stock_bonus_ratio", "stock_conversion_ratio", "rights_ratio", "rights_price", "status"]),
         }
-        qfq_series_ids = [901, 902]
-
-        def fake_get_or_create_market_data_series(*_args, **_kwargs):
-            return SimpleNamespace(id=qfq_series_ids.pop(0), metadata_json={})
+        preloaded_qfq_aliases = {
+            "SH600000": SimpleNamespace(
+                id=901,
+                instrument_id=801,
+                source_symbol="SH600000",
+                source_name="浦发银行",
+                market="SH",
+                exchange="SH",
+                security_type="stock",
+                timezone="Asia/Shanghai",
+                is_primary=True,
+            ),
+            "SZ000001": SimpleNamespace(
+                id=902,
+                instrument_id=802,
+                source_symbol="SZ000001",
+                source_name="平安银行",
+                market="SZ",
+                exchange="SZ",
+                security_type="stock",
+                timezone="Asia/Shanghai",
+                is_primary=True,
+            ),
+        }
+        preloaded_qfq_series = {
+            (901, "1d", "qfq", "regular", "trade"): SimpleNamespace(
+                id=903,
+                alias_id=901,
+                instrument_id=801,
+                market="SH",
+                exchange="SH",
+                bar_type="time",
+                timezone="Asia/Shanghai",
+                is_active=True,
+                metadata_json={},
+            ),
+            (902, "1d", "qfq", "regular", "trade"): SimpleNamespace(
+                id=904,
+                alias_id=902,
+                instrument_id=802,
+                market="SZ",
+                exchange="SZ",
+                bar_type="time",
+                timezone="Asia/Shanghai",
+                is_active=True,
+                metadata_json={},
+            ),
+        }
 
         with (
             patch("strategy_studio.services.sync.open_session", return_value=_SessionContext()),
@@ -1691,6 +1822,10 @@ class PlatformFeatureTests(unittest.TestCase):
                 "strategy_studio.services.sync._preload_tdx_qfq_input_frames",
                 return_value=(raw_frames, action_frames),
             ) as mock_preload,
+            patch(
+                "strategy_studio.services.sync._preload_tdx_qfq_output_entities",
+                return_value=(preloaded_qfq_aliases, preloaded_qfq_series),
+            ) as mock_preload_output,
             patch(
                 "strategy_studio.services.sync.build_qfq_segment_frame",
                 return_value=pd.DataFrame(
@@ -1711,8 +1846,8 @@ class PlatformFeatureTests(unittest.TestCase):
                 side_effect=lambda raw_frame, _segment_frame: raw_frame.assign(AdjustA=1.0, AdjustB=0.0),
             ),
             patch("strategy_studio.services.sync.replace_price_adjustment_segments", return_value=(1, 0, 0)),
-            patch("strategy_studio.services.sync.get_or_create_instrument_alias", side_effect=lambda *_args, **kwargs: kwargs["instrument"]),
-            patch("strategy_studio.services.sync.get_or_create_market_data_series", side_effect=fake_get_or_create_market_data_series),
+            patch("strategy_studio.services.sync.get_or_create_instrument_alias", side_effect=AssertionError("不应创建新的 qfq alias")),
+            patch("strategy_studio.services.sync.get_or_create_market_data_series", side_effect=AssertionError("不应创建新的 qfq series")),
             patch("strategy_studio.services.sync.upsert_market_data_frame", side_effect=lambda _session, _series, frame: (len(frame), 0)),
             patch("strategy_studio.services.sync._load_raw_market_data_frame") as mock_load_raw,
             patch("strategy_studio.services.sync._load_instrument_action_frame") as mock_load_actions,
@@ -1725,6 +1860,7 @@ class PlatformFeatureTests(unittest.TestCase):
             )
 
         mock_preload.assert_called_once_with(session, targets, action_provider)
+        mock_preload_output.assert_called_once_with(session, targets, qfq_provider, interval="1d")
         mock_load_raw.assert_not_called()
         mock_load_actions.assert_not_called()
         self.assertEqual(result["provider"], "tdx_qfq")
@@ -1863,6 +1999,10 @@ class PlatformFeatureTests(unittest.TestCase):
             patch(
                 "strategy_studio.services.sync._preload_tdx_qfq_input_frames",
                 return_value=(raw_frames, action_frames),
+            ),
+            patch(
+                "strategy_studio.services.sync._preload_tdx_qfq_output_entities",
+                return_value=({}, {}),
             ),
             patch(
                 "strategy_studio.services.sync.build_qfq_segment_frame",
