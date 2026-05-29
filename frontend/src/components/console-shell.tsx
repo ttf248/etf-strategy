@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  BarChartOutlined,
   DatabaseOutlined,
   FileSearchOutlined,
   FundOutlined,
@@ -52,6 +51,12 @@ type ShellGuidance = {
     value: string;
     detail: string;
   }>;
+};
+
+type ShellSummaryItem = {
+  label: string;
+  value: string;
+  detail: string;
 };
 
 const primaryItems = [
@@ -435,56 +440,7 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
   }, [snapshot.jobs]);
 
   const shellGuidance = useMemo(() => buildShellGuidance(snapshot), [snapshot]);
-  const runningJobs = useMemo(() => snapshot.jobs.filter((item) => item.status === "running"), [snapshot.jobs]);
-  const queuedJobs = useMemo(() => snapshot.jobs.filter((item) => item.status === "queued"), [snapshot.jobs]);
-  const failedJobs = useMemo(() => snapshot.jobs.filter((item) => item.status === "failed"), [snapshot.jobs]);
-  const latestRunningJob = useMemo(() => runningJobs[0] ?? queuedJobs[0] ?? null, [queuedJobs, runningJobs]);
-  const latestReport = useMemo(() => [...snapshot.reports].sort((left, right) => right.id - left.id)[0] ?? null, [snapshot.reports]);
-  const instrumentCount = snapshot.stats?.instrument_count ?? 0;
-  const shellStatusPills = useMemo(
-    () => [
-      { label: "可研究标的", value: String(instrumentCount) },
-      { label: "运行中", value: String(runningJobs.length) },
-      { label: "等待中", value: String(queuedJobs.length) },
-      { label: "失败", value: String(failedJobs.length) },
-    ],
-    [failedJobs.length, instrumentCount, queuedJobs.length, runningJobs.length],
-  );
-  const shellQuickCards = useMemo(() => {
-    const cards: Array<{ key: string; href: string; icon: ReactNode; title: string; description: string }> = [];
-    if (latestRunningJob) {
-      cards.push({
-        key: "job",
-        href: "/backtests",
-        icon: <BarChartOutlined />,
-        title: latestRunningJob.status === "running" ? `任务 #${latestRunningJob.id} 执行中` : `任务 #${latestRunningJob.id} 排队中`,
-        description:
-          latestRunningJob.status === "running"
-            ? `${latestRunningJob.runtime_details.stage_label ?? "执行中"} · 预计还需 ${formatDuration(latestRunningJob.runtime_details.eta_seconds)}`
-            : latestRunningJob.runtime_details.queue_position
-              ? `队列第 ${latestRunningJob.runtime_details.queue_position} 位`
-              : "等待 worker 领取",
-      });
-    }
-    if (latestReport) {
-      cards.push({
-        key: "report",
-        href: `/reports/${latestReport.id}`,
-        icon: <FileSearchOutlined />,
-        title: "打开最新结果",
-        description: `${latestReport.symbol} / ${latestReport.interval} / ${strategyLabel(latestReport.strategy_kind)}`,
-      });
-    } else {
-      cards.push({
-        key: "next",
-        href: instrumentCount > 0 ? "/backtests" : "/market-data",
-        icon: instrumentCount > 0 ? <FormOutlined /> : <DatabaseOutlined />,
-        title: instrumentCount > 0 ? "进入回测主流程" : "先补齐一个研究样本",
-        description: instrumentCount > 0 ? "已有数据覆盖，建议直接提交基线任务。" : "优先准备一个熟悉标的的 1d 或 15m。",
-      });
-    }
-    return cards.slice(0, 2);
-  }, [instrumentCount, latestReport, latestRunningJob]);
+  const shellSummaryItems = useMemo<ShellSummaryItem[]>(() => shellGuidance.signals.slice(0, 3), [shellGuidance.signals]);
 
   const renderMenu = () => (
     <div className="nav-sections">
@@ -519,15 +475,10 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
               <span className="platform-header-kicker">{current.kicker}</span>
               <span className="platform-header-name">{current.title}</span>
             </div>
-            <p className="platform-header-copy">{current.tipText}</p>
-          </div>
-          <div className="platform-header-pills">
-            {shellStatusPills.map((pill) => (
-              <span key={pill.label} className="platform-status-pill">
-                <b>{pill.value}</b>
-                <small>{pill.label}</small>
-              </span>
-            ))}
+            <p className="platform-header-copy">
+              <strong>{current.tipTitle}</strong>
+              <span>{current.tipText}</span>
+            </p>
           </div>
         </Header>
         <div className="platform-meta-strip">
@@ -538,6 +489,21 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
                 <strong>{shellGuidance.title}</strong>
                 <p>{shellGuidance.description}</p>
               </div>
+            </div>
+            <div className="shell-banner-summary" aria-label="当前研究摘要">
+              {shellSummaryItems.map((item) => (
+                <article key={item.label} className="shell-summary-item">
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <p>{item.detail}</p>
+                </article>
+              ))}
+            </div>
+            <div className="shell-banner-actions-panel">
+              <div className="shell-banner-actions-copy">
+                <strong>现在先做这一件</strong>
+                <p>先按主动作推进；只有主线不成立时，再切到次动作继续判断。</p>
+              </div>
               <div className="shell-banner-actions">
                 <Button type="primary">
                   <Link href={shellGuidance.primaryHref}>{shellGuidance.primaryLabel}</Link>
@@ -547,26 +513,6 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
                 </Button>
               </div>
             </div>
-            <div className="shell-banner-side">
-              {shellQuickCards.map((card) => (
-                <Link key={card.key} href={card.href} className="header-quick-card">
-                  <div className="header-quick-icon">{card.icon}</div>
-                  <div className="header-quick-body">
-                    <strong>{card.title}</strong>
-                    <span>{card.description}</span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-          <div className="research-guidance-signals">
-            {shellGuidance.signals.map((signal) => (
-              <article key={signal.label} className="research-guidance-signal">
-                <span>{signal.label}</span>
-                <strong>{signal.value}</strong>
-                <p>{signal.detail}</p>
-              </article>
-            ))}
           </div>
         </div>
         <Content className="platform-content">
