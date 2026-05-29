@@ -11,7 +11,18 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from strategy_studio.db.models import DataSyncRun, DataSyncRunItem, Instrument, PriceBar
+from strategy_studio.db.models import (
+    DataIngestionJob,
+    DataIngestionJobItem,
+    DataProvider,
+    DataSyncRun,
+    DataSyncRunItem,
+    Instrument,
+    InstrumentAlias,
+    MarketDataBar,
+    MarketDataSeries,
+    PriceBar,
+)
 
 
 def _infer_exchange(symbol: str) -> str:
@@ -31,6 +42,46 @@ def _chunked(values: list[datetime], size: int = 5000) -> Iterable[list[datetime
 
 def get_instrument_by_symbol(session: Session, symbol: str) -> Instrument | None:
     return session.scalar(select(Instrument).where(Instrument.symbol == symbol.upper()))
+
+
+def get_data_provider_by_key(session: Session, provider_key: str) -> DataProvider | None:
+    return session.scalar(select(DataProvider).where(DataProvider.provider_key == provider_key))
+
+
+def ensure_data_provider(
+    session: Session,
+    provider_key: str,
+    provider_name: str,
+    *,
+    provider_type: str = "market_data",
+    transport: str = "api",
+    timezone: str = "UTC",
+    config_json: dict[str, object] | None = None,
+    status: str = "active",
+) -> DataProvider:
+    provider = get_data_provider_by_key(session, provider_key)
+    if provider is not None:
+        provider.provider_name = provider_name
+        provider.provider_type = provider_type
+        provider.transport = transport
+        provider.timezone = timezone
+        provider.status = status
+        if config_json:
+            provider.config_json = {**provider.config_json, **config_json}
+        return provider
+
+    provider = DataProvider(
+        provider_key=provider_key,
+        provider_name=provider_name,
+        provider_type=provider_type,
+        transport=transport,
+        timezone=timezone,
+        status=status,
+        config_json=config_json or {},
+    )
+    session.add(provider)
+    session.flush()
+    return provider
 
 
 def get_or_create_instrument(
@@ -62,6 +113,110 @@ def get_or_create_instrument(
     session.add(instrument)
     session.flush()
     return instrument
+
+
+def get_or_create_instrument_alias(
+    session: Session,
+    instrument: Instrument,
+    provider: DataProvider,
+    source_symbol: str,
+    *,
+    source_name: str = "",
+    market: str = "",
+    exchange: str = "",
+    security_type: str = "equity",
+    currency: str = "",
+    timezone: str = "UTC",
+) -> InstrumentAlias:
+    normalized = source_symbol.strip().upper()
+    alias = session.scalar(
+        select(InstrumentAlias).where(
+            InstrumentAlias.provider_id == provider.id,
+            InstrumentAlias.source_symbol == normalized,
+        )
+    )
+    if alias is not None:
+        alias.instrument_id = instrument.id
+        alias.source_name = source_name or alias.source_name
+        alias.market = market or alias.market
+        alias.exchange = exchange or alias.exchange
+        alias.security_type = security_type
+        alias.currency = currency or alias.currency
+        alias.timezone = timezone
+        alias.is_primary = True
+        return alias
+
+    alias = InstrumentAlias(
+        instrument_id=instrument.id,
+        provider_id=provider.id,
+        source_symbol=normalized,
+        source_name=source_name or normalized,
+        market=market,
+        exchange=exchange,
+        security_type=security_type,
+        currency=currency,
+        timezone=timezone,
+        is_primary=True,
+    )
+    session.add(alias)
+    session.flush()
+    return alias
+
+
+def get_or_create_market_data_series(
+    session: Session,
+    instrument: Instrument,
+    provider: DataProvider,
+    alias: InstrumentAlias,
+    *,
+    interval: str,
+    market: str = "",
+    exchange: str = "",
+    adjustment_kind: str = "raw",
+    session_type: str = "regular",
+    price_type: str = "trade",
+    bar_type: str = "time",
+    currency: str = "",
+    timezone: str = "UTC",
+) -> MarketDataSeries:
+    series = session.scalar(
+        select(MarketDataSeries).where(
+            MarketDataSeries.provider_id == provider.id,
+            MarketDataSeries.alias_id == alias.id,
+            MarketDataSeries.interval == interval,
+            MarketDataSeries.adjustment_kind == adjustment_kind,
+            MarketDataSeries.session_type == session_type,
+            MarketDataSeries.price_type == price_type,
+        )
+    )
+    if series is not None:
+        series.instrument_id = instrument.id
+        series.market = market or series.market
+        series.exchange = exchange or series.exchange
+        series.bar_type = bar_type
+        series.currency = currency or series.currency
+        series.timezone = timezone
+        series.is_active = True
+        return series
+
+    series = MarketDataSeries(
+        instrument_id=instrument.id,
+        provider_id=provider.id,
+        alias_id=alias.id,
+        market=market,
+        exchange=exchange,
+        interval=interval,
+        adjustment_kind=adjustment_kind,
+        session_type=session_type,
+        price_type=price_type,
+        bar_type=bar_type,
+        currency=currency,
+        timezone=timezone,
+        is_active=True,
+    )
+    session.add(series)
+    session.flush()
+    return series
 
 
 def upsert_price_frame(
@@ -125,6 +280,122 @@ def upsert_price_frame(
     updated_count = len(existing)
     inserted_count = len(all_rows) - updated_count
     return inserted_count, updated_count
+
+
+def upsert_market_data_frame(
+    session: Session,
+    series: MarketDataSeries,
+    frame: pd.DataFrame,
+) -> tuple[int, int]:
+    """把标准化 OHLCV 写入统一 K 线事实表。"""
+    if frame.empty:
+        return 0, 0
+
+    normalized = frame.copy()
+    normalized["Date"] = pd.to_datetime(normalized["Date"]).dt.tz_localize(None)
+    timestamps = [item.to_pydatetime() for item in normalized["Date"].tolist()]
+    existing: set[datetime] = set()
+    for batch in _chunked(timestamps):
+        rows = session.scalars(
+            select(MarketDataBar.bar_time).where(
+                MarketDataBar.series_id == series.id,
+                MarketDataBar.bar_time.in_(batch),
+            )
+        )
+        existing.update(rows)
+
+    all_rows = [
+        {
+            "series_id": series.id,
+            "bar_time": item["Date"].to_pydatetime() if hasattr(item["Date"], "to_pydatetime") else item["Date"],
+            "open": float(item["Open"]),
+            "high": float(item["High"]),
+            "low": float(item["Low"]),
+            "close": float(item["Close"]),
+            "adj_close": float(item["Close"]),
+            "volume": int(item["Volume"]),
+            "data_status": "ready",
+            "payload_json": {},
+        }
+        for item in normalized.to_dict(orient="records")
+    ]
+    for row_batch in _chunked(all_rows, size=1500):
+        statement = insert(MarketDataBar).values(row_batch)
+        session.execute(
+            statement.on_conflict_do_update(
+                constraint="uq_market_data_bars_series_time",
+                set_={
+                    "open": statement.excluded.open,
+                    "high": statement.excluded.high,
+                    "low": statement.excluded.low,
+                    "close": statement.excluded.close,
+                    "adj_close": statement.excluded.adj_close,
+                    "volume": statement.excluded.volume,
+                    "data_status": statement.excluded.data_status,
+                    "payload_json": statement.excluded.payload_json,
+                    "ingested_at": func.now(),
+                },
+            )
+        )
+    series.first_bar_time = min(
+        value for value in [series.first_bar_time, min(timestamps)] if value is not None
+    )
+    series.last_bar_time = max(
+        value for value in [series.last_bar_time, max(timestamps)] if value is not None
+    )
+    series.last_ingested_at = utc_now()
+    inserted_count = len(all_rows) - len(existing)
+    updated_count = len(existing)
+    return inserted_count, updated_count
+
+
+def create_data_ingestion_job(
+    session: Session,
+    *,
+    provider: DataProvider | None,
+    job_type: str,
+    requested_via: str,
+    target_scope_json: dict[str, object] | None = None,
+    options_json: dict[str, object] | None = None,
+    requested_by: str = "system",
+) -> DataIngestionJob:
+    job = DataIngestionJob(
+        provider_id=provider.id if provider is not None else None,
+        job_type=job_type,
+        requested_by=requested_by,
+        requested_via=requested_via,
+        status="running",
+        target_scope_json=target_scope_json or {},
+        options_json=options_json or {},
+        summary_json={},
+    )
+    session.add(job)
+    session.flush()
+    return job
+
+
+def create_data_ingestion_job_item(
+    session: Session,
+    job: DataIngestionJob,
+    *,
+    item_key: str,
+    source_symbol: str,
+    interval: str,
+    provider: DataProvider | None = None,
+) -> DataIngestionJobItem:
+    item = DataIngestionJobItem(
+        job_id=job.id,
+        provider_id=provider.id if provider is not None else None,
+        item_key=item_key,
+        source_symbol=source_symbol,
+        interval=interval,
+        stage="download",
+        status="running",
+        details_json={},
+    )
+    session.add(item)
+    session.flush()
+    return item
 
 
 def list_instrument_coverages(session: Session) -> list[dict[str, object]]:

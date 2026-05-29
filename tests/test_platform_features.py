@@ -4,12 +4,14 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pandas as pd
 from fastapi.testclient import TestClient
 
 from strategy_studio.cli import build_parser
 from strategy_studio.platform_cli import handle_api, handle_check_db
 from strategy_studio.services.backtests import _estimate_eta_seconds, _normalize_artifacts, _resolve_effective_parallelism
 from strategy_studio.services.platform import record_platform_heartbeat
+from strategy_studio.services.sync import sync_market_data
 from strategy_studio.services.templates import build_seed_templates, normalize_parameter_space, resolve_backtest_request_payload
 from strategy_studio.strategy.sampling import DeclineWindow
 from strategy_studio.web.app import create_app
@@ -309,6 +311,95 @@ class PlatformFeatureTests(unittest.TestCase):
         rendered = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
         self.assertIn("数据库检查状态", rendered)
         self.assertIn("database missing", rendered)
+
+    def test_sync_market_data_writes_unified_market_data_tables(self) -> None:
+        session = SimpleNamespace()
+        session.commit = lambda: None
+        session.rollback = lambda: None
+        registry: dict[int, object] = {}
+        session.get = lambda _model, identity: registry.get(identity)
+
+        class _SessionContext:
+            def __enter__(self):
+                return session
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        run = SimpleNamespace(id=11, symbols_count=0, completed_at=None, bars_inserted=0, bars_updated=0, status="running")
+        run_item = SimpleNamespace(id=12, status="running", bars_inserted=0, bars_updated=0, error_message="")
+        ingestion_job = SimpleNamespace(
+            id=21,
+            targets_total=0,
+            targets_completed=0,
+            rows_inserted=0,
+            rows_updated=0,
+            error_count=0,
+            summary_json={},
+            completed_at=None,
+            status="running",
+            error_message="",
+        )
+        ingestion_item = SimpleNamespace(
+            id=22,
+            status="running",
+            stage="download",
+            instrument_id=None,
+            series_id=None,
+            rows_inserted=0,
+            rows_updated=0,
+            details_json={},
+            error_message="",
+        )
+        registry.update({11: run, 12: run_item, 21: ingestion_job, 22: ingestion_item})
+
+        bars = pd.DataFrame(
+            {
+                "Date": ["2026-05-20", "2026-05-21"],
+                "Open": [10.0, 10.2],
+                "High": [10.3, 10.4],
+                "Low": [9.9, 10.1],
+                "Close": [10.1, 10.3],
+                "Volume": [100, 120],
+            }
+        )
+        instrument = SimpleNamespace(id=101, exchange="HK", asset_type="equity", timezone="UTC")
+        alias = SimpleNamespace(id=102)
+        series = SimpleNamespace(id=103, first_bar_time=None, last_bar_time=None, last_ingested_at=None)
+        provider = SimpleNamespace(id=104, provider_key="yahoo")
+
+        with (
+            patch("strategy_studio.services.sync.open_session", return_value=_SessionContext()),
+            patch("strategy_studio.services.sync.ensure_data_provider", return_value=provider) as mock_provider,
+            patch("strategy_studio.services.sync.list_instruments", return_value=[]),
+            patch("strategy_studio.services.sync.create_sync_run", return_value=run),
+            patch("strategy_studio.services.sync.create_sync_run_item", return_value=run_item),
+            patch("strategy_studio.services.sync.create_data_ingestion_job", return_value=ingestion_job),
+            patch("strategy_studio.services.sync.create_data_ingestion_job_item", return_value=ingestion_item),
+            patch("strategy_studio.services.sync.resolve_symbol_spec", return_value=SimpleNamespace(name="XIAOMI - W")),
+            patch("strategy_studio.services.sync.download_price_bars", return_value=bars),
+            patch("strategy_studio.services.sync.get_or_create_instrument", return_value=instrument),
+            patch("strategy_studio.services.sync.get_or_create_instrument_alias", return_value=alias) as mock_alias,
+            patch("strategy_studio.services.sync.get_or_create_market_data_series", return_value=series) as mock_series,
+            patch("strategy_studio.services.sync.upsert_price_frame", return_value=(2, 0)),
+            patch("strategy_studio.services.sync.upsert_market_data_frame", return_value=(2, 0)) as mock_upsert_series,
+        ):
+            result = sync_market_data(symbol="1810.HK", interval="1d", proxy="http://127.0.0.1:7897")
+
+        self.assertEqual(result["run_id"], 11)
+        self.assertEqual(result["ingestion_job_id"], 21)
+        self.assertEqual(result["series_bars_inserted"], 2)
+        self.assertEqual(result["series_bars_updated"], 0)
+        self.assertEqual(result["status"], "succeeded")
+        self.assertEqual(ingestion_job.status, "succeeded")
+        self.assertEqual(ingestion_job.rows_inserted, 2)
+        self.assertEqual(ingestion_job.targets_completed, 1)
+        self.assertEqual(ingestion_item.instrument_id, 101)
+        self.assertEqual(ingestion_item.series_id, 103)
+        mock_provider.assert_called_once()
+        mock_alias.assert_called_once()
+        mock_series.assert_called_once()
+        mock_upsert_series.assert_called_once()
 
 
 class StrategyTemplateServiceTests(unittest.TestCase):

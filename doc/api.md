@@ -46,6 +46,8 @@ http://127.0.0.1:8000/docs
 - `proxy`：可选代理。
 - `period`：分钟线窗口，例如 `60d` 或 `7d`。
 
+当前返回体除了旧版 `run_id / bars_inserted / bars_updated`，还会附带统一任务域的 `ingestion_job_id / series_bars_inserted / series_bars_updated`，便于后续前端切换到多数据源任务面板。
+
 ## Backtests
 
 - `POST /api/backtests`
