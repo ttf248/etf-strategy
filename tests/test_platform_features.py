@@ -1800,7 +1800,7 @@ class PlatformFeatureTests(unittest.TestCase):
                 bar_type="time",
                 timezone="Asia/Shanghai",
                 is_active=True,
-                metadata_json={},
+                metadata_json={"adjusted_frame_digest": ""},
             ),
             (902, "1d", "qfq", "regular", "trade"): SimpleNamespace(
                 id=904,
@@ -1811,7 +1811,7 @@ class PlatformFeatureTests(unittest.TestCase):
                 bar_type="time",
                 timezone="Asia/Shanghai",
                 is_active=True,
-                metadata_json={},
+                metadata_json={"adjusted_frame_digest": ""},
             ),
         }
 
@@ -1855,7 +1855,10 @@ class PlatformFeatureTests(unittest.TestCase):
             patch("strategy_studio.services.sync.replace_price_adjustment_segments", return_value=(1, 0, 0)),
             patch("strategy_studio.services.sync.get_or_create_instrument_alias", side_effect=AssertionError("不应创建新的 qfq alias")),
             patch("strategy_studio.services.sync.get_or_create_market_data_series", side_effect=AssertionError("不应创建新的 qfq series")),
-            patch("strategy_studio.services.sync.upsert_market_data_frame", side_effect=lambda _session, _series, frame: (len(frame), 0)),
+            patch(
+                "strategy_studio.services.sync.upsert_market_data_frame",
+                side_effect=lambda _session, _series, frame: (len(frame), 0),
+            ),
             patch("strategy_studio.services.sync._load_raw_market_data_frame") as mock_load_raw,
             patch("strategy_studio.services.sync._load_instrument_action_frame") as mock_load_actions,
         ):
@@ -2240,6 +2243,166 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(skipped_item.details_json["reason"], "qfq_series_up_to_date")
         self.assertIn("timing_json", skipped_item.details_json)
         mock_preload_input.assert_not_called()
+
+    def test_rebuild_tdx_qfq_market_data_skips_bar_upsert_when_digest_matches_existing_output(self) -> None:
+        registry: dict[int, object] = {}
+
+        class _NestedContext:
+            def __enter__(self):
+                return None
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        class _SessionDouble:
+            def __init__(self) -> None:
+                self.commit_calls = 0
+
+            def commit(self) -> None:
+                self.commit_calls += 1
+
+            def rollback(self) -> None:
+                return None
+
+            def get(self, _model, identity):
+                return registry.get(identity)
+
+            def begin_nested(self):
+                return _NestedContext()
+
+        session = _SessionDouble()
+
+        class _SessionContext:
+            def __enter__(self):
+                return session
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        raw_provider = SimpleNamespace(id=431, provider_key="tdx")
+        action_provider = SimpleNamespace(id=432, provider_key="tushare")
+        qfq_provider = SimpleNamespace(id=433, provider_key="tdx_qfq")
+        ingestion_job = SimpleNamespace(
+            id=531,
+            targets_total=0,
+            targets_completed=0,
+            rows_inserted=0,
+            rows_updated=0,
+            error_count=0,
+            summary_json={},
+            completed_at=None,
+            status="running",
+            error_message="",
+        )
+        registry[531] = ingestion_job
+
+        def fake_create_item(*_args, **_kwargs):
+            item = SimpleNamespace(
+                id=631,
+                status="running",
+                stage="download",
+                rows_inserted=0,
+                rows_updated=0,
+                details_json={},
+                error_message="",
+                instrument_id=None,
+                series_id=None,
+            )
+            registry[631] = item
+            return item
+
+        targets = [
+            {
+                "series": SimpleNamespace(id=731, last_ingested_at=datetime(2026, 5, 29, 9, 0)),
+                "instrument": SimpleNamespace(id=831, symbol="SH600000", name="浦发银行", exchange="SH", timezone="Asia/Shanghai"),
+                "alias": SimpleNamespace(source_symbol="SH600000", source_name="浦发银行", market="SH", exchange="SH", security_type="stock", timezone="Asia/Shanghai"),
+            }
+        ]
+        adjusted_frame = pd.DataFrame(
+            [
+                {"Date": "2026-05-28", "Open": 10.0, "High": 11.0, "Low": 9.0, "Close": 10.5, "Volume": 100, "Amount": 1000.0, "AdjustA": 1.0, "AdjustB": 0.0},
+                {"Date": "2026-05-29", "Open": 10.6, "High": 11.2, "Low": 10.1, "Close": 11.0, "Volume": 110, "Amount": 1100.0, "AdjustA": 1.0, "AdjustB": 0.0},
+            ]
+        )
+        digest = sync_service._build_market_data_frame_digest(adjusted_frame)
+        raw_frames = {731: adjusted_frame.drop(columns=["AdjustA", "AdjustB"])}
+        action_frames = {
+            831: pd.DataFrame(columns=["ex_date", "cash_dividend", "stock_bonus_ratio", "stock_conversion_ratio", "rights_ratio", "rights_price", "status"]),
+        }
+        preloaded_qfq_aliases = {
+            "SH600000": SimpleNamespace(
+                id=941,
+                instrument_id=831,
+                source_symbol="SH600000",
+                source_name="浦发银行",
+                market="SH",
+                exchange="SH",
+                security_type="stock",
+                timezone="Asia/Shanghai",
+                is_primary=True,
+            )
+        }
+        preloaded_qfq_series = {
+            (941, "1d", "qfq", "regular", "trade"): SimpleNamespace(
+                id=942,
+                alias_id=941,
+                instrument_id=831,
+                market="SH",
+                exchange="SH",
+                bar_type="time",
+                timezone="Asia/Shanghai",
+                is_active=True,
+                metadata_json={
+                    "raw_provider_key": "tdx",
+                    "raw_series_id": 731,
+                    "action_provider_key": "tushare",
+                    "adjusted_frame_digest": digest,
+                },
+            )
+        }
+
+        with (
+            patch("strategy_studio.services.sync.open_session", return_value=_SessionContext()),
+            patch("strategy_studio.services.sync.ensure_data_provider", side_effect=[raw_provider, action_provider, qfq_provider]),
+            patch("strategy_studio.services.sync._resolve_tdx_qfq_targets", return_value=targets),
+            patch("strategy_studio.services.sync.create_data_ingestion_job", return_value=ingestion_job),
+            patch("strategy_studio.services.sync.create_data_ingestion_job_item", side_effect=fake_create_item),
+            patch("strategy_studio.services.sync._preload_tdx_qfq_action_updated_at", return_value={831: None}),
+            patch("strategy_studio.services.sync._preload_tdx_qfq_input_frames", return_value=(raw_frames, action_frames, {831: None})),
+            patch("strategy_studio.services.sync._preload_tdx_qfq_output_entities", return_value=(preloaded_qfq_aliases, preloaded_qfq_series)),
+            patch(
+                "strategy_studio.services.sync.build_qfq_segment_frame",
+                return_value=pd.DataFrame(
+                    [
+                        {
+                            "start_date": "2026-05-28",
+                            "end_date": "2026-05-29",
+                            "adjust_a": 1.0,
+                            "adjust_b": 0.0,
+                            "status": "ready",
+                            "payload_json": {"source": "test"},
+                        }
+                    ]
+                ),
+            ),
+            patch("strategy_studio.services.sync.apply_qfq_segment_frame", return_value=adjusted_frame),
+            patch("strategy_studio.services.sync.replace_price_adjustment_segments", return_value=(1, 0, 0)),
+            patch("strategy_studio.services.sync.upsert_market_data_frame", side_effect=AssertionError("摘要一致时不应重写 K 线")),
+        ):
+            result = sync_service._rebuild_tdx_qfq_market_data(
+                symbol=None,
+                interval="1d",
+                force=True,
+                limit=1,
+            )
+
+        succeeded_item = registry[631]
+        self.assertEqual(result["status"], "succeeded")
+        self.assertEqual(result["bars_inserted"], 0)
+        self.assertEqual(result["bars_updated"], 0)
+        self.assertEqual(succeeded_item.status, "succeeded")
+        self.assertTrue(succeeded_item.details_json["bar_upsert_skipped"])
+        self.assertEqual(succeeded_item.details_json["timing_json"]["bar_upsert_ms"], 0)
 
 
 class StrategyTemplateServiceTests(unittest.TestCase):
