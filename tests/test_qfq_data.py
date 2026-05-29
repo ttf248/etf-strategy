@@ -120,6 +120,91 @@ class QfqDataTests(unittest.TestCase):
         self.assertAlmostEqual(float(adjusted.iloc[1]["Close"]), 9.0)
         self.assertAlmostEqual(float(adjusted.iloc[2]["Close"]), 8.0)
 
+    def test_apply_qfq_segment_frame_raises_when_segment_has_gap(self) -> None:
+        segments = pd.DataFrame(
+            [
+                {
+                    "start_date": "2024-01-02",
+                    "end_date": "2024-01-02",
+                    "adjust_a": 1.0,
+                    "adjust_b": 0.0,
+                    "status": "ready",
+                    "payload_json": {"source": "test"},
+                },
+                {
+                    "start_date": "2024-01-04",
+                    "end_date": "2024-01-04",
+                    "adjust_a": 1.0,
+                    "adjust_b": 0.0,
+                    "status": "ready",
+                    "payload_json": {"source": "test"},
+                },
+            ]
+        )
+
+        with self.assertRaisesRegex(ValueError, "交易日没有匹配到连续前复权公式区间"):
+            apply_qfq_segment_frame(build_raw_frame(), segments)
+
+    def test_apply_qfq_segment_frame_normalizes_unsorted_rows_before_linear_match(self) -> None:
+        raw_frame = pd.DataFrame(
+            [
+                {
+                    "Date": "2024-01-04",
+                    "Open": 8.0,
+                    "High": 9.0,
+                    "Low": 7.0,
+                    "Close": 8.0,
+                    "Volume": 80,
+                    "Amount": 800.0,
+                },
+                {
+                    "Date": "2024-01-02",
+                    "Open": 10.0,
+                    "High": 11.0,
+                    "Low": 9.0,
+                    "Close": 10.0,
+                    "Volume": 100,
+                    "Amount": 1000.0,
+                },
+                {
+                    "Date": "2024-01-03",
+                    "Open": 9.0,
+                    "High": 10.0,
+                    "Low": 8.0,
+                    "Close": 9.0,
+                    "Volume": 90,
+                    "Amount": 900.0,
+                },
+            ]
+        )
+        segments = pd.DataFrame(
+            [
+                {
+                    "start_date": "2024-01-02",
+                    "end_date": "2024-01-03",
+                    "adjust_a": 0.5,
+                    "adjust_b": -1.0,
+                    "status": "ready",
+                    "payload_json": {"source": "test"},
+                },
+                {
+                    "start_date": "2024-01-04",
+                    "end_date": "2024-01-04",
+                    "adjust_a": 1.0,
+                    "adjust_b": 0.0,
+                    "status": "ready",
+                    "payload_json": {"source": "test"},
+                },
+            ]
+        )
+
+        adjusted = apply_qfq_segment_frame(raw_frame, segments)
+
+        self.assertEqual(adjusted["Date"].dt.strftime("%Y-%m-%d").tolist(), ["2024-01-02", "2024-01-03", "2024-01-04"])
+        self.assertAlmostEqual(float(adjusted.iloc[0]["Close"]), 4.0)
+        self.assertAlmostEqual(float(adjusted.iloc[1]["Close"]), 3.5)
+        self.assertAlmostEqual(float(adjusted.iloc[2]["Close"]), 8.0)
+
 
 if __name__ == "__main__":
     unittest.main()

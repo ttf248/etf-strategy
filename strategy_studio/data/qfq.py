@@ -82,7 +82,15 @@ def apply_qfq_segment_frame(
     raw_frame: pd.DataFrame,
     segment_frame: pd.DataFrame,
 ) -> pd.DataFrame:
-    """把前复权区间映射回原始日线，输出标准 OHLCV DataFrame。"""
+    """把前复权区间映射回原始日线，输出标准 OHLCV DataFrame。
+
+    这里参考 `corp_actions_cpp/src/market/qfq_dayline_builder.cpp` 的双指针思路：
+
+    - 原始日线已按交易日升序；
+    - 公式区间已按起止日升序；
+    - 因此前复权日 K 不需要为每一行重新二分或扫描全部区间，
+      只需线性推进当前区间指针即可完成 O(n + m) 匹配。
+    """
     normalized_raw = _normalize_raw_frame(raw_frame)
     normalized_segments = _normalize_segment_frame(segment_frame)
     if normalized_raw.empty:
@@ -90,17 +98,10 @@ def apply_qfq_segment_frame(
     if normalized_segments.empty:
         raise ValueError("前复权区间为空，无法重算前复权日线。")
 
-    row_dates = normalized_raw["_date_key"].to_numpy(dtype="U8")
-    segment_start_dates = normalized_segments["_start_key"].to_numpy(dtype="U8")
-    segment_end_dates = normalized_segments["_end_key"].to_numpy(dtype="U8")
-    positions = np.searchsorted(segment_end_dates, row_dates, side="left")
-    if (positions >= len(normalized_segments)).any():
-        raise ValueError("存在超出公式区间覆盖范围的交易日。")
-
-    matched_start = segment_start_dates[positions]
-    matched_end = segment_end_dates[positions]
-    if ((row_dates < matched_start) | (row_dates > matched_end)).any():
-        raise ValueError("交易日没有匹配到连续前复权公式区间。")
+    row_dates = normalized_raw["_date_ord"].to_numpy(dtype="int64")
+    segment_start_dates = normalized_segments["_start_ord"].to_numpy(dtype="int64")
+    segment_end_dates = normalized_segments["_end_ord"].to_numpy(dtype="int64")
+    positions = _match_segment_positions_linear(row_dates, segment_start_dates, segment_end_dates)
 
     adjust_a = normalized_segments["adjust_a"].to_numpy(dtype="float64")[positions]
     adjust_b = normalized_segments["adjust_b"].to_numpy(dtype="float64")[positions]
@@ -114,12 +115,13 @@ def apply_qfq_segment_frame(
 
 def _normalize_raw_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty:
-        return pd.DataFrame(columns=["Date", "Open", "High", "Low", "Close", "Volume", "Amount", "_date", "_date_key"])
+        return pd.DataFrame(columns=["Date", "Open", "High", "Low", "Close", "Volume", "Amount", "_date", "_date_key", "_date_ord"])
     normalized = frame.copy()
     normalized["Date"] = pd.to_datetime(normalized["Date"]).dt.tz_localize(None)
     normalized = normalized.sort_values("Date").reset_index(drop=True)
     normalized["_date"] = normalized["Date"].dt.date
     normalized["_date_key"] = normalized["Date"].dt.strftime("%Y%m%d")
+    normalized["_date_ord"] = normalized["Date"].to_numpy(dtype="datetime64[D]").astype("int64")
     if "Amount" not in normalized.columns:
         normalized["Amount"] = None
     return normalized
@@ -127,14 +129,45 @@ def _normalize_raw_frame(frame: pd.DataFrame) -> pd.DataFrame:
 
 def _normalize_segment_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty:
-        return pd.DataFrame(columns=SEGMENT_COLUMNS + ["_start_key", "_end_key"])
+        return pd.DataFrame(columns=SEGMENT_COLUMNS + ["_start_key", "_end_key", "_start_ord", "_end_ord"])
     normalized = frame.copy()
     normalized["start_date"] = pd.to_datetime(normalized["start_date"]).dt.date
     normalized["end_date"] = pd.to_datetime(normalized["end_date"]).dt.date
     normalized = normalized.sort_values(["start_date", "end_date"]).reset_index(drop=True)
     normalized["_start_key"] = normalized["start_date"].map(_date_to_key)
     normalized["_end_key"] = normalized["end_date"].map(_date_to_key)
+    normalized["_start_ord"] = pd.to_datetime(normalized["start_date"]).to_numpy(dtype="datetime64[D]").astype("int64")
+    normalized["_end_ord"] = pd.to_datetime(normalized["end_date"]).to_numpy(dtype="datetime64[D]").astype("int64")
     return normalized
+
+
+def _match_segment_positions_linear(
+    row_dates: np.ndarray,
+    segment_start_dates: np.ndarray,
+    segment_end_dates: np.ndarray,
+) -> np.ndarray:
+    """按交易日和区间同时升序的前提做线性双指针匹配。"""
+    if len(row_dates) == 0:
+        return np.empty(0, dtype="int64")
+    if len(segment_start_dates) == 0 or len(segment_end_dates) == 0:
+        raise ValueError("前复权区间为空，无法匹配交易日。")
+
+    positions = np.empty(len(row_dates), dtype="int64")
+    row_index = 0
+    segment_index = 0
+    while row_index < len(row_dates):
+        while segment_index + 1 < len(segment_end_dates) and row_dates[row_index] > segment_end_dates[segment_index]:
+            segment_index += 1
+        if row_dates[row_index] < segment_start_dates[segment_index] or row_dates[row_index] > segment_end_dates[segment_index]:
+            raise ValueError("交易日没有匹配到连续前复权公式区间。")
+
+        next_row_index = row_index + 1
+        current_segment_end = segment_end_dates[segment_index]
+        while next_row_index < len(row_dates) and row_dates[next_row_index] <= current_segment_end:
+            next_row_index += 1
+        positions[row_index:next_row_index] = segment_index
+        row_index = next_row_index
+    return positions
 
 
 def _group_actions_by_ex_date(action_frame: pd.DataFrame) -> pd.DataFrame:
