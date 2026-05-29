@@ -72,6 +72,7 @@ class SyncRequestModel(BaseModel):
     vipdoc_path: str | None = None
     force: bool = False
     limit: int | None = Field(default=None, ge=1)
+    batch_rounds: int | None = Field(default=None, ge=1)
 
 
 class BacktestBulkActionModel(BaseModel):

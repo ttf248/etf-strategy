@@ -157,6 +157,7 @@ def create_app() -> FastAPI:
                 vipdoc_path=request.vipdoc_path,
                 force=request.force,
                 limit=request.limit,
+                batch_rounds=request.batch_rounds,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

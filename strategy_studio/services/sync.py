@@ -135,6 +135,7 @@ def sync_market_data(
     vipdoc_path: str | None = None,
     force: bool = False,
     limit: int | None = None,
+    batch_rounds: int | None = None,
     symbol_set: str | None = None,
     requested_via: str | None = None,
 ) -> dict[str, object]:
@@ -147,7 +148,12 @@ def sync_market_data(
     - `tdx_pipeline`：串行执行 A 股原始导入、公司行动抓取和前复权重算。
     """
     normalized_provider = provider.strip().lower()
+    normalized_batch_rounds = int(batch_rounds or 1)
+    if normalized_batch_rounds <= 0:
+        raise ValueError("batch_rounds 必须是正整数。")
     if normalized_provider == "yahoo":
+        if normalized_batch_rounds != 1:
+            raise ValueError("当前 batch_rounds 只支持 provider=tdx 的批量原始导入。")
         return _sync_yahoo_market_data(
             symbol=symbol,
             interval=interval,
@@ -158,6 +164,8 @@ def sync_market_data(
             requested_via=requested_via,
         )
     if normalized_provider == "yahoo_pipeline":
+        if normalized_batch_rounds != 1:
+            raise ValueError("当前 batch_rounds 只支持 provider=tdx 的批量原始导入。")
         return _run_yahoo_pipeline_workflow(
             symbol=symbol,
             symbol_set=symbol_set,
@@ -167,6 +175,16 @@ def sync_market_data(
             requested_via=requested_via,
         )
     if normalized_provider == "tdx":
+        if normalized_batch_rounds > 1:
+            return _sync_tdx_market_data_in_rounds(
+                symbol=symbol,
+                interval=interval,
+                vipdoc_path=vipdoc_path,
+                force=force,
+                limit=limit,
+                batch_rounds=normalized_batch_rounds,
+                requested_via=requested_via,
+            )
         return _sync_tdx_market_data(
             symbol=symbol,
             interval=interval,
@@ -176,8 +194,12 @@ def sync_market_data(
             requested_via=requested_via,
         )
     if normalized_provider == "tushare":
+        if normalized_batch_rounds != 1:
+            raise ValueError("当前 batch_rounds 只支持 provider=tdx 的批量原始导入。")
         return _sync_tushare_corporate_actions(symbol=symbol, limit=limit, force=force, requested_via=requested_via)
     if normalized_provider == "tdx_qfq":
+        if normalized_batch_rounds != 1:
+            raise ValueError("当前 batch_rounds 只支持 provider=tdx 的批量原始导入。")
         return _rebuild_tdx_qfq_market_data(
             symbol=symbol,
             interval=interval,
@@ -186,6 +208,8 @@ def sync_market_data(
             requested_via=requested_via,
         )
     if normalized_provider == "tdx_pipeline":
+        if normalized_batch_rounds != 1:
+            raise ValueError("当前 batch_rounds 只支持 provider=tdx 的批量原始导入。")
         return _run_tdx_pipeline_workflow(
             symbol=symbol,
             interval=interval,
@@ -208,6 +232,7 @@ def enqueue_market_data_sync(
     vipdoc_path: str | None = None,
     force: bool = False,
     limit: int | None = None,
+    batch_rounds: int | None = None,
 ) -> dict[str, object]:
     normalized_provider = provider.strip().lower()
     if normalized_provider not in _QUEUE_PROVIDER_DEFINITIONS:
@@ -228,6 +253,7 @@ def enqueue_market_data_sync(
     options_json = {
         "force": force,
         "limit": int(limit or 0),
+        "batch_rounds": int(batch_rounds or 1),
     }
 
     with open_session() as session:
@@ -374,6 +400,7 @@ def execute_next_market_data_job(worker_name: str | None = None) -> int | None:
                 vipdoc_path=str(target_scope_json.get("vipdoc_path") or "") or None,
                 force=bool(options_json.get("force")),
                 limit=int(options_json.get("limit") or 0) or None,
+                batch_rounds=int(options_json.get("batch_rounds") or 1),
                 requested_via=WORKER_CHILD_REQUESTED_VIA,
             )
         except Exception as exc:
@@ -1336,6 +1363,44 @@ def _sync_tdx_market_data(
 
     effective_results = [item for item in interval_results if int(item.get("symbols_count") or 0) > 0]
     if not effective_results:
+        skip_reasons = {
+            str(item.get("skip_reason") or "")
+            for item in interval_results
+            if str(item.get("status") or "") == "skipped"
+        }
+        if interval_results and skip_reasons == {"no_pending_files"}:
+            return {
+                "provider": "tdx",
+                "interval": "all",
+                "symbols_count": 0,
+                "bars_inserted": 0,
+                "bars_updated": 0,
+                "series_bars_inserted": 0,
+                "series_bars_updated": 0,
+                "files_imported": 0,
+                "files_skipped": 0,
+                "files_failed": 0,
+                "ingestion_job_ids": [],
+                "interval_results": [
+                    {
+                        "interval": str(item.get("interval") or ""),
+                        "symbols_count": int(item.get("symbols_count") or 0),
+                        "bars_inserted": int(item.get("bars_inserted") or 0),
+                        "bars_updated": int(item.get("bars_updated") or 0),
+                        "files_imported": int(item.get("files_imported") or 0),
+                        "files_skipped": int(item.get("files_skipped") or 0),
+                        "files_failed": int(item.get("files_failed") or 0),
+                        "status": str(item.get("status") or ""),
+                        "skip_reason": str(item.get("skip_reason") or ""),
+                    }
+                    for item in interval_results
+                ],
+                "skipped_intervals": skipped_intervals,
+                "skip_reason": "no_pending_files",
+                "error_message": "",
+                "status": "skipped",
+                "vipdoc_path": str(_resolve_tdx_vipdoc_path(vipdoc_path)),
+            }
         raise ValueError(
             f"在通达信 vipdoc 中没有找到可导入的 1d / 1m / 5m 文件："
             f"symbol={symbol or 'ALL'} vipdoc={_resolve_tdx_vipdoc_path(vipdoc_path)}"
@@ -1406,6 +1471,7 @@ def _sync_tdx_market_data(
                 "files_skipped": int(item.get("files_skipped") or 0),
                 "files_failed": int(item.get("files_failed") or 0),
                 "status": str(item.get("status") or ""),
+                "skip_reason": str(item.get("skip_reason") or ""),
             }
             for item in interval_results
         ],
@@ -1447,6 +1513,7 @@ def _sync_tdx_single_interval_market_data(
                 "files_failed": 0,
                 "error_message": "",
                 "status": "skipped",
+                "skip_reason": "no_source_files",
                 "vipdoc_path": str(vipdoc),
             }
         suffixes = ",".join(sorted(suffixes_for_interval(interval)))
@@ -1519,6 +1586,7 @@ def _sync_tdx_single_interval_market_data(
                     "files_failed": 0,
                     "error_message": "",
                     "status": "skipped",
+                    "skip_reason": "no_pending_files",
                     "vipdoc_path": str(vipdoc),
                 }
             raise ValueError(
@@ -1770,8 +1838,128 @@ def _sync_tdx_single_interval_market_data(
             "files_failed": failed_files,
             "error_message": ingestion_job.error_message,
             "status": ingestion_job.status,
+            "skip_reason": "",
             "vipdoc_path": str(vipdoc),
         }
+
+
+def _sync_tdx_market_data_in_rounds(
+    *,
+    symbol: str | None,
+    interval: str,
+    vipdoc_path: str | None,
+    force: bool,
+    limit: int | None,
+    batch_rounds: int,
+    requested_via: str | None = None,
+) -> dict[str, object]:
+    if batch_rounds <= 1:
+        return _sync_tdx_market_data(
+            symbol=symbol,
+            interval=interval,
+            vipdoc_path=vipdoc_path,
+            force=force,
+            limit=limit,
+            requested_via=requested_via,
+        )
+    if force or symbol or limit is None:
+        raise ValueError("batch_rounds > 1 仅支持 provider=tdx 的批量续跑模式：未传 --symbol、未传 --force，且必须显式传入 --limit。")
+
+    round_results: list[dict[str, object]] = []
+    total_symbols = 0
+    total_inserted = 0
+    total_updated = 0
+    total_series_inserted = 0
+    total_series_updated = 0
+    total_files_imported = 0
+    total_files_skipped = 0
+    total_files_failed = 0
+    ingestion_job_ids: list[int] = []
+    first_error_message = ""
+    cancelled = False
+    cancel_message = ""
+
+    for round_index in range(batch_rounds):
+        if _is_current_enqueued_market_data_job_cancel_requested():
+            cancelled = True
+            cancel_message = _current_enqueued_market_data_job_cancel_message()
+            break
+        result = _sync_tdx_market_data(
+            symbol=symbol,
+            interval=interval,
+            vipdoc_path=vipdoc_path,
+            force=force,
+            limit=limit,
+            requested_via=requested_via,
+        )
+        normalized_result = {
+            **result,
+            "round_index": round_index + 1,
+        }
+        round_results.append(normalized_result)
+        total_symbols += int(result.get("symbols_count") or 0)
+        total_inserted += int(result.get("bars_inserted") or 0)
+        total_updated += int(result.get("bars_updated") or 0)
+        total_series_inserted += int(result.get("series_bars_inserted") or 0)
+        total_series_updated += int(result.get("series_bars_updated") or 0)
+        total_files_imported += int(result.get("files_imported") or 0)
+        total_files_skipped += int(result.get("files_skipped") or 0)
+        total_files_failed += int(result.get("files_failed") or 0)
+        for job_id in result.get("ingestion_job_ids") or []:
+            normalized_job_id = int(job_id)
+            if normalized_job_id not in ingestion_job_ids:
+                ingestion_job_ids.append(normalized_job_id)
+        status = str(result.get("status") or "")
+        error_message = str(result.get("error_message") or "")
+        if status in {"failed", "partially_failed"} and error_message and not first_error_message:
+            first_error_message = error_message
+        if status == "cancelled":
+            cancelled = True
+            cancel_message = error_message or _current_enqueued_market_data_job_cancel_message()
+            break
+        if status == "skipped" and int(result.get("symbols_count") or 0) == 0:
+            break
+        if status in {"failed", "partially_failed"}:
+            break
+
+    statuses = [str(item.get("status") or "") for item in round_results]
+    final_status = "completed"
+    if cancelled:
+        final_status = "cancelled"
+    elif statuses and all(item == "failed" for item in statuses):
+        final_status = "failed"
+    elif any(item in {"failed", "partially_failed"} for item in statuses):
+        final_status = "partially_failed"
+    elif any(item == "succeeded" for item in statuses):
+        final_status = "succeeded"
+    elif any(item == "skipped" for item in statuses):
+        final_status = "skipped"
+
+    final_error_message = ""
+    if cancelled:
+        final_error_message = cancel_message or _current_enqueued_market_data_job_cancel_message()
+    elif final_status in {"failed", "partially_failed"}:
+        final_error_message = first_error_message
+
+    return {
+        "provider": "tdx",
+        "interval": interval,
+        "symbols_count": total_symbols,
+        "bars_inserted": total_inserted,
+        "bars_updated": total_updated,
+        "series_bars_inserted": total_series_inserted,
+        "series_bars_updated": total_series_updated,
+        "files_imported": total_files_imported,
+        "files_skipped": total_files_skipped,
+        "files_failed": total_files_failed,
+        "ingestion_job_ids": ingestion_job_ids,
+        "batch_rounds_requested": batch_rounds,
+        "batch_rounds_completed": len(round_results),
+        "round_results": round_results,
+        "error_message": final_error_message,
+        "status": final_status,
+        "vipdoc_path": str(_resolve_tdx_vipdoc_path(vipdoc_path)),
+    }
 
 
 def _select_tdx_source_files_for_batch(

@@ -34,7 +34,7 @@ class PlatformFeatureTests(unittest.TestCase):
         check_runtime_args = parser.parse_args(["check-runtime", "--json"])
         sync_args = parser.parse_args(["sync-now", "--provider", "tdx", "--symbol", "sh600000", "--interval", "1d", "--force", "--limit", "3"])
         sync_minute_args = parser.parse_args(["sync-now", "--provider", "tdx", "--symbol", "sh600000", "--interval", "1m", "--limit", "1"])
-        sync_all_args = parser.parse_args(["sync-now", "--provider", "tdx", "--interval", "all", "--limit", "2"])
+        sync_all_args = parser.parse_args(["sync-now", "--provider", "tdx", "--interval", "all", "--limit", "2", "--batch-rounds", "3"])
         yahoo_set_args = parser.parse_args(["sync-now", "--provider", "yahoo", "--symbol-set", "yahoo_global_active_100", "--interval", "15m", "--limit", "100"])
         yahoo_pipeline_args = parser.parse_args(["sync-now", "--provider", "yahoo_pipeline", "--symbol-set", "yahoo_global_active_100", "--interval", "all", "--limit", "100"])
         tushare_args = parser.parse_args(["sync-now", "--provider", "tushare", "--symbol", "600000.SH", "--limit", "2"])
@@ -60,6 +60,7 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(sync_all_args.provider, "tdx")
         self.assertEqual(sync_all_args.interval, "all")
         self.assertEqual(sync_all_args.limit, 2)
+        self.assertEqual(sync_all_args.batch_rounds, 3)
         self.assertEqual(yahoo_set_args.provider, "yahoo")
         self.assertEqual(yahoo_set_args.symbol_set, "yahoo_global_active_100")
         self.assertEqual(yahoo_set_args.limit, 100)
@@ -458,6 +459,7 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=True,
             limit=2,
+            batch_rounds=None,
         )
 
     def test_web_api_market_data_sync_route_supports_tdx_minute_interval(self) -> None:
@@ -491,6 +493,7 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=False,
             limit=1,
+            batch_rounds=None,
         )
 
     def test_web_api_market_data_sync_route_supports_tdx_ds_symbol(self) -> None:
@@ -524,6 +527,7 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=False,
             limit=1,
+            batch_rounds=None,
         )
 
     def test_web_api_market_data_sync_route_supports_tdx_all_interval(self) -> None:
@@ -556,6 +560,7 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=False,
             limit=2,
+            batch_rounds=None,
         )
 
     def test_web_api_market_data_sync_route_supports_tushare_provider(self) -> None:
@@ -588,6 +593,7 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path=None,
             force=False,
             limit=1,
+            batch_rounds=None,
         )
 
     def test_web_api_market_data_sync_route_supports_tdx_qfq_provider(self) -> None:
@@ -620,6 +626,7 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path=None,
             force=False,
             limit=1,
+            batch_rounds=None,
         )
 
     def test_web_api_market_data_sync_route_supports_tdx_pipeline_provider(self) -> None:
@@ -658,6 +665,7 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=True,
             limit=1,
+            batch_rounds=None,
         )
 
     def test_web_api_market_data_sync_route_supports_yahoo_pipeline_provider(self) -> None:
@@ -694,6 +702,40 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path=None,
             force=False,
             limit=100,
+            batch_rounds=None,
+        )
+
+    def test_web_api_market_data_sync_route_supports_tdx_batch_rounds(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.enqueue_market_data_sync",
+            return_value={"provider": "tdx", "ingestion_job_id": 26, "status": "queued"},
+        ) as mock_sync:
+            response = client.post(
+                "/api/market-data/sync",
+                json={
+                    "provider": "tdx",
+                    "interval": "all",
+                    "limit": 20,
+                    "batch_rounds": 4,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["provider"], "tdx")
+        mock_sync.assert_called_once_with(
+            symbol=None,
+            symbol_set=None,
+            interval="all",
+            proxy=None,
+            period=None,
+            provider="tdx",
+            vipdoc_path=None,
+            force=False,
+            limit=20,
+            batch_rounds=4,
         )
 
     def test_web_api_market_data_retry_and_cancel_routes(self) -> None:
@@ -745,7 +787,7 @@ class PlatformFeatureTests(unittest.TestCase):
                 "period": "",
                 "vipdoc_path": "G:/new_tdx64/vipdoc",
             },
-            options_json={"force": True, "limit": 2},
+            options_json={"force": True, "limit": 2, "batch_rounds": 1},
             summary_json={},
             status="queued",
             targets_total=0,
@@ -797,6 +839,7 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=True,
             limit=2,
+            batch_rounds=1,
             requested_via="worker_child",
         )
         self.assertEqual(queued_job.status, "succeeded")
@@ -1499,6 +1542,90 @@ class PlatformFeatureTests(unittest.TestCase):
             limit=2,
             requested_via=None,
         )
+
+    def test_sync_market_data_dispatches_tdx_batch_rounds_provider(self) -> None:
+        with patch(
+            "strategy_studio.services.sync._sync_tdx_market_data_in_rounds",
+            return_value={"provider": "tdx", "ingestion_job_ids": [51, 52], "symbols_count": 6, "bars_inserted": 3200, "bars_updated": 0, "status": "succeeded"},
+        ) as mock_tdx:
+            result = sync_market_data(
+                symbol=None,
+                interval="all",
+                proxy=None,
+                provider="tdx",
+                vipdoc_path="G:/new_tdx64/vipdoc",
+                force=False,
+                limit=2,
+                batch_rounds=3,
+            )
+
+        self.assertEqual(result["provider"], "tdx")
+        mock_tdx.assert_called_once_with(
+            symbol=None,
+            interval="all",
+            vipdoc_path="G:/new_tdx64/vipdoc",
+            force=False,
+            limit=2,
+            batch_rounds=3,
+            requested_via=None,
+        )
+
+    def test_sync_tdx_market_data_in_rounds_stops_after_pending_files_exhausted(self) -> None:
+        with patch(
+            "strategy_studio.services.sync._sync_tdx_market_data",
+            side_effect=[
+                {
+                    "provider": "tdx",
+                    "interval": "all",
+                    "symbols_count": 6,
+                    "bars_inserted": 120,
+                    "bars_updated": 0,
+                    "series_bars_inserted": 120,
+                    "series_bars_updated": 0,
+                    "files_imported": 6,
+                    "files_skipped": 0,
+                    "files_failed": 0,
+                    "ingestion_job_ids": [101, 102, 103],
+                    "error_message": "",
+                    "status": "succeeded",
+                    "vipdoc_path": "G:/new_tdx64/vipdoc",
+                },
+                {
+                    "provider": "tdx",
+                    "interval": "all",
+                    "symbols_count": 0,
+                    "bars_inserted": 0,
+                    "bars_updated": 0,
+                    "series_bars_inserted": 0,
+                    "series_bars_updated": 0,
+                    "files_imported": 0,
+                    "files_skipped": 0,
+                    "files_failed": 0,
+                    "ingestion_job_ids": [],
+                    "error_message": "",
+                    "status": "skipped",
+                    "skip_reason": "no_pending_files",
+                    "vipdoc_path": "G:/new_tdx64/vipdoc",
+                },
+            ],
+        ) as mock_tdx:
+            result = sync_service._sync_tdx_market_data_in_rounds(
+                symbol=None,
+                interval="all",
+                vipdoc_path="G:/new_tdx64/vipdoc",
+                force=False,
+                limit=2,
+                batch_rounds=5,
+            )
+
+        self.assertEqual(result["provider"], "tdx")
+        self.assertEqual(result["status"], "succeeded")
+        self.assertEqual(result["batch_rounds_requested"], 5)
+        self.assertEqual(result["batch_rounds_completed"], 2)
+        self.assertEqual(result["bars_inserted"], 120)
+        self.assertEqual(result["ingestion_job_ids"], [101, 102, 103])
+        self.assertEqual([item["round_index"] for item in result["round_results"]], [1, 2])
+        self.assertEqual(mock_tdx.call_count, 2)
 
     def test_tdx_all_interval_orchestrates_supported_intervals(self) -> None:
         observed_calls: list[tuple[str, bool]] = []
@@ -3587,4 +3714,5 @@ if __name__ == "__main__":
             vipdoc_path=None,
             force=False,
             limit=100,
+            batch_rounds=None,
         )

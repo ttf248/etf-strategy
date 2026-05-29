@@ -216,6 +216,12 @@ def add_platform_subcommands(subparsers: argparse._SubParsersAction[argparse.Arg
     sync_parser.add_argument("--vipdoc", default=None, help="通达信 vipdoc 根目录；provider=tdx 或 provider=tdx_pipeline 时生效")
     sync_parser.add_argument("--force", action="store_true", help="忽略文件 manifest，强制重建当前导入范围；provider=tdx 或 provider=tdx_pipeline 时生效")
     sync_parser.add_argument(
+        "--batch-rounds",
+        type=int,
+        default=1,
+        help="连续执行多少轮批量导入；当前只支持 provider=tdx 的批量模式，且要求未传 --symbol、未传 --force，并显式传入 --limit",
+    )
+    sync_parser.add_argument(
         "--limit",
         type=int,
         default=None,
@@ -432,6 +438,7 @@ def handle_sync_now(args: argparse.Namespace) -> int:
         vipdoc_path=getattr(args, "vipdoc", None),
         force=getattr(args, "force", False),
         limit=getattr(args, "limit", None),
+        batch_rounds=getattr(args, "batch_rounds", 1),
     )
     status = str(result.get("status", "unknown"))
     message_parts = [

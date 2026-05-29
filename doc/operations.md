@@ -67,6 +67,7 @@ py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 15m --period 60d --limit 100
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1m --period 7d --limit 100
 py -3.13 main.py sync-now --provider tdx --interval all --limit 100
+py -3.13 main.py sync-now --provider tdx --interval all --limit 100 --batch-rounds 10
 py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 1d
 py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 1m
 py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 5m
@@ -106,6 +107,8 @@ py -3.13 main.py sync-now --provider tdx_qfq --limit 20
 - 若未传 `--force` 且未显式传 `--symbol`，当前会先跳过已有且未变化的 manifest，优先挑选“还没导过”或“源文件已变化”的文件，再把 `limit` 应用到这批待处理文件上。
 - 这让 `py -3.13 main.py sync-now --provider tdx --interval all --limit 100` 可以反复多次执行，并持续往完整 `vipdoc` 全路径推进，而不是一直卡在排序最靠前、但已经导过的同一批文件。
 - 若显式传了 `--force`，则仍按排序后的文件直接截断 `limit`，用于强制重建某一批固定范围。
+- 若还传了 `--batch-rounds N`，当前命令会继续串行执行最多 `N` 轮同样的批量导入；每轮都会重新挑选剩余待导文件，直到轮数耗尽，或当前范围已经没有待导文件为止。
+- `--batch-rounds` 当前只支持 `provider=tdx` 的批量续跑模式：未传 `--symbol`、未传 `--force`，且必须显式传入 `--limit`。
 
 A 股统一补数链路注意事项：
 
