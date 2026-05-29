@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from datetime import datetime
 
 import pandas as pd
-from sqlalchemy import Select, func, select
+from sqlalchemy import BOOLEAN, Select, func, literal_column, select
 from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -311,16 +311,6 @@ def upsert_market_data_frame(
     normalized = frame.copy()
     normalized["Date"] = pd.to_datetime(normalized["Date"]).dt.tz_localize(None)
     timestamps = [item.to_pydatetime() for item in normalized["Date"].tolist()]
-    existing: set[datetime] = set()
-    for batch in _chunked(timestamps):
-        rows = session.scalars(
-            select(MarketDataBar.bar_time).where(
-                MarketDataBar.series_id == series.id,
-                MarketDataBar.bar_time.in_(batch),
-            )
-        )
-        existing.update(rows)
-
     all_rows = [
         {
             "series_id": series.id,
@@ -337,9 +327,12 @@ def upsert_market_data_frame(
         }
         for item in normalized.to_dict(orient="records")
     ]
+    inserted_count = 0
+    updated_count = 0
     for row_batch in _chunked(all_rows, size=1500):
         statement = insert(MarketDataBar).values(row_batch)
-        session.execute(
+        # 直接依赖 PostgreSQL RETURNING 回传 insert/update 数量，避免预查一轮已存在时间戳。
+        result = session.execute(
             statement.on_conflict_do_update(
                 constraint="uq_market_data_bars_series_time",
                 set_={
@@ -354,8 +347,13 @@ def upsert_market_data_frame(
                     "payload_json": statement.excluded.payload_json,
                     "ingested_at": func.now(),
                 },
-            )
+            ).returning(literal_column("xmax = 0", type_=BOOLEAN).label("inserted"))
         )
+        for row in result:
+            if bool(getattr(row, "inserted", False)):
+                inserted_count += 1
+            else:
+                updated_count += 1
     series.first_bar_time = min(
         value for value in [series.first_bar_time, min(timestamps)] if value is not None
     )
@@ -363,8 +361,6 @@ def upsert_market_data_frame(
         value for value in [series.last_bar_time, max(timestamps)] if value is not None
     )
     series.last_ingested_at = utc_now()
-    inserted_count = len(all_rows) - len(existing)
-    updated_count = len(existing)
     return inserted_count, updated_count
 
 
