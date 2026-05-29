@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { Button, Card, Collapse, Empty, Input, Select, Skeleton, Space, Table, Tag, Typography, message } from "antd";
+import { Button, Card, Collapse, Drawer, Empty, Input, Select, Skeleton, Space, Table, Tag, Typography, message } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import {
   apiFetch,
   apiFetchSafe,
   type MarketCoverage,
   type MarketDataIngestionJob,
+  type MarketDataIngestionJobDetail,
+  type MarketDataIngestionJobItem,
   type MarketDataProviderSummary,
   type MarketDataStats,
 } from "@/lib/api";
@@ -518,6 +520,9 @@ export function MarketDataView() {
   const [syncing, setSyncing] = useState(false);
   const [syncingSymbol, setSyncingSymbol] = useState(false);
   const [syncingActionKey, setSyncingActionKey] = useState<string | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+  const [selectedJobDetail, setSelectedJobDetail] = useState<MarketDataIngestionJobDetail | null>(null);
+  const [jobDetailLoading, setJobDetailLoading] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
 
   async function loadStatsData(showSpinner: boolean = true) {
@@ -669,6 +674,26 @@ export function MarketDataView() {
     } finally {
       setSyncingActionKey(null);
     }
+  }
+
+  async function openJobDetail(jobId: number) {
+    setSelectedJobId(jobId);
+    setJobDetailLoading(true);
+    try {
+      const detail = await apiFetch<MarketDataIngestionJobDetail>(`/api/market-data/ingestion-jobs/${jobId}`);
+      setSelectedJobDetail(detail);
+    } catch (error) {
+      setSelectedJobDetail(null);
+      messageApi.error(error instanceof Error ? error.message : "读取任务详情失败");
+    } finally {
+      setJobDetailLoading(false);
+    }
+  }
+
+  function closeJobDetail() {
+    setSelectedJobId(null);
+    setSelectedJobDetail(null);
+    setJobDetailLoading(false);
   }
 
   const filteredRows = useMemo(() => {
@@ -909,6 +934,11 @@ export function MarketDataView() {
     { label: "50", value: 50 },
     { label: "100", value: 100 },
   ];
+  const selectedJobItems = useMemo(() => selectedJobDetail?.items ?? [], [selectedJobDetail]);
+  const selectedJobFailedItems = useMemo(
+    () => selectedJobItems.filter((item) => item.status === "failed" || item.error_message),
+    [selectedJobItems],
+  );
 
   function applyCheckedSymbol(targetSymbol: string) {
     const normalizedSymbol = targetSymbol.trim().toUpperCase();
@@ -1129,6 +1159,9 @@ export function MarketDataView() {
                   <small>申请时间：{job.requested_at || "-"}</small>
                   {extractChildIngestionJobIds(job).length > 0 ? <small>子任务 #{extractChildIngestionJobIds(job).join(", #")}</small> : null}
                   {job.error_message ? <Typography.Text type="danger">{job.error_message}</Typography.Text> : null}
+                  <Button size="small" onClick={() => void openJobDetail(job.id)}>
+                    查看详情
+                  </Button>
                   {renderWorkflowSummary(job)}
                 </article>
               ))}
@@ -1164,11 +1197,133 @@ export function MarketDataView() {
                 { title: "更新", dataIndex: "rows_updated", width: 110, render: (value: number) => value.toLocaleString() },
                 { title: "申请时间", dataIndex: "requested_at", width: 180 },
                 { title: "完成时间", dataIndex: "completed_at", width: 180 },
+                {
+                  title: "详情",
+                  width: 110,
+                  fixed: "right",
+                  render: (_, row) => (
+                    <Button size="small" onClick={() => void openJobDetail(row.id)}>
+                      查看详情
+                    </Button>
+                  ),
+                },
               ]}
             />
           </>
         )}
       </Card>
+
+      <Drawer
+        title={selectedJobId ? `导入任务 #${selectedJobId}` : "导入任务详情"}
+        placement="right"
+        width={720}
+        open={selectedJobId !== null}
+        onClose={closeJobDetail}
+        destroyOnClose
+      >
+        {jobDetailLoading ? (
+          <Skeleton active paragraph={{ rows: 8 }} />
+        ) : !selectedJobDetail ? (
+          <Empty description="暂无任务详情" />
+        ) : (
+          <div className="page-stack">
+            <Card size="small" title="任务概览">
+              <div className="provider-panel-metric-grid">
+                <div className="provider-panel-metric">
+                  <span>渠道</span>
+                  <strong>{selectedJobDetail.provider_name || selectedJobDetail.provider_key || "-"}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>状态</span>
+                  <strong>{ingestionStatusLabel(selectedJobDetail.status)}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>目标</span>
+                  <strong>{buildIngestionTargetLabel(selectedJobDetail)}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>完成/总数</span>
+                  <strong>{selectedJobDetail.targets_completed}/{selectedJobDetail.targets_total}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>新增</span>
+                  <strong>{selectedJobDetail.rows_inserted.toLocaleString()}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>更新</span>
+                  <strong>{selectedJobDetail.rows_updated.toLocaleString()}</strong>
+                </div>
+              </div>
+              <div className="provider-panel-tags">
+                <Tag>{selectedJobDetail.job_type}</Tag>
+                <Tag>{selectedJobDetail.requested_via || "manual"}</Tag>
+                <Tag color={selectedJobFailedItems.length > 0 ? "red" : "green"}>
+                  失败子项 {selectedJobFailedItems.length}
+                </Tag>
+              </div>
+              {selectedJobDetail.error_message ? <Typography.Text type="danger">{selectedJobDetail.error_message}</Typography.Text> : null}
+              {renderWorkflowSummary(selectedJobDetail)}
+            </Card>
+
+            <Card size="small" title="子项明细">
+              {selectedJobItems.length === 0 ? (
+                <Typography.Text type="secondary">当前任务还没有子项明细。</Typography.Text>
+              ) : (
+                <>
+                  <div className="ingestion-mobile-list">
+                    {selectedJobItems.map((item) => (
+                      <article key={item.id} className="ingestion-mobile-card">
+                        <div className="ingestion-mobile-card-head">
+                          <div>
+                            <strong>{item.instrument_symbol || item.source_symbol || item.item_key}</strong>
+                            <span>{item.interval || item.stage || "-"}</span>
+                          </div>
+                          <StatusTag value={item.status} label={ingestionStatusLabel(item.status)} />
+                        </div>
+                        <div className="ingestion-mobile-metrics">
+                          <span>阶段 {item.stage || "-"}</span>
+                          <span>新增 {item.rows_inserted.toLocaleString()}</span>
+                          <span>更新 {item.rows_updated.toLocaleString()}</span>
+                        </div>
+                        <small>{item.item_key}</small>
+                        {item.error_message ? <Typography.Text type="danger">{item.error_message}</Typography.Text> : null}
+                      </article>
+                    ))}
+                  </div>
+                  <Table<MarketDataIngestionJobItem>
+                    size="small"
+                    rowKey="id"
+                    dataSource={selectedJobItems}
+                    pagination={{ pageSize: 10, showSizeChanger: false }}
+                    scroll={{ x: 1080 }}
+                    columns={[
+                      { title: "编号", dataIndex: "id", width: 80 },
+                      {
+                        title: "标的/文件",
+                        width: 220,
+                        render: (_, row) => (
+                          <div className="ingestion-provider-cell">
+                            <strong>{row.instrument_symbol || row.source_symbol || "-"}</strong>
+                            <span>{row.item_key}</span>
+                          </div>
+                        ),
+                      },
+                      { title: "周期", dataIndex: "interval", width: 100 },
+                      { title: "阶段", dataIndex: "stage", width: 120 },
+                      { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <StatusTag value={value} label={ingestionStatusLabel(value)} /> },
+                      { title: "新增", dataIndex: "rows_inserted", width: 100, render: (value: number) => value.toLocaleString() },
+                      { title: "更新", dataIndex: "rows_updated", width: 100, render: (value: number) => value.toLocaleString() },
+                      { title: "开始时间", dataIndex: "started_at", width: 180 },
+                      { title: "完成时间", dataIndex: "completed_at", width: 180 },
+                      { title: "错误", dataIndex: "error_message", width: 260 },
+                    ]}
+                  />
+                </>
+              )}
+            </Card>
+          </div>
+        )}
+      </Drawer>
 
       <Card size="small" className="section-card start-path-card">
         <div className="start-path-main">

@@ -694,6 +694,75 @@ def list_recent_ingestion_jobs(session: Session, limit: int = 10) -> list[dict[s
     return jobs
 
 
+def get_ingestion_job_detail(session: Session, job_id: int) -> dict[str, object] | None:
+    row_result = session.execute(
+        select(DataIngestionJob, DataProvider.provider_key, DataProvider.provider_name)
+        .outerjoin(DataProvider, DataProvider.id == DataIngestionJob.provider_id)
+        .where(DataIngestionJob.id == job_id)
+        .limit(1)
+    )
+    row = row_result.first() if hasattr(row_result, "first") else (row_result[0] if row_result else None)
+    if row is None:
+        return None
+
+    job, provider_key, provider_name = row
+    target_scope = dict(job.target_scope_json or {})
+    summary_json = dict(job.summary_json or {})
+    items_rows_result = session.execute(
+        select(DataIngestionJobItem, Instrument.symbol)
+        .outerjoin(Instrument, Instrument.id == DataIngestionJobItem.instrument_id)
+        .where(DataIngestionJobItem.job_id == job.id)
+        .order_by(DataIngestionJobItem.id)
+    )
+    items_rows = items_rows_result.all() if hasattr(items_rows_result, "all") else list(items_rows_result)
+    items: list[dict[str, object]] = []
+    for item, instrument_symbol in items_rows:
+        items.append(
+            {
+                "id": item.id,
+                "job_id": item.job_id,
+                "item_key": item.item_key,
+                "source_symbol": item.source_symbol,
+                "instrument_symbol": instrument_symbol or "",
+                "interval": item.interval,
+                "stage": item.stage,
+                "status": item.status,
+                "rows_inserted": item.rows_inserted,
+                "rows_updated": item.rows_updated,
+                "error_message": item.error_message,
+                "details_json": dict(item.details_json or {}),
+                "instrument_id": item.instrument_id,
+                "series_id": item.series_id,
+                "started_at": _format_timestamp(item.started_at),
+                "completed_at": _format_timestamp(item.completed_at),
+            }
+        )
+
+    return {
+        "id": job.id,
+        "provider_key": provider_key or "",
+        "provider_name": provider_name or "",
+        "job_type": job.job_type,
+        "status": job.status,
+        "targets_total": job.targets_total,
+        "targets_completed": job.targets_completed,
+        "rows_inserted": job.rows_inserted,
+        "rows_updated": job.rows_updated,
+        "error_count": job.error_count,
+        "requested_at": _format_timestamp(job.requested_at),
+        "started_at": _format_timestamp(job.started_at),
+        "completed_at": _format_timestamp(job.completed_at),
+        "error_message": job.error_message,
+        "target_symbol": str(target_scope.get("symbol") or summary_json.get("requested_symbol") or ""),
+        "interval": str(target_scope.get("interval") or summary_json.get("requested_interval") or ""),
+        "requested_via": job.requested_via,
+        "target_scope_json": target_scope,
+        "options_json": dict(job.options_json or {}),
+        "summary_json": summary_json,
+        "items": items,
+    }
+
+
 def get_market_data_stats(session: Session) -> dict[str, object]:
     instrument_count = int(session.scalar(select(func.count(Instrument.id))) or 0)
     total_bars = int(session.scalar(select(func.count(PriceBar.id))) or 0)

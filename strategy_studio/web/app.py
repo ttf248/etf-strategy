@@ -18,6 +18,7 @@ from strategy_studio.services.backtests import (
     submit_backtest,
 )
 from strategy_studio.services.market_data import (
+    fetch_ingestion_job_detail,
     fetch_instrument_coverages,
     fetch_instruments,
     fetch_market_data_stats,
@@ -97,6 +98,13 @@ def create_app() -> FastAPI:
     @app.get("/api/market-data/stats")
     def get_market_stats() -> dict[str, object]:
         return fetch_market_data_stats()
+
+    @app.get("/api/market-data/ingestion-jobs/{job_id}")
+    def get_ingestion_job(job_id: int) -> dict[str, object]:
+        payload = fetch_ingestion_job_detail(job_id)
+        if payload is None:
+            raise HTTPException(status_code=404, detail="导入任务不存在。")
+        return payload
 
     @app.get("/api/market-data/bars")
     def get_bars(symbol: str, interval: str, start: str | None = None, end: str | None = None, limit: int = 2000) -> list[dict[str, object]]:

@@ -47,6 +47,32 @@ export type MarketDataIngestionJob = {
   summary_json: Record<string, unknown>;
 };
 
+export type MarketDataIngestionJobItem = {
+  id: number;
+  job_id: number;
+  item_key: string;
+  source_symbol: string;
+  instrument_symbol: string;
+  interval: string;
+  stage: string;
+  status: string;
+  rows_inserted: number;
+  rows_updated: number;
+  error_message: string;
+  details_json: Record<string, unknown>;
+  instrument_id: number | null;
+  series_id: number | null;
+  started_at: string;
+  completed_at: string;
+};
+
+export type MarketDataIngestionJobDetail = MarketDataIngestionJob & {
+  started_at: string;
+  target_scope_json: Record<string, unknown>;
+  options_json: Record<string, unknown>;
+  items: MarketDataIngestionJobItem[];
+};
+
 export type MarketDataStats = {
   instrument_count: number;
   total_bars: number;

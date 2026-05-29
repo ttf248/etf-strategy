@@ -130,6 +130,38 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(stats_response.json()["instrument_count"], 2)
         self.assertEqual(stats_response.json()["provider_summaries"][0]["provider_key"], "yahoo")
 
+    def test_web_api_market_data_ingestion_job_detail_route(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.fetch_ingestion_job_detail",
+            return_value={
+                "id": 24,
+                "provider_key": "tdx_pipeline",
+                "provider_name": "A 股统一补数链路",
+                "status": "succeeded",
+                "items": [{"id": 101, "item_key": "tdx_raw:all", "status": "succeeded"}],
+            },
+        ) as mock_detail:
+            response = client.get("/api/market-data/ingestion-jobs/24")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["provider_key"], "tdx_pipeline")
+        self.assertEqual(response.json()["items"][0]["id"], 101)
+        mock_detail.assert_called_once_with(24)
+
+    def test_web_api_market_data_ingestion_job_detail_route_returns_404(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch("strategy_studio.web.app.fetch_ingestion_job_detail", return_value=None) as mock_detail:
+            response = client.get("/api/market-data/ingestion-jobs/9999")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"], "导入任务不存在。")
+        mock_detail.assert_called_once_with(9999)
+
     def test_web_api_market_data_sync_route_passes_provider_specific_fields(self) -> None:
         app = create_app()
         client = TestClient(app)

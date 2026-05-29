@@ -33,14 +33,20 @@ http://127.0.0.1:8000/docs
 - `GET /api/market-data/instruments`
 - `GET /api/market-data/coverages`
 - `GET /api/market-data/stats`
+- `GET /api/market-data/ingestion-jobs/{job_id}`
 - `GET /api/market-data/bars`
 - `GET /api/market-data/sync-runs`
 - `POST /api/market-data/sync`
 
-这些接口用于查询标的、行情覆盖、统计信息、K 线数据、同步历史，以及手动触发行情同步。其中 `GET /api/market-data/stats` 当前除了保留旧 `coverages / recent_sync_runs` 外，还会返回：
+这些接口用于查询标的、行情覆盖、统计信息、导入任务详情、K 线数据、同步历史，以及手动触发行情同步。其中 `GET /api/market-data/stats` 当前除了保留旧 `coverages / recent_sync_runs` 外，还会返回：
 
 - `provider_summaries`：按 provider 聚合的多渠道摘要，包含 `series_count / bars_count / action_count / segment_count / manifest_count / latest_ingestion_at / latest_ingestion_status` 等字段，供 `/market-data` 多渠道任务面板直接渲染。
 - `recent_ingestion_jobs`：统一导入任务域的最近任务列表，覆盖 Yahoo、A 股统一补数链路、通达信原始、Tushare 公司行动和通达信前复权五类后台任务。每条记录还会附带 `summary_json`，用于前端直接展开 workflow 子步骤、文件导入摘要或其他渠道专属诊断信息。
+
+`GET /api/market-data/ingestion-jobs/{job_id}` 返回单个统一导入任务的完整详情，包含：
+
+- 任务级字段：`provider_key / job_type / status / target_scope_json / options_json / summary_json / error_message`
+- 子项明细：`items[]`，逐条返回 `item_key / source_symbol / instrument_symbol / interval / stage / status / rows_inserted / rows_updated / error_message / details_json`
 
 `POST /api/market-data/sync` 支持字段：
 

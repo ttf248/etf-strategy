@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from strategy_studio.repositories.market_data import get_market_data_stats
+from strategy_studio.repositories.market_data import get_ingestion_job_detail, get_market_data_stats
 
 
 class _ScalarListResult:
@@ -241,6 +241,91 @@ class MarketDataStatsTests(unittest.TestCase):
         self.assertEqual(job["interval"], "all")
         self.assertEqual(job["summary_json"]["child_ingestion_job_ids"], [19, 20, 21, 22, 23])
         self.assertEqual(job["summary_json"]["workflow_results"][0]["step_label"], "通达信原始导入")
+
+    def test_get_ingestion_job_detail_includes_items(self) -> None:
+        now = datetime(2026, 5, 29, 14, 0, tzinfo=UTC)
+        session = _FakeSession(
+            scalar_results=[],
+            execute_results=[
+                [
+                    (
+                        SimpleNamespace(
+                            id=24,
+                            provider_id=5,
+                            job_type="tdx_pipeline_workflow",
+                            status="partially_failed",
+                            targets_total=3,
+                            targets_completed=3,
+                            rows_inserted=312,
+                            rows_updated=878,
+                            error_count=1,
+                            requested_at=now,
+                            started_at=now,
+                            completed_at=now,
+                            error_message="有子步骤失败",
+                            target_scope_json={"symbol": "", "interval": "all"},
+                            options_json={"force": True},
+                            summary_json={"workflow_results": [{"step": "tdx_raw", "status": "succeeded"}]},
+                            requested_via="manual",
+                        ),
+                        "tdx_pipeline",
+                        "A 股统一补数链路",
+                    ),
+                ],
+                [
+                    (
+                        SimpleNamespace(
+                            id=101,
+                            job_id=24,
+                            instrument_id=7,
+                            series_id=8,
+                            item_key="vipdoc/sh/lday/sh600000.day:1d:raw",
+                            source_symbol="SH600000",
+                            interval="1d",
+                            stage="completed",
+                            status="succeeded",
+                            rows_inserted=12,
+                            rows_updated=0,
+                            error_message="",
+                            details_json={"source_path": "vipdoc/sh/lday/sh600000.day"},
+                            started_at=now,
+                            completed_at=now,
+                        ),
+                        "SH600000",
+                    ),
+                    (
+                        SimpleNamespace(
+                            id=102,
+                            job_id=24,
+                            instrument_id=None,
+                            series_id=None,
+                            item_key="vipdoc/sz/lday/sz000001.day:1d:raw",
+                            source_symbol="SZ000001",
+                            interval="1d",
+                            stage="failed",
+                            status="failed",
+                            rows_inserted=0,
+                            rows_updated=0,
+                            error_message="读取失败",
+                            details_json={"source_path": "vipdoc/sz/lday/sz000001.day"},
+                            started_at=now,
+                            completed_at=now,
+                        ),
+                        "",
+                    ),
+                ],
+            ],
+            scalars_results=[],
+        )
+
+        payload = get_ingestion_job_detail(session, 24)
+
+        assert payload is not None
+        self.assertEqual(payload["provider_key"], "tdx_pipeline")
+        self.assertEqual(payload["job_type"], "tdx_pipeline_workflow")
+        self.assertEqual(payload["items"][0]["instrument_symbol"], "SH600000")
+        self.assertEqual(payload["items"][1]["status"], "failed")
+        self.assertEqual(payload["items"][1]["error_message"], "读取失败")
 
 
 if __name__ == "__main__":
