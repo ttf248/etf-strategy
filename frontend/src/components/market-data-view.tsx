@@ -6,7 +6,9 @@ import { useEffect, useMemo, useState } from "react";
 import {
   apiFetch,
   apiFetchSafe,
+  type MarketDataAdjustmentSegmentRow,
   type MarketCoverage,
+  type MarketDataCorporateActionRow,
   type MarketDataIngestionJob,
   type MarketDataIngestionJobDetail,
   type MarketDataIngestionJobItem,
@@ -527,6 +529,10 @@ export function MarketDataView() {
   const [seriesProviderFilter, setSeriesProviderFilter] = useState("all");
   const [providerSeriesRows, setProviderSeriesRows] = useState<MarketDataSeriesRow[]>([]);
   const [providerSeriesLoading, setProviderSeriesLoading] = useState(false);
+  const [qfqSymbolFilter, setQfqSymbolFilter] = useState("");
+  const [corporateActionRows, setCorporateActionRows] = useState<MarketDataCorporateActionRow[]>([]);
+  const [adjustmentSegmentRows, setAdjustmentSegmentRows] = useState<MarketDataAdjustmentSegmentRow[]>([]);
+  const [qfqDiagnosticsLoading, setQfqDiagnosticsLoading] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
 
   async function loadStatsData(showSpinner: boolean = true) {
@@ -557,6 +563,29 @@ export function MarketDataView() {
     setProviderSeriesLoading(false);
   }
 
+  async function loadQfqDiagnosticsData(symbol: string = qfqSymbolFilter, showSpinner: boolean = true) {
+    if (showSpinner) {
+      setQfqDiagnosticsLoading(true);
+    }
+    const normalizedSymbol = symbol.trim().toUpperCase();
+    const symbolQuery = normalizedSymbol ? `&symbol=${encodeURIComponent(normalizedSymbol)}` : "";
+    const [actionsResult, segmentsResult] = await Promise.all([
+      apiFetchSafe<MarketDataCorporateActionRow[]>(`/api/market-data/corporate-actions?provider=tushare${symbolQuery}&limit=20`),
+      apiFetchSafe<MarketDataAdjustmentSegmentRow[]>(`/api/market-data/adjustment-segments?provider=tdx_qfq${symbolQuery}&limit=20`),
+    ]);
+    if (actionsResult.ok) {
+      setCorporateActionRows(actionsResult.data);
+    } else {
+      messageApi.error(actionsResult.error.message);
+    }
+    if (segmentsResult.ok) {
+      setAdjustmentSegmentRows(segmentsResult.data);
+    } else {
+      messageApi.error(segmentsResult.error.message);
+    }
+    setQfqDiagnosticsLoading(false);
+  }
+
   useEffect(() => {
     queueMicrotask(() => {
       void loadStatsData();
@@ -569,6 +598,24 @@ export function MarketDataView() {
           messageApi.error(result.error.message);
         }
         setProviderSeriesLoading(false);
+      })();
+      void (async () => {
+        setQfqDiagnosticsLoading(true);
+        const [actionsResult, segmentsResult] = await Promise.all([
+          apiFetchSafe<MarketDataCorporateActionRow[]>("/api/market-data/corporate-actions?provider=tushare&limit=20"),
+          apiFetchSafe<MarketDataAdjustmentSegmentRow[]>("/api/market-data/adjustment-segments?provider=tdx_qfq&limit=20"),
+        ]);
+        if (actionsResult.ok) {
+          setCorporateActionRows(actionsResult.data);
+        } else {
+          messageApi.error(actionsResult.error.message);
+        }
+        if (segmentsResult.ok) {
+          setAdjustmentSegmentRows(segmentsResult.data);
+        } else {
+          messageApi.error(segmentsResult.error.message);
+        }
+        setQfqDiagnosticsLoading(false);
       })();
     });
   }, [messageApi]);
@@ -607,6 +654,7 @@ export function MarketDataView() {
       messageApi.success("同步已完成");
       await loadStatsData(false);
       await loadProviderSeriesData(seriesProviderFilter, false);
+      await loadQfqDiagnosticsData(qfqSymbolFilter, false);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
     } finally {
@@ -634,6 +682,7 @@ export function MarketDataView() {
       messageApi.success(`${targetSymbol} ${targetInterval} 同步完成`);
       await loadStatsData(false);
       await loadProviderSeriesData(seriesProviderFilter, false);
+      await loadQfqDiagnosticsData(qfqSymbolFilter || targetSymbol, false);
       setTableKeyword(targetSymbol);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
@@ -662,6 +711,7 @@ export function MarketDataView() {
           messageApi.success(`Yahoo 默认样本池 ${syncInterval} 同步完成`);
           await loadStatsData(false);
           await loadProviderSeriesData(seriesProviderFilter, false);
+          await loadQfqDiagnosticsData(qfqSymbolFilter, false);
         } catch (error) {
           messageApi.error(error instanceof Error ? error.message : "同步失败");
         } finally {
@@ -701,6 +751,7 @@ export function MarketDataView() {
       messageApi.success(actionLabel);
       await loadStatsData(false);
       await loadProviderSeriesData(seriesProviderFilter, false);
+      await loadQfqDiagnosticsData(qfqSymbolFilter || normalizedTarget || "", false);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
     } finally {
@@ -1346,6 +1397,163 @@ export function MarketDataView() {
             />
           </>
         )}
+      </Card>
+
+      <Card size="small" title="前复权输入与公式检查" className="section-card">
+        <div className="provider-overview-banner compact">
+          <div>
+            <strong>直接检查 `corporate_action_events` 和 `price_adjustment_segments`</strong>
+            <p>当 Tushare 抓取或前复权任务显示成功，但你还想确认“到底抓到了哪些实施事件、生成了哪些公式区间”时，就在这里按标的核对。</p>
+          </div>
+          <Space wrap>
+            <Input
+              placeholder="留空看最近记录，或输入 SH600000"
+              value={qfqSymbolFilter}
+              onChange={(event) => setQfqSymbolFilter(event.target.value.toUpperCase())}
+              style={{ width: 220 }}
+            />
+            <Button
+              onClick={() => {
+                const normalized = checkedSymbol.trim().toUpperCase();
+                setQfqSymbolFilter(normalized);
+                void loadQfqDiagnosticsData(normalized);
+              }}
+            >
+              使用当前标的
+            </Button>
+            <Button loading={qfqDiagnosticsLoading} onClick={() => void loadQfqDiagnosticsData(qfqSymbolFilter)}>
+              刷新排查
+            </Button>
+          </Space>
+        </div>
+        <div className="page-stack">
+          <Card size="small" title="最近公司行动">
+            {qfqDiagnosticsLoading && corporateActionRows.length === 0 ? (
+              <Skeleton active paragraph={{ rows: 4 }} />
+            ) : corporateActionRows.length === 0 ? (
+              <Typography.Text type="secondary">当前筛选条件下还没有 Tushare 实施事件。</Typography.Text>
+            ) : (
+              <>
+                <div className="ingestion-mobile-list">
+                  {corporateActionRows.slice(0, 6).map((row) => (
+                    <article key={row.event_id} className="ingestion-mobile-card">
+                      <div className="ingestion-mobile-card-head">
+                        <div>
+                          <strong>{row.instrument_symbol}</strong>
+                          <span>{row.provider_name || row.provider_key}</span>
+                        </div>
+                        <Tag>{row.action_type}</Tag>
+                      </div>
+                      <div className="ingestion-mobile-metrics">
+                        <span>除权日 {row.ex_date || "-"}</span>
+                        <span>现金 {row.cash_dividend}</span>
+                        <span>送转 {(row.stock_bonus_ratio + row.stock_conversion_ratio).toFixed(4)}</span>
+                      </div>
+                      <small>源代码：{row.source_symbol || "-"}</small>
+                    </article>
+                  ))}
+                </div>
+                <Table<MarketDataCorporateActionRow>
+                  size="small"
+                  rowKey="event_id"
+                  dataSource={corporateActionRows}
+                  pagination={{ pageSize: 8, showSizeChanger: false }}
+                  scroll={{ x: 1440 }}
+                  columns={[
+                    { title: "事件", dataIndex: "event_id", width: 90, fixed: "left" },
+                    {
+                      title: "标的",
+                      width: 180,
+                      render: (_, row) => (
+                        <div className="ingestion-provider-cell">
+                          <strong>{row.instrument_symbol}</strong>
+                          <span>{row.instrument_name || row.source_symbol || row.instrument_symbol}</span>
+                        </div>
+                      ),
+                    },
+                    { title: "源代码", dataIndex: "source_symbol", width: 140 },
+                    { title: "类型", dataIndex: "action_type", width: 100 },
+                    { title: "公告日", dataIndex: "announce_date", width: 120 },
+                    { title: "登记日", dataIndex: "record_date", width: 120 },
+                    { title: "除权日", dataIndex: "ex_date", width: 120 },
+                    { title: "派息日", dataIndex: "pay_date", width: 120 },
+                    { title: "现金分红", dataIndex: "cash_dividend", width: 110 },
+                    { title: "送股", dataIndex: "stock_bonus_ratio", width: 90 },
+                    { title: "转增", dataIndex: "stock_conversion_ratio", width: 90 },
+                    { title: "配股比例", dataIndex: "rights_ratio", width: 100 },
+                    { title: "配股价", dataIndex: "rights_price", width: 100 },
+                    { title: "状态", dataIndex: "status", width: 100 },
+                    { title: "最近更新", dataIndex: "updated_at", width: 180 },
+                  ]}
+                />
+              </>
+            )}
+          </Card>
+
+          <Card size="small" title="最近复权区间">
+            {qfqDiagnosticsLoading && adjustmentSegmentRows.length === 0 ? (
+              <Skeleton active paragraph={{ rows: 4 }} />
+            ) : adjustmentSegmentRows.length === 0 ? (
+              <Typography.Text type="secondary">当前筛选条件下还没有前复权公式区间。</Typography.Text>
+            ) : (
+              <>
+                <div className="ingestion-mobile-list">
+                  {adjustmentSegmentRows.slice(0, 6).map((row) => (
+                    <article key={row.segment_id} className="ingestion-mobile-card">
+                      <div className="ingestion-mobile-card-head">
+                        <div>
+                          <strong>{row.instrument_symbol}</strong>
+                          <span>{row.provider_name || row.provider_key}</span>
+                        </div>
+                        <Tag>{row.adjustment_kind}</Tag>
+                      </div>
+                      <div className="ingestion-mobile-metrics">
+                        <span>{row.start_date || "-"} 至 {row.end_date || "-"}</span>
+                        <span>A {row.adjust_a.toFixed(6)}</span>
+                        <span>B {row.adjust_b.toFixed(6)}</span>
+                      </div>
+                      <small>事件数：{String(row.payload_json.event_count ?? "-")}</small>
+                    </article>
+                  ))}
+                </div>
+                <Table<MarketDataAdjustmentSegmentRow>
+                  size="small"
+                  rowKey="segment_id"
+                  dataSource={adjustmentSegmentRows}
+                  pagination={{ pageSize: 8, showSizeChanger: false }}
+                  scroll={{ x: 1320 }}
+                  columns={[
+                    { title: "区间", dataIndex: "segment_id", width: 90, fixed: "left" },
+                    {
+                      title: "标的",
+                      width: 180,
+                      render: (_, row) => (
+                        <div className="ingestion-provider-cell">
+                          <strong>{row.instrument_symbol}</strong>
+                          <span>{row.instrument_name || row.instrument_symbol}</span>
+                        </div>
+                      ),
+                    },
+                    { title: "复权", dataIndex: "adjustment_kind", width: 90 },
+                    { title: "起始日", dataIndex: "start_date", width: 120 },
+                    { title: "结束日", dataIndex: "end_date", width: 120 },
+                    { title: "AdjustA", dataIndex: "adjust_a", width: 120, render: (value: number) => value.toFixed(8) },
+                    { title: "AdjustB", dataIndex: "adjust_b", width: 120, render: (value: number) => value.toFixed(8) },
+                    { title: "事件来源", dataIndex: "action_provider_name", width: 140 },
+                    {
+                      title: "事件数",
+                      width: 90,
+                      render: (_, row) => String(row.payload_json.event_count ?? "-"),
+                    },
+                    { title: "状态", dataIndex: "status", width: 100 },
+                    { title: "生成时间", dataIndex: "generated_at", width: 180 },
+                    { title: "最近更新", dataIndex: "updated_at", width: 180 },
+                  ]}
+                />
+              </>
+            )}
+          </Card>
+        </div>
       </Card>
 
       <Drawer

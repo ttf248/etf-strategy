@@ -844,6 +844,154 @@ def list_provider_series(
     ]
 
 
+def list_corporate_actions(
+    session: Session,
+    *,
+    provider_key: str | None = None,
+    symbol: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, object]]:
+    statement = (
+        select(
+            CorporateActionEvent.id,
+            DataProvider.provider_key,
+            DataProvider.provider_name,
+            Instrument.symbol.label("instrument_symbol"),
+            Instrument.name.label("instrument_name"),
+            CorporateActionEvent.source_symbol,
+            CorporateActionEvent.action_type,
+            CorporateActionEvent.announce_date,
+            CorporateActionEvent.record_date,
+            CorporateActionEvent.ex_date,
+            CorporateActionEvent.pay_date,
+            CorporateActionEvent.end_date,
+            CorporateActionEvent.cash_dividend,
+            CorporateActionEvent.stock_bonus_ratio,
+            CorporateActionEvent.stock_conversion_ratio,
+            CorporateActionEvent.rights_ratio,
+            CorporateActionEvent.rights_price,
+            CorporateActionEvent.status,
+            CorporateActionEvent.ingested_at,
+            CorporateActionEvent.updated_at,
+        )
+        .join(DataProvider, DataProvider.id == CorporateActionEvent.provider_id)
+        .join(Instrument, Instrument.id == CorporateActionEvent.instrument_id)
+        .order_by(
+            CorporateActionEvent.ex_date.desc().nullslast(),
+            CorporateActionEvent.updated_at.desc().nullslast(),
+            Instrument.symbol,
+        )
+        .limit(limit)
+    )
+    if provider_key and provider_key.strip() and provider_key.strip().lower() != "all":
+        statement = statement.where(DataProvider.provider_key == provider_key.strip().lower())
+    if symbol and symbol.strip():
+        normalized_symbol = symbol.strip().upper()
+        statement = statement.where(
+            (Instrument.symbol == normalized_symbol) | (CorporateActionEvent.source_symbol == normalized_symbol)
+        )
+
+    rows = session.execute(statement).all()
+    return [
+        {
+            "event_id": row.id,
+            "provider_key": row.provider_key,
+            "provider_name": row.provider_name,
+            "instrument_symbol": row.instrument_symbol,
+            "instrument_name": row.instrument_name or row.instrument_symbol,
+            "source_symbol": row.source_symbol,
+            "action_type": row.action_type,
+            "announce_date": str(row.announce_date or ""),
+            "record_date": str(row.record_date or ""),
+            "ex_date": str(row.ex_date or ""),
+            "pay_date": str(row.pay_date or ""),
+            "end_date": str(row.end_date or ""),
+            "cash_dividend": float(row.cash_dividend or 0.0),
+            "stock_bonus_ratio": float(row.stock_bonus_ratio or 0.0),
+            "stock_conversion_ratio": float(row.stock_conversion_ratio or 0.0),
+            "rights_ratio": float(row.rights_ratio or 0.0),
+            "rights_price": float(row.rights_price or 0.0),
+            "status": row.status,
+            "ingested_at": _format_timestamp(row.ingested_at),
+            "updated_at": _format_timestamp(row.updated_at),
+        }
+        for row in rows
+    ]
+
+
+def list_adjustment_segments(
+    session: Session,
+    *,
+    provider_key: str | None = None,
+    symbol: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, object]]:
+    statement = (
+        select(
+            PriceAdjustmentSegment.id,
+            DataProvider.provider_key,
+            DataProvider.provider_name,
+            Instrument.symbol.label("instrument_symbol"),
+            Instrument.name.label("instrument_name"),
+            PriceAdjustmentSegment.adjustment_kind,
+            PriceAdjustmentSegment.start_date,
+            PriceAdjustmentSegment.end_date,
+            PriceAdjustmentSegment.adjust_a,
+            PriceAdjustmentSegment.adjust_b,
+            PriceAdjustmentSegment.status,
+            PriceAdjustmentSegment.payload_json,
+            PriceAdjustmentSegment.generated_at,
+            PriceAdjustmentSegment.updated_at,
+            PriceAdjustmentSegment.action_provider_id,
+            DataProvider.provider_key.label("segment_provider_key"),
+        )
+        .join(Instrument, Instrument.id == PriceAdjustmentSegment.instrument_id)
+        .join(DataProvider, DataProvider.id == PriceAdjustmentSegment.provider_id)
+        .order_by(
+            PriceAdjustmentSegment.updated_at.desc().nullslast(),
+            PriceAdjustmentSegment.start_date.desc(),
+            Instrument.symbol,
+        )
+        .limit(limit)
+    )
+    if provider_key and provider_key.strip() and provider_key.strip().lower() != "all":
+        statement = statement.where(DataProvider.provider_key == provider_key.strip().lower())
+    if symbol and symbol.strip():
+        normalized_symbol = symbol.strip().upper()
+        statement = statement.where(Instrument.symbol == normalized_symbol)
+
+    rows = session.execute(statement).all()
+    action_provider_names: dict[int, str] = {}
+    action_provider_ids = sorted({int(row.action_provider_id) for row in rows if row.action_provider_id is not None})
+    if action_provider_ids:
+        action_provider_rows = session.execute(
+            select(DataProvider.id, DataProvider.provider_name)
+            .where(DataProvider.id.in_(action_provider_ids))
+        ).all()
+        action_provider_names = {int(row.id): str(row.provider_name) for row in action_provider_rows}
+
+    return [
+        {
+            "segment_id": row.id,
+            "provider_key": row.provider_key,
+            "provider_name": row.provider_name,
+            "instrument_symbol": row.instrument_symbol,
+            "instrument_name": row.instrument_name or row.instrument_symbol,
+            "adjustment_kind": row.adjustment_kind,
+            "start_date": str(row.start_date or ""),
+            "end_date": str(row.end_date or ""),
+            "adjust_a": float(row.adjust_a or 0.0),
+            "adjust_b": float(row.adjust_b or 0.0),
+            "status": row.status,
+            "payload_json": dict(row.payload_json or {}),
+            "action_provider_name": action_provider_names.get(int(row.action_provider_id)) if row.action_provider_id is not None else "",
+            "generated_at": _format_timestamp(row.generated_at),
+            "updated_at": _format_timestamp(row.updated_at),
+        }
+        for row in rows
+    ]
+
+
 def get_market_data_stats(session: Session) -> dict[str, object]:
     instrument_count = int(session.scalar(select(func.count(Instrument.id))) or 0)
     total_bars = int(session.scalar(select(func.count(PriceBar.id))) or 0)

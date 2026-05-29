@@ -34,6 +34,8 @@ http://127.0.0.1:8000/docs
 - `GET /api/market-data/coverages`
 - `GET /api/market-data/stats`
 - `GET /api/market-data/provider-series`
+- `GET /api/market-data/corporate-actions`
+- `GET /api/market-data/adjustment-segments`
 - `GET /api/market-data/ingestion-jobs/{job_id}`
 - `GET /api/market-data/bars`
 - `GET /api/market-data/sync-runs`
@@ -55,6 +57,33 @@ http://127.0.0.1:8000/docs
 - 标的与映射信息：`instrument_symbol / instrument_name / source_symbol / market / exchange`
 - 序列口径：`interval / adjustment_kind / session_type / price_type / bar_type / currency / timezone`
 - 序列状态：`bar_count / first_bar_time / last_bar_time / last_ingested_at / is_active`
+
+`GET /api/market-data/corporate-actions` 用于直接检查 `corporate_action_events` 中的实施事件，默认按 `ex_date` 倒序返回最近 100 条，也支持：
+
+- `provider`：可选；当前主要是 `tushare`，传 `all` 或留空表示不过滤。
+- `symbol`：可选；支持按统一标的代码或源代码过滤，例如 `sh600000`。
+- `limit`：可选；限制返回条数。
+
+返回项当前包含：
+
+- 事件主键与 provider 信息：`event_id / provider_key / provider_name`
+- 标的与源代码：`instrument_symbol / instrument_name / source_symbol`
+- 事件口径：`action_type / announce_date / record_date / ex_date / pay_date / end_date`
+- 数值字段：`cash_dividend / stock_bonus_ratio / stock_conversion_ratio / rights_ratio / rights_price`
+- 状态字段：`status / ingested_at / updated_at`
+
+`GET /api/market-data/adjustment-segments` 用于直接检查 `price_adjustment_segments` 中的前复权公式区间，默认按最近更新时间倒序返回最近 100 条，也支持：
+
+- `provider`：可选；当前主要是 `tdx_qfq`，传 `all` 或留空表示不过滤。
+- `symbol`：可选；按统一标的代码过滤，例如 `sh600000`。
+- `limit`：可选；限制返回条数。
+
+返回项当前包含：
+
+- 区间主键与 provider 信息：`segment_id / provider_key / provider_name`
+- 标的与口径：`instrument_symbol / instrument_name / adjustment_kind`
+- 公式区间：`start_date / end_date / adjust_a / adjust_b / status`
+- 来源与审计字段：`action_provider_name / payload_json / generated_at / updated_at`
 
 `GET /api/market-data/ingestion-jobs/{job_id}` 返回单个统一导入任务的完整详情，包含：
 

@@ -188,6 +188,53 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(response.json()[0]["series_id"], 11)
         mock_series.assert_called_once_with(provider_key="tdx", limit=20)
 
+    def test_web_api_market_data_corporate_actions_route(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.fetch_corporate_actions",
+            return_value=[
+                {
+                    "event_id": 21,
+                    "provider_key": "tushare",
+                    "instrument_symbol": "SH600000",
+                    "ex_date": "2026-05-29",
+                    "cash_dividend": 0.5,
+                }
+            ],
+        ) as mock_actions:
+            response = client.get("/api/market-data/corporate-actions?provider=tushare&symbol=sh600000&limit=20")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]["event_id"], 21)
+        self.assertEqual(response.json()[0]["provider_key"], "tushare")
+        mock_actions.assert_called_once_with(provider_key="tushare", symbol="sh600000", limit=20)
+
+    def test_web_api_market_data_adjustment_segments_route(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.fetch_adjustment_segments",
+            return_value=[
+                {
+                    "segment_id": 31,
+                    "provider_key": "tdx_qfq",
+                    "instrument_symbol": "SH600000",
+                    "start_date": "2026-05-01",
+                    "end_date": "2026-05-29",
+                    "adjust_a": 0.91,
+                }
+            ],
+        ) as mock_segments:
+            response = client.get("/api/market-data/adjustment-segments?provider=tdx_qfq&symbol=sh600000&limit=20")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]["segment_id"], 31)
+        self.assertEqual(response.json()[0]["provider_key"], "tdx_qfq")
+        mock_segments.assert_called_once_with(provider_key="tdx_qfq", symbol="sh600000", limit=20)
+
     def test_web_api_market_data_sync_route_passes_provider_specific_fields(self) -> None:
         app = create_app()
         client = TestClient(app)

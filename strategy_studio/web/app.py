@@ -18,6 +18,8 @@ from strategy_studio.services.backtests import (
     submit_backtest,
 )
 from strategy_studio.services.market_data import (
+    fetch_adjustment_segments,
+    fetch_corporate_actions,
     fetch_ingestion_job_detail,
     fetch_instrument_coverages,
     fetch_instruments,
@@ -103,6 +105,14 @@ def create_app() -> FastAPI:
     @app.get("/api/market-data/provider-series")
     def get_provider_series(provider: str | None = None, limit: int = 100) -> list[dict[str, object]]:
         return fetch_provider_series(provider_key=provider, limit=limit)
+
+    @app.get("/api/market-data/corporate-actions")
+    def get_corporate_actions(provider: str | None = None, symbol: str | None = None, limit: int = 100) -> list[dict[str, object]]:
+        return fetch_corporate_actions(provider_key=provider, symbol=symbol, limit=limit)
+
+    @app.get("/api/market-data/adjustment-segments")
+    def get_adjustment_segments(provider: str | None = None, symbol: str | None = None, limit: int = 100) -> list[dict[str, object]]:
+        return fetch_adjustment_segments(provider_key=provider, symbol=symbol, limit=limit)
 
     @app.get("/api/market-data/ingestion-jobs/{job_id}")
     def get_ingestion_job(job_id: int) -> dict[str, object]:

@@ -96,6 +96,47 @@ export type MarketDataSeriesRow = {
   is_active: boolean;
 };
 
+export type MarketDataCorporateActionRow = {
+  event_id: number;
+  provider_key: string;
+  provider_name: string;
+  instrument_symbol: string;
+  instrument_name: string;
+  source_symbol: string;
+  action_type: string;
+  announce_date: string;
+  record_date: string;
+  ex_date: string;
+  pay_date: string;
+  end_date: string;
+  cash_dividend: number;
+  stock_bonus_ratio: number;
+  stock_conversion_ratio: number;
+  rights_ratio: number;
+  rights_price: number;
+  status: string;
+  ingested_at: string;
+  updated_at: string;
+};
+
+export type MarketDataAdjustmentSegmentRow = {
+  segment_id: number;
+  provider_key: string;
+  provider_name: string;
+  instrument_symbol: string;
+  instrument_name: string;
+  adjustment_kind: string;
+  start_date: string;
+  end_date: string;
+  adjust_a: number;
+  adjust_b: number;
+  status: string;
+  payload_json: Record<string, unknown>;
+  action_provider_name: string;
+  generated_at: string;
+  updated_at: string;
+};
+
 export type MarketDataStats = {
   instrument_count: number;
   total_bars: number;
