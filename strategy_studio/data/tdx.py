@@ -1,28 +1,30 @@
 from __future__ import annotations
 
-"""通达信日线解析与增量签名。
+"""通达信日线/分钟线解析与增量签名。
 
-这里先迁入当前子任务必须的最小集合：
+当前仓库需要直接消费本地 `vipdoc` 二进制文件，并把不同周期统一写入
+`market_data_series / market_data_bars`。这里提供：
 
-- `.day` 二进制解析
-- 证券类型识别与价格/成交量缩放
-- 标准化为统一列
-- 文件签名、尾部 hash 与安全增量判断
-
-分钟线和更完整的批量导入编排会在后续子任务继续扩展。
+- `.day` 日线解析
+- `.lc1/.1` 1 分钟线解析
+- `.lc5/.5` 5 分钟线解析
+- 统一标准化列
+- 基于 record size 的通用 manifest 增量判断
 """
 
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path
+import struct
 
 import numpy as np
 import pandas as pd
 
 
 DAY_RECORD_SIZE = 32
+MINUTE_RECORD_SIZE = 32
 OVERLAP_ROWS = 5
-TDX_DAY_COLUMNS = [
+TDX_COLUMNS = [
     "market",
     "symbol",
     "period",
@@ -36,6 +38,21 @@ TDX_DAY_COLUMNS = [
     "source_file",
     "source_mtime",
 ]
+TDX_INTERVAL_SUFFIXES = {
+    "1d": {".day"},
+    "1m": {".lc1", ".1"},
+    "5m": {".lc5", ".5"},
+}
+TDX_INTERVAL_PERIODS = {
+    "1d": "day",
+    "1m": "min1",
+    "5m": "min5",
+}
+TDX_FILE_KINDS = {
+    "1d": "tdx_day",
+    "1m": "tdx_min1",
+    "5m": "tdx_min5",
+}
 DAY_DTYPE = np.dtype(
     [
         ("date", "<u4"),
@@ -60,15 +77,70 @@ class SecurityTypeInfo:
     volume_scale: float
 
 
-def iter_tdx_day_files(vipdoc: Path, symbol: str | None = None, limit: int | None = None) -> list[Path]:
-    """枚举通达信 `.day` 文件。"""
-    files = sorted(path for path in vipdoc.rglob("*.day") if path.is_file())
+def interval_to_period(interval: str) -> str:
+    normalized_interval = interval.strip().lower()
+    if normalized_interval not in TDX_INTERVAL_PERIODS:
+        raise ValueError(f"当前通达信导入只支持 1d、1m、5m，收到：{interval}")
+    return TDX_INTERVAL_PERIODS[normalized_interval]
+
+
+def file_kind_for_interval(interval: str) -> str:
+    normalized_interval = interval.strip().lower()
+    if normalized_interval not in TDX_FILE_KINDS:
+        raise ValueError(f"当前通达信导入只支持 1d、1m、5m，收到：{interval}")
+    return TDX_FILE_KINDS[normalized_interval]
+
+
+def suffixes_for_interval(interval: str) -> set[str]:
+    normalized_interval = interval.strip().lower()
+    if normalized_interval not in TDX_INTERVAL_SUFFIXES:
+        raise ValueError(f"当前通达信导入只支持 1d、1m、5m，收到：{interval}")
+    return set(TDX_INTERVAL_SUFFIXES[normalized_interval])
+
+
+def detect_period_from_suffix(suffix: str) -> str | None:
+    normalized_suffix = suffix.strip().lower()
+    for interval, suffixes in TDX_INTERVAL_SUFFIXES.items():
+        if normalized_suffix in suffixes:
+            return TDX_INTERVAL_PERIODS[interval]
+    return None
+
+
+def record_size_for_interval(interval: str) -> int:
+    return DAY_RECORD_SIZE if interval.strip().lower() == "1d" else MINUTE_RECORD_SIZE
+
+
+def record_size_for_suffix(suffix: str) -> int:
+    period = detect_period_from_suffix(suffix)
+    if period == "day":
+        return DAY_RECORD_SIZE
+    if period in {"min1", "min5"}:
+        return MINUTE_RECORD_SIZE
+    raise ValueError(f"未支持的通达信文件后缀：{suffix}")
+
+
+def iter_tdx_files(vipdoc: Path, interval: str, symbol: str | None = None, limit: int | None = None) -> list[Path]:
+    """按 interval 枚举通达信源文件。"""
+    wanted_suffixes = suffixes_for_interval(interval)
+    files = sorted(
+        (
+            path
+            for path in vipdoc.rglob("*")
+            if path.is_file() and path.suffix.lower() in wanted_suffixes
+        ),
+        key=lambda path: path.as_posix().lower(),
+    )
     if symbol:
         normalized = symbol.strip().lower()
         files = [path for path in files if path.stem.lower() == normalized]
     if limit is not None:
         files = files[:limit]
     return files
+
+
+def iter_tdx_day_files(vipdoc: Path, symbol: str | None = None, limit: int | None = None) -> list[Path]:
+    """兼容旧调用方：枚举 `.day` 文件。"""
+    return iter_tdx_files(vipdoc, interval="1d", symbol=symbol, limit=limit)
 
 
 def detect_security_type(source_file: Path, vipdoc: Path | None = None) -> SecurityTypeInfo:
@@ -136,6 +208,25 @@ def read_day_frame_tail(source_file: Path, start_offset: int, vipdoc: Path | Non
     return parse_day_records(raw, detect_security_type(source_file, vipdoc))
 
 
+def read_minute_frame(source_file: Path) -> pd.DataFrame:
+    raw = source_file.read_bytes()
+    if len(raw) % MINUTE_RECORD_SIZE != 0:
+        raise ValueError(f"分钟线文件大小不是 {MINUTE_RECORD_SIZE} 字节整数倍，可能仍在写入：{source_file}")
+    return parse_minute_records(raw, source_file.suffix.lower())
+
+
+def read_minute_frame_tail(source_file: Path, start_offset: int) -> pd.DataFrame:
+    """按 32 字节边界读取分钟线尾部，用于安全增量追加。"""
+    if start_offset < 0 or start_offset % MINUTE_RECORD_SIZE != 0:
+        raise ValueError(f"分钟线增量读取偏移必须按 {MINUTE_RECORD_SIZE} 字节对齐：{start_offset}")
+    with source_file.open("rb") as file:
+        file.seek(start_offset)
+        raw = file.read()
+    if len(raw) % MINUTE_RECORD_SIZE != 0:
+        raise ValueError(f"分钟线尾部大小不是 {MINUTE_RECORD_SIZE} 字节整数倍，可能仍在写入：{source_file}")
+    return parse_minute_records(raw, source_file.suffix.lower())
+
+
 def parse_day_records(raw: bytes, security: SecurityTypeInfo) -> pd.DataFrame:
     """使用 NumPy 结构化视图批量解析 `.day`。"""
     if not raw:
@@ -156,30 +247,150 @@ def parse_day_records(raw: bytes, security: SecurityTypeInfo) -> pd.DataFrame:
     return frame
 
 
+def parse_minute_records(raw: bytes, suffix: str) -> pd.DataFrame:
+    """解析 `.lc1/.lc5/.1/.5` 分钟线原始记录。"""
+    normalized_suffix = suffix.strip().lower()
+    if normalized_suffix in {".lc1", ".lc5"}:
+        return _parse_lc_minute_records(raw)
+    if normalized_suffix in {".1", ".5"}:
+        return _parse_legacy_minute_records(raw)
+    raise ValueError(f"未支持的分钟线后缀：{suffix}")
+
+
+def _parse_lc_minute_records(raw: bytes) -> pd.DataFrame:
+    datetimes: list[str] = []
+    opens: list[float] = []
+    highs: list[float] = []
+    lows: list[float] = []
+    closes: list[float] = []
+    amounts: list[float] = []
+    volumes: list[int] = []
+    for offset in range(0, len(raw), MINUTE_RECORD_SIZE):
+        date_code, time_code, open_, high, low, close, amount, volume, _reserved = struct.unpack(
+            "<HHfffffII",
+            raw[offset : offset + MINUTE_RECORD_SIZE],
+        )
+        datetimes.append(_format_minute_datetime(date_code, time_code))
+        opens.append(float(open_))
+        highs.append(float(high))
+        lows.append(float(low))
+        closes.append(float(close))
+        amounts.append(float(amount))
+        volumes.append(int(volume))
+    return _build_minute_frame(datetimes, opens, highs, lows, closes, amounts, volumes)
+
+
+def _parse_legacy_minute_records(raw: bytes) -> pd.DataFrame:
+    datetimes: list[str] = []
+    opens: list[float] = []
+    highs: list[float] = []
+    lows: list[float] = []
+    closes: list[float] = []
+    amounts: list[float] = []
+    volumes: list[int] = []
+    for offset in range(0, len(raw), MINUTE_RECORD_SIZE):
+        date_code, time_code, open_, high, low, close, amount, volume, _reserved = struct.unpack(
+            "<HHIIIIfII",
+            raw[offset : offset + MINUTE_RECORD_SIZE],
+        )
+        datetimes.append(_format_minute_datetime(date_code, time_code))
+        opens.append(open_ / 100)
+        highs.append(high / 100)
+        lows.append(low / 100)
+        closes.append(close / 100)
+        amounts.append(float(amount))
+        volumes.append(int(volume))
+    return _build_minute_frame(datetimes, opens, highs, lows, closes, amounts, volumes)
+
+
+def _build_minute_frame(
+    datetimes: list[str],
+    opens: list[float],
+    highs: list[float],
+    lows: list[float],
+    closes: list[float],
+    amounts: list[float],
+    volumes: list[int],
+) -> pd.DataFrame:
+    if not datetimes:
+        return pd.DataFrame(columns=["open", "high", "low", "close", "amount", "volume"])
+    frame = pd.DataFrame(
+        {
+            "open": opens,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "amount": amounts,
+            "volume": volumes,
+        }
+    )
+    frame.index = pd.to_datetime(datetimes, format="%Y-%m-%d %H:%M:%S", errors="coerce")
+    frame.index.name = "date"
+    return frame
+
+
+def _format_minute_datetime(date_code: int, time_code: int) -> str:
+    year = date_code // 2048 + 2004
+    month = (date_code % 2048) // 100
+    day = (date_code % 2048) % 100
+    hour = time_code // 60
+    minute = time_code % 60
+    return f"{year:04d}-{month:02d}-{day:02d} {hour:02d}:{minute:02d}:00"
+
+
 def normalize_day_frame(frame: pd.DataFrame, source_file: Path, vipdoc: Path) -> pd.DataFrame:
     """收敛为统一列顺序，便于直接落入当前仓库的统一序列表。"""
+    return _normalize_tdx_frame(frame, source_file, vipdoc, period="day", datetime_format="%Y-%m-%d")
+
+
+def normalize_minute_frame(frame: pd.DataFrame, source_file: Path, vipdoc: Path, interval: str) -> pd.DataFrame:
+    """把分钟线规整到与日线相同的统一列。"""
+    return _normalize_tdx_frame(
+        frame,
+        source_file,
+        vipdoc,
+        period=interval_to_period(interval),
+        datetime_format="%Y-%m-%d %H:%M:%S",
+    )
+
+
+def _normalize_tdx_frame(
+    frame: pd.DataFrame,
+    source_file: Path,
+    vipdoc: Path,
+    *,
+    period: str,
+    datetime_format: str,
+) -> pd.DataFrame:
     data = frame.reset_index()
     data = data.rename(columns={data.columns[0]: "datetime"})
-    data["datetime"] = data["datetime"].astype(str).str[:10]
+    data["datetime"] = pd.to_datetime(data["datetime"], errors="coerce").dt.strftime(datetime_format)
     data["market"] = infer_market_from_path(source_file, vipdoc)
     data["symbol"] = source_file.stem.lower()
-    data["period"] = "day"
+    data["period"] = period
     data["source_file"] = source_file.relative_to(vipdoc).as_posix()
     data["source_mtime"] = source_file.stat().st_mtime
-    return data[TDX_DAY_COLUMNS]
+    return data[TDX_COLUMNS]
 
 
 def build_day_file_signature(source_file: Path) -> dict[str, object]:
+    return build_tdx_file_signature(source_file, interval="1d")
+
+
+def build_tdx_file_signature(source_file: Path, interval: str | None = None) -> dict[str, object]:
     stat = source_file.stat()
-    record_count = stat.st_size // DAY_RECORD_SIZE
+    record_size = record_size_for_interval(interval) if interval is not None else record_size_for_suffix(source_file.suffix)
+    record_count = stat.st_size // record_size
+    period = interval_to_period(interval) if interval is not None else detect_period_from_suffix(source_file.suffix)
     return {
         "source_size": stat.st_size,
         "source_mtime": stat.st_mtime,
-        "record_size": DAY_RECORD_SIZE,
+        "record_size": record_size,
         "record_count": record_count,
         "tail_hash_rows": min(record_count, OVERLAP_ROWS),
-        "tail_hash": build_tail_hash(source_file, min(record_count, OVERLAP_ROWS)),
-        "size_aligned": stat.st_size % DAY_RECORD_SIZE == 0,
+        "tail_hash": build_tail_hash(source_file, min(record_count, OVERLAP_ROWS), record_size=record_size),
+        "size_aligned": stat.st_size % record_size == 0,
+        "period": period or "",
     }
 
 
@@ -208,8 +419,11 @@ def manifest_is_unchanged(previous: object | None, signature: dict[str, object])
         return False
     if signature.get("size_aligned") is not True:
         return False
+    previous_record_size = _manifest_int(previous, "record_size")
+    current_record_size = int(signature["record_size"])
     return (
-        _manifest_int(previous, "source_size") == int(signature["source_size"])
+        (previous_record_size in {0, current_record_size})
+        and _manifest_int(previous, "source_size") == int(signature["source_size"])
         and _manifest_float(previous, "source_mtime") == float(signature["source_mtime"])
         and _manifest_int(previous, "record_count") == int(signature["record_count"])
         and _manifest_str(previous, "tail_hash") == str(signature["tail_hash"] or "")
@@ -222,17 +436,20 @@ def manifest_can_append(previous: object | None, signature: dict[str, object], s
         return False
     if signature.get("size_aligned") is not True:
         return False
+    record_size = int(signature.get("record_size") or DAY_RECORD_SIZE)
     previous_size = _manifest_int(previous, "source_size")
     current_size = int(signature["source_size"])
     previous_rows = _manifest_int(previous, "record_count")
     current_rows = int(signature["record_count"])
-    if previous_size <= 0 or current_size <= previous_size or previous_rows <= 0 or current_rows <= previous_rows:
+    if previous_size <= 0 or previous_size % record_size != 0:
+        return False
+    if current_size <= previous_size or previous_rows <= 0 or current_rows <= previous_rows:
         return False
     tail_rows = min(previous_rows, OVERLAP_ROWS)
     previous_hash = _manifest_str(previous, "tail_hash")
     if not previous_hash:
         return False
-    return build_tail_hash(source_file, tail_rows, size_limit=previous_size) == previous_hash
+    return build_tail_hash(source_file, tail_rows, size_limit=previous_size, record_size=record_size) == previous_hash
 
 
 def security_type_to_asset_type(security: SecurityTypeInfo) -> str:

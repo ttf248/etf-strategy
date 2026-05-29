@@ -27,6 +27,7 @@ class PlatformFeatureTests(unittest.TestCase):
         init_args = parser.parse_args(["init-db"])
         check_db_args = parser.parse_args(["check-db", "--json"])
         sync_args = parser.parse_args(["sync-now", "--provider", "tdx", "--symbol", "sh600000", "--interval", "1d", "--force", "--limit", "3"])
+        sync_minute_args = parser.parse_args(["sync-now", "--provider", "tdx", "--symbol", "sh600000", "--interval", "1m", "--limit", "1"])
         yahoo_set_args = parser.parse_args(["sync-now", "--provider", "yahoo", "--symbol-set", "yahoo_global_active_100", "--interval", "15m", "--limit", "100"])
         tushare_args = parser.parse_args(["sync-now", "--provider", "tushare", "--symbol", "600000.SH", "--limit", "2"])
         qfq_args = parser.parse_args(["sync-now", "--provider", "tdx_qfq", "--symbol", "sh600000", "--interval", "1d", "--limit", "2"])
@@ -42,6 +43,9 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(sync_args.symbol, "sh600000")
         self.assertTrue(sync_args.force)
         self.assertEqual(sync_args.limit, 3)
+        self.assertEqual(sync_minute_args.provider, "tdx")
+        self.assertEqual(sync_minute_args.interval, "1m")
+        self.assertEqual(sync_minute_args.limit, 1)
         self.assertEqual(yahoo_set_args.provider, "yahoo")
         self.assertEqual(yahoo_set_args.symbol_set, "yahoo_global_active_100")
         self.assertEqual(yahoo_set_args.limit, 100)
@@ -148,6 +152,39 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=True,
             limit=2,
+        )
+
+    def test_web_api_market_data_sync_route_supports_tdx_minute_interval(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.sync_market_data",
+            return_value={"provider": "tdx", "ingestion_job_id": 5, "symbols_count": 1, "bars_inserted": 480, "bars_updated": 12, "status": "succeeded"},
+        ) as mock_sync:
+            response = client.post(
+                "/api/market-data/sync",
+                json={
+                    "provider": "tdx",
+                    "symbol": "sh600000",
+                    "interval": "5m",
+                    "vipdoc_path": "G:/new_tdx64/vipdoc",
+                    "limit": 1,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["provider"], "tdx")
+        mock_sync.assert_called_once_with(
+            symbol="sh600000",
+            symbol_set=None,
+            interval="5m",
+            proxy=None,
+            period=None,
+            provider="tdx",
+            vipdoc_path="G:/new_tdx64/vipdoc",
+            force=False,
+            limit=1,
         )
 
     def test_web_api_market_data_sync_route_supports_tushare_provider(self) -> None:
@@ -615,6 +652,30 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=True,
             limit=5,
+        )
+
+    def test_sync_market_data_dispatches_tdx_minute_provider(self) -> None:
+        with patch(
+            "strategy_studio.services.sync._sync_tdx_market_data",
+            return_value={"provider": "tdx", "ingestion_job_id": 10, "symbols_count": 1, "bars_inserted": 480, "bars_updated": 0, "status": "succeeded"},
+        ) as mock_tdx:
+            result = sync_market_data(
+                symbol="sh600000",
+                interval="5m",
+                proxy=None,
+                provider="tdx",
+                vipdoc_path="G:/new_tdx64/vipdoc",
+                force=False,
+                limit=1,
+            )
+
+        self.assertEqual(result["provider"], "tdx")
+        mock_tdx.assert_called_once_with(
+            symbol="sh600000",
+            interval="5m",
+            vipdoc_path="G:/new_tdx64/vipdoc",
+            force=False,
+            limit=1,
         )
 
     def test_sync_market_data_dispatches_tushare_provider(self) -> None:

@@ -69,7 +69,7 @@ py -3.13 main.py sync-now --provider tushare --symbol sh600000
 py -3.13 main.py sync-now --provider tdx_qfq --symbol sh600000 --interval 1d
 ```
 
-`check-db` 会先验证 PostgreSQL 是否可达、目标业务库是否存在，以及 Alembic 是否已经迁移到代码头版本。`init-db` 会创建项目数据库并执行 Alembic 迁移。当前标准流程建议直接使用 `sync-now` 从 Yahoo 同步首批行情到 PostgreSQL；如需为沪深标的准备前复权基础事件与复权日线，可依次执行 `provider=tdx`、`provider=tushare`、`provider=tdx_qfq`。CLI 与平台默认都以数据库作为唯一正式数据入口。
+`check-db` 会先验证 PostgreSQL 是否可达、目标业务库是否存在，以及 Alembic 是否已经迁移到代码头版本。`init-db` 会创建项目数据库并执行 Alembic 迁移。当前标准流程建议直接使用 `sync-now` 从 Yahoo 同步首批行情到 PostgreSQL；如需为沪深标的准备原始 `1d / 1m / 5m`、前复权基础事件与复权日线，可依次执行 `provider=tdx`、`provider=tushare`、`provider=tdx_qfq`。CLI 与平台默认都以数据库作为唯一正式数据入口。
 
 ## 启动后端
 

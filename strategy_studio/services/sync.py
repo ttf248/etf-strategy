@@ -11,16 +11,22 @@ from sqlalchemy import select
 
 from strategy_studio.data.qfq import apply_qfq_segment_frame, build_qfq_segment_frame
 from strategy_studio.data.tdx import (
-    DAY_RECORD_SIZE,
-    build_day_file_signature,
+    OVERLAP_ROWS,
+    build_tdx_file_signature,
     detect_security_type,
-    iter_tdx_day_files,
+    file_kind_for_interval,
+    interval_to_period,
+    iter_tdx_files,
     manifest_can_append,
     manifest_is_unchanged,
     normalize_day_frame,
+    normalize_minute_frame,
     read_day_frame,
     read_day_frame_tail,
+    read_minute_frame,
+    read_minute_frame_tail,
     security_type_to_asset_type,
+    suffixes_for_interval,
 )
 from strategy_studio.data.tushare import (
     DIVIDEND_FIELDS,
@@ -71,7 +77,7 @@ def sync_market_data(
     """按 provider 分发行情同步。
 
     - `yahoo`：下载 Yahoo 行情，兼容旧 `price_bars` 并同步写入新主干表。
-    - `tdx`：导入通达信原始 `.day` 日线，写入统一序列表与文件 manifest。
+    - `tdx`：导入通达信原始 `1d / 1m / 5m` 文件，写入统一序列表与文件 manifest。
     - `tushare`：抓取 Tushare dividend 实施事件，写入 `corporate_action_events`。
     - `tdx_qfq`：基于通达信原始日线和 Tushare 公司行动重建前复权日线。
     """
@@ -305,15 +311,19 @@ def _sync_tdx_market_data(
     force: bool,
     limit: int | None,
 ) -> dict[str, object]:
-    if interval != "1d":
-        raise ValueError("当前通达信导入只支持 1d 原始日线。")
+    tdx_period = interval_to_period(interval)
+    file_kind = file_kind_for_interval(interval)
     vipdoc = _resolve_tdx_vipdoc_path(vipdoc_path)
     if not vipdoc.exists():
         raise FileNotFoundError(f"通达信 vipdoc 目录不存在：{vipdoc}")
 
-    source_files = iter_tdx_day_files(vipdoc, symbol=symbol, limit=limit)
+    source_files = iter_tdx_files(vipdoc, interval=interval, symbol=symbol, limit=limit)
     if not source_files:
-        raise ValueError(f"在 vipdoc 中没有找到可导入的 .day 文件：vipdoc={vipdoc} symbol={symbol or 'ALL'}")
+        suffixes = ",".join(sorted(suffixes_for_interval(interval)))
+        raise ValueError(
+            f"在 vipdoc 中没有找到可导入的通达信 {interval} 文件："
+            f"vipdoc={vipdoc} symbol={symbol or 'ALL'} suffixes={suffixes}"
+        )
 
     with open_session() as session:
         provider = ensure_data_provider(
@@ -323,7 +333,7 @@ def _sync_tdx_market_data(
             provider_type="market_data",
             transport="filesystem",
             timezone="Asia/Shanghai",
-            config_json={"supports_intervals": ["1d"], "vipdoc_path": str(vipdoc)},
+            config_json={"supports_intervals": ["1d", "1m", "5m"], "vipdoc_path": str(vipdoc)},
             status="active",
         )
         ingestion_job = create_data_ingestion_job(
@@ -359,7 +369,7 @@ def _sync_tdx_market_data(
             )
             session.commit()
             try:
-                signature = build_day_file_signature(source_file)
+                signature = build_tdx_file_signature(source_file, interval=interval)
                 previous = get_source_file_manifest(session, provider, relative_path)
                 if not force and manifest_is_unchanged(previous, signature):
                     item.status = "skipped"
@@ -377,16 +387,17 @@ def _sync_tdx_market_data(
                 security = detect_security_type(source_file, vipdoc)
                 if not force and manifest_can_append(previous, signature, source_file):
                     previous_rows = int(previous.record_count if previous is not None else 0)
-                    overlap_start = max(previous_rows - 5, 0)
-                    start_offset = overlap_start * DAY_RECORD_SIZE
-                    raw_frame = read_day_frame_tail(source_file, start_offset, vipdoc)
+                    overlap_start = max(previous_rows - OVERLAP_ROWS, 0)
+                    record_size = int(signature["record_size"])
+                    start_offset = overlap_start * record_size
+                    raw_frame = _read_tdx_frame_tail(source_file, vipdoc, interval, start_offset)
                     mode = "append"
                 else:
-                    raw_frame = read_day_frame(source_file, vipdoc)
+                    raw_frame = _read_tdx_frame(source_file, vipdoc, interval)
                     mode = "rebuild"
-                normalized = normalize_day_frame(raw_frame, source_file, vipdoc)
+                normalized = _normalize_tdx_frame(raw_frame, source_file, vipdoc, interval)
                 if previous is not None and previous.last_bar_time is not None and mode == "append":
-                    cutoff = str(previous.last_bar_time)[:10]
+                    cutoff = _format_manifest_bar_time(previous.last_bar_time, interval)
                     normalized = normalized[normalized["datetime"] >= cutoff]
                     normalized = normalized.drop_duplicates(subset=["datetime"], keep="last").reset_index(drop=True)
                 if normalized.empty and mode == "append":
@@ -401,7 +412,7 @@ def _sync_tdx_market_data(
                         session,
                         provider,
                         source_path=relative_path,
-                        file_kind="tdx_day",
+                        file_kind=file_kind,
                         market=security.market.upper(),
                         interval=interval,
                         source_size=int(signature["source_size"]),
@@ -410,7 +421,12 @@ def _sync_tdx_market_data(
                         tail_hash=str(signature["tail_hash"] or ""),
                         status="success",
                         last_bar_time=previous.last_bar_time if previous is not None else None,
-                        payload_json={"mode": mode, "security_type": security.security_type},
+                        payload_json={
+                            "mode": mode,
+                            "period": tdx_period,
+                            "security_type": security.security_type,
+                            "source_suffix": source_file.suffix.lower(),
+                        },
                     )
                     ingestion_job.targets_completed += 1
                     skipped_files += 1
@@ -467,7 +483,7 @@ def _sync_tdx_market_data(
                     session,
                     provider,
                     source_path=relative_path,
-                    file_kind="tdx_day",
+                    file_kind=file_kind,
                     market=security.market.upper(),
                     interval=interval,
                     source_size=int(signature["source_size"]),
@@ -480,9 +496,11 @@ def _sync_tdx_market_data(
                     series_id=series.id,
                     payload_json={
                         "mode": mode,
+                        "period": tdx_period,
                         "security_type": security.security_type,
-                        "price_scale": security.price_scale,
-                        "volume_scale": security.volume_scale,
+                        "source_suffix": source_file.suffix.lower(),
+                        "price_scale": security.price_scale if interval == "1d" else None,
+                        "volume_scale": security.volume_scale if interval == "1d" else None,
                     },
                 )
                 item.status = "succeeded"
@@ -496,6 +514,7 @@ def _sync_tdx_market_data(
                     "mode": mode,
                     "source_path": relative_path,
                     "record_count": int(signature["record_count"]),
+                    "period": tdx_period,
                     "security_type": security.security_type,
                 }
                 ingestion_job.targets_completed += 1
@@ -536,16 +555,16 @@ def _sync_tdx_market_data(
         if failed_files == len(source_files):
             ingestion_job.status = "failed"
             ingestion_job.error_message = (
-                f"本次通达信原始日线导入全部失败。首个错误：{first_error_message}"
+                f"本次通达信原始 {interval} 导入全部失败。首个错误：{first_error_message}"
                 if first_error_message
-                else "本次通达信原始日线导入全部失败。"
+                else f"本次通达信原始 {interval} 导入全部失败。"
             )
         elif failed_files:
             ingestion_job.status = "partially_failed"
             ingestion_job.error_message = (
-                f"本次通达信原始日线导入有 {failed_files} 个文件失败。首个错误：{first_error_message}"
+                f"本次通达信原始 {interval} 导入有 {failed_files} 个文件失败。首个错误：{first_error_message}"
                 if first_error_message
-                else f"本次通达信原始日线导入有 {failed_files} 个文件失败。"
+                else f"本次通达信原始 {interval} 导入有 {failed_files} 个文件失败。"
             )
         else:
             ingestion_job.status = "succeeded"
@@ -567,6 +586,37 @@ def _sync_tdx_market_data(
             "status": ingestion_job.status,
             "vipdoc_path": str(vipdoc),
         }
+
+
+def _read_tdx_frame(source_file: Path, vipdoc: Path, interval: str) -> pd.DataFrame:
+    if interval == "1d":
+        return read_day_frame(source_file, vipdoc)
+    if interval in {"1m", "5m"}:
+        return read_minute_frame(source_file)
+    raise ValueError(f"当前通达信导入只支持 1d、1m、5m，收到：{interval}")
+
+
+def _read_tdx_frame_tail(source_file: Path, vipdoc: Path, interval: str, start_offset: int) -> pd.DataFrame:
+    if interval == "1d":
+        return read_day_frame_tail(source_file, start_offset, vipdoc)
+    if interval in {"1m", "5m"}:
+        return read_minute_frame_tail(source_file, start_offset)
+    raise ValueError(f"当前通达信导入只支持 1d、1m、5m，收到：{interval}")
+
+
+def _normalize_tdx_frame(frame: pd.DataFrame, source_file: Path, vipdoc: Path, interval: str) -> pd.DataFrame:
+    if interval == "1d":
+        return normalize_day_frame(frame, source_file, vipdoc)
+    if interval in {"1m", "5m"}:
+        return normalize_minute_frame(frame, source_file, vipdoc, interval)
+    raise ValueError(f"当前通达信导入只支持 1d、1m、5m，收到：{interval}")
+
+
+def _format_manifest_bar_time(value: object, interval: str) -> str:
+    timestamp = pd.Timestamp(value)
+    if interval == "1d":
+        return timestamp.strftime("%Y-%m-%d")
+    return timestamp.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _sync_tushare_corporate_actions(

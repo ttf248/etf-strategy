@@ -6,7 +6,7 @@ Strategy Studio 是一个中文优先的开源策略研究平台，用于从 Yah
 
 ## 功能概览
 
-- 行情数据：Yahoo 在线同步、通达信原始日线导入、Tushare 公司行动抓取、通达信前复权日线重算、PostgreSQL 长期存储。
+- 行情数据：Yahoo 在线同步、通达信原始 `1d / 1m / 5m` 导入、Tushare 公司行动抓取、通达信前复权日线重算、PostgreSQL 长期存储。
 - 回测执行：API 入队，Worker 异步执行，报告结构化落库。
 - 参数模板：在数据库中管理策略、周期、执行口径和寻参空间。
 - 多策略研究：网格、定投、双均线趋势、MACD 趋势、唐奇安突破、放量突破、布林带均值回归、日线反弹、分钟反抽和指数回落网格共用同一套工作流。
@@ -73,7 +73,9 @@ py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1d --limit 100
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 15m --period 60d --limit 100
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1m --period 7d --limit 100
-py -3.13 main.py sync-now --provider tdx --interval 1d --limit 1
+py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 1d
+py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 1m
+py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 5m
 py -3.13 main.py sync-now --provider tushare --symbol sh600000
 py -3.13 main.py sync-now --provider tdx_qfq --symbol sh600000 --interval 1d
 ```
@@ -120,12 +122,14 @@ py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 15m --period 60d --limit 100
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1m --period 7d --limit 100
 py -3.13 main.py sync-now --provider tdx --interval 1d --symbol sh600000
+py -3.13 main.py sync-now --provider tdx --interval 1m --symbol sh600000
+py -3.13 main.py sync-now --provider tdx --interval 5m --symbol sh600000
 py -3.13 main.py sync-now --provider tushare --symbol sh600000
 py -3.13 main.py sync-now --provider tushare --limit 10
 py -3.13 main.py sync-now --provider tdx_qfq --symbol sh600000 --interval 1d
 ```
 
-提交平台回测建议优先通过前端或 API 入队，Worker 会异步执行并把结果写回数据库；如需补齐行情覆盖或公司行动，可直接使用 `sync-now` 或前端 `/market-data` 页面。当前 `provider=yahoo` 已支持通过 `--symbol-set yahoo_global_active_100` 导入内置 100 个全球高活跃样本，并分别同步 `1d / 15m / 1m`；前端 `/market-data` 的 Yahoo 批量按钮也会走同一套默认样本池。`provider=tdx`、`provider=tushare`、`provider=tdx_qfq` 则继续分别处理通达信原始日线、Tushare 公司行动和通达信前复权日线。分钟线与更细粒度的多渠道任务编排仍在继续接入。
+提交平台回测建议优先通过前端或 API 入队，Worker 会异步执行并把结果写回数据库；如需补齐行情覆盖或公司行动，可直接使用 `sync-now` 或前端 `/market-data` 页面。当前 `provider=yahoo` 已支持通过 `--symbol-set yahoo_global_active_100` 导入内置 100 个全球高活跃样本，并分别同步 `1d / 15m / 1m`；前端 `/market-data` 的 Yahoo 批量按钮也会走同一套默认样本池。`provider=tdx` 当前已支持通达信原始 `1d / 1m / 5m` 文件导入，其中 `1m` 对应 `.lc1/.1`、`5m` 对应 `.lc5/.5`；`provider=tushare` 和 `provider=tdx_qfq` 则继续分别处理公司行动抓取与前复权日线重算。
 
 批量研究：
 

@@ -30,16 +30,16 @@ instruments + price_bars
 
 当前 Yahoo 同步除了单标的外，还支持 `symbol_set=yahoo_global_active_100` 批量样本池。前端 `/market-data` 的 Yahoo 批量任务和 CLI `sync-now --provider yahoo --symbol-set yahoo_global_active_100` 走的是同一套入口；若网络环境要求代理，统一任务会在 `data_ingestion_jobs` 中保留失败状态和首个错误原因。
 
-通达信当前已接通的链路为：
+通达信当前已接通的原始行情链路为：
 
 ```text
-vipdoc/*.day
+vipdoc/*.day / *.lc1 / *.1 / *.lc5 / *.5
     |
     v
-二进制解析 + 证券类型缩放
+二进制解析 + 周期识别
     |
     v
-market_data_series(adjustment_kind=raw)
+market_data_series(provider=tdx, adjustment_kind=raw, interval=1d/1m/5m)
     |
     v
 market_data_bars + source_file_manifests + data_ingestion_jobs
@@ -93,7 +93,7 @@ market_data_bars + data_ingestion_jobs
 - `source_file_manifests`：文件型来源的增量状态。
 - `data_ingestion_jobs` / `data_ingestion_job_items`：统一后台任务状态。
 
-这些表当前已接通 Yahoo 原始 K 线、通达信原始日线、Tushare 公司行动和通达信前复权日线四条子链路；前端 `/market-data` 也已经接入统一任务面板，可直接查看 provider 摘要和最近导入任务。
+这些表当前已接通 Yahoo 原始 K 线、通达信原始 `1d / 1m / 5m`、Tushare 公司行动和通达信前复权日线四条子链路；前端 `/market-data` 也已经接入统一任务面板，可直接查看 provider 摘要和最近导入任务。
 
 ## 同步记录
 

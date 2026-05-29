@@ -36,7 +36,7 @@ http://127.0.0.1:3000/platform
 http://127.0.0.1:3000/market-data
 ```
 
-该页现在会先设定“当前目标标的”，然后在同一页直接展示 Yahoo、通达信原始日线、Tushare 公司行动和通达信前复权四类 provider 的摘要卡片与最近统一导入任务。若只是补当前回测样本，优先使用页内 Yahoo 覆盖检查与推荐周期；若要处理 A 股原始日线、公司行动或前复权，则直接使用对应 provider 卡片上的当前标的或批量按钮。
+该页现在会先设定“当前目标标的”，然后在同一页直接展示 Yahoo、通达信原始行情、Tushare 公司行动和通达信前复权四类 provider 的摘要卡片与最近统一导入任务。若只是补当前回测样本，优先使用页内 Yahoo 覆盖检查与推荐周期；若要处理 A 股原始 `1d / 1m / 5m`、公司行动或前复权，则直接使用对应 provider 卡片上的当前标的或批量按钮。
 
 ## 行情同步
 
@@ -48,6 +48,8 @@ py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 15m --period 60d --limit 100
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1m --period 7d --limit 100
 py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 1d
+py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 1m
+py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 5m
 py -3.13 main.py sync-now --provider tushare --symbol sh600000
 py -3.13 main.py sync-now --provider tdx_qfq --symbol sh600000 --interval 1d
 ```
@@ -63,11 +65,13 @@ py -3.13 main.py sync-now --interval 15m --period 60d
 ```powershell
 py -3.13 main.py sync-now --provider tdx --interval 1d --limit 100
 py -3.13 main.py sync-now --provider tdx --interval 1d --force
+py -3.13 main.py sync-now --provider tdx --interval 1m --symbol sh600000 --force
+py -3.13 main.py sync-now --provider tdx --interval 5m --symbol sh600000 --force
 py -3.13 main.py sync-now --provider tushare --limit 20
 py -3.13 main.py sync-now --provider tdx_qfq --limit 20
 ```
 
-当前 `provider=tdx` 只支持原始 `1d` 日线，并依赖 `STRATEGY_STUDIO_TDX_VIPDOC` 或 `STRATEGY_STUDIO_TDX_CONFIG_PATH` 指向有效的 `vipdoc` 配置。
+当前 `provider=tdx` 已支持原始 `1d / 1m / 5m` 文件导入，并依赖 `STRATEGY_STUDIO_TDX_VIPDOC` 或 `STRATEGY_STUDIO_TDX_CONFIG_PATH` 指向有效的 `vipdoc` 配置。其中 `1d` 扫描 `.day`，`1m` 扫描 `.lc1/.1`，`5m` 扫描 `.lc5/.5`；如果本机 `vipdoc` 目录结构和默认假设不一致，应先确认实际文件位置再执行导入。
 
 Yahoo 默认样本池注意事项：
 
