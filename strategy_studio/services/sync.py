@@ -2582,10 +2582,14 @@ def _resolve_tdx_qfq_targets(
     if limit is not None:
         statement = statement.limit(limit)
 
-    return [
+    targets = [
         {"series": row[0], "instrument": row[1], "alias": row[2]}
         for row in session.execute(statement).all()
     ]
+    filtered_targets = [item for item in targets if _supports_tushare_corporate_actions(str(item["instrument"].symbol or ""))]
+    if symbol and symbol.strip() and targets and not filtered_targets:
+        raise ValueError("当前前复权链路只支持可映射 Tushare ts_code 的 sh/sz/bj 原始 1d 标的。")
+    return filtered_targets
 
 
 def _resolve_tdx_pipeline_batch_symbols(limit: int | None) -> list[str]:
@@ -2605,6 +2609,15 @@ def _resolve_tdx_pipeline_batch_symbols(limit: int | None) -> list[str]:
         if not symbols:
             raise ValueError("统一补数链路未找到可用于公司行动和前复权的通达信原始 1d 标的。")
         return symbols
+
+
+def _supports_tushare_corporate_actions(symbol: str) -> bool:
+    """统一补数链路只接受能稳定映射到 Tushare 股票代码的原始日线标的。"""
+    try:
+        symbol_to_ts_code(symbol)
+    except ValueError:
+        return False
+    return True
 
 
 def _preload_tdx_qfq_input_frames(

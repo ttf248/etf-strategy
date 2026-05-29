@@ -90,7 +90,7 @@ A 股统一补数链路注意事项：
 
 - `provider=tdx_pipeline` 会把 `tdx raw -> tushare actions -> tdx_qfq rebuild` 串成一个总任务，并另外在统一任务域记录 workflow 本身与所有子任务 ID。
 - `interval=1d` 时执行 `tdx 1d -> tushare -> tdx_qfq 1d`；`interval=all` 时执行 `tdx all -> tushare -> tdx_qfq 1d`，适合一次性补齐原始 `1d / 1m / 5m`、公司行动与前复权。
-- 当 workflow 以批量模式执行且未显式传 `--symbol` 时，Tushare 抓取和前复权重算会自动跟随数据库里已有的通达信原始 `1d` 标的集，而不是单独取 Tushare 默认样本。
+- 当 workflow 以批量模式执行且未显式传 `--symbol` 时，Tushare 抓取和前复权重算会自动跟随数据库里已有、且可映射 Tushare `ts_code` 的通达信原始 `1d` 标的集，而不是单独取 Tushare 默认样本；`ds` 等非 A 股原始标的不会被误送进这条链路。
 - workflow 的 `bars_inserted / bars_updated` 是子步骤聚合值，其中 Tushare 仍沿用“事件条数复用 bars 字段”的口径；排查时应同时结合 `workflow_results` 和最近统一导入任务查看。
 - 若上游原始导入或公司行动抓取彻底失败，workflow 会停止后续步骤；若只是部分失败，则仍会尽量继续执行后续步骤，便于保留已完成部分。
 
@@ -117,6 +117,7 @@ Tushare 公司行动抓取注意事项：
 通达信前复权重算注意事项：
 
 - 当前只支持 `1d` 日线，并且要求数据库中已经存在同标的的 `provider=tdx` 原始 `1d` 序列。
+- 当前目标范围仅限可映射 Tushare `ts_code` 的 `sh / sz / bj` 原始日线；`ds` 等非 A 股原始标的不会进入前复权重算。
 - 当前公司行动输入只读取 `provider=tushare` 下的已实施事件；没有公司行动时会生成恒等公式区间，输出价格等于原始价格。
 - 前复权任务会同时重建 `price_adjustment_segments` 和 `market_data_series(provider=tdx_qfq, adjustment_kind=qfq)` 对应的 `market_data_bars`。
 - 当前重复执行会全量重算目标标的，但由于 K 线与区间都按唯一键覆盖写入，不会生成重复行。

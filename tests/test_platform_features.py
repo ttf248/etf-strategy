@@ -1739,6 +1739,113 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(result["symbols_count"], 2)
         self.assertEqual(result["child_ingestion_job_ids"], [111, 112, 113, 114, 115])
 
+    def test_resolve_tdx_qfq_targets_filters_non_tushare_symbols_in_batch_mode(self) -> None:
+        class _QueryResult:
+            def __init__(self, rows: list[tuple[object, object, object]]) -> None:
+                self._rows = rows
+
+            def all(self) -> list[tuple[object, object, object]]:
+                return list(self._rows)
+
+        class _BatchSession:
+            def execute(self, _statement: object) -> _QueryResult:
+                return _QueryResult(
+                    [
+                        (
+                            SimpleNamespace(id=701),
+                            SimpleNamespace(id=801, symbol="10#AUDUSD"),
+                            SimpleNamespace(source_symbol="10#AUDUSD"),
+                        ),
+                        (
+                            SimpleNamespace(id=702),
+                            SimpleNamespace(id=802, symbol="SH600000"),
+                            SimpleNamespace(source_symbol="SH600000"),
+                        ),
+                        (
+                            SimpleNamespace(id=703),
+                            SimpleNamespace(id=803, symbol="BJ810011"),
+                            SimpleNamespace(source_symbol="BJ810011"),
+                        ),
+                    ]
+                )
+
+        targets = sync_service._resolve_tdx_qfq_targets(
+            _BatchSession(),
+            raw_provider=SimpleNamespace(id=401),
+            symbol=None,
+            limit=None,
+        )
+
+        self.assertEqual([item["instrument"].symbol for item in targets], ["SH600000", "BJ810011"])
+
+    def test_resolve_tdx_qfq_targets_rejects_ds_symbol_for_qfq(self) -> None:
+        class _QueryResult:
+            def __init__(self, rows: list[tuple[object, object, object]]) -> None:
+                self._rows = rows
+
+            def all(self) -> list[tuple[object, object, object]]:
+                return list(self._rows)
+
+        class _BatchSession:
+            def execute(self, _statement: object) -> _QueryResult:
+                return _QueryResult(
+                    [
+                        (
+                            SimpleNamespace(id=701),
+                            SimpleNamespace(id=801, symbol="10#AUDUSD"),
+                            SimpleNamespace(source_symbol="10#AUDUSD"),
+                        )
+                    ]
+                )
+
+        with self.assertRaisesRegex(ValueError, "只支持可映射 Tushare ts_code 的 sh/sz/bj 原始 1d 标的"):
+            sync_service._resolve_tdx_qfq_targets(
+                _BatchSession(),
+                raw_provider=SimpleNamespace(id=401),
+                symbol="10#AUDUSD",
+                limit=None,
+            )
+
+    def test_resolve_tdx_pipeline_batch_symbols_skips_ds_raw_series(self) -> None:
+        class _QueryResult:
+            def __init__(self, rows: list[tuple[object, object, object]]) -> None:
+                self._rows = rows
+
+            def all(self) -> list[tuple[object, object, object]]:
+                return list(self._rows)
+
+        class _SessionDouble:
+            def execute(self, _statement: object) -> _QueryResult:
+                return _QueryResult(
+                    [
+                        (
+                            SimpleNamespace(id=701),
+                            SimpleNamespace(id=801, symbol="10#AUDUSD"),
+                            SimpleNamespace(source_symbol="10#AUDUSD"),
+                        ),
+                        (
+                            SimpleNamespace(id=702),
+                            SimpleNamespace(id=802, symbol="SH600000"),
+                            SimpleNamespace(source_symbol="SH600000"),
+                        ),
+                    ]
+                )
+
+        class _SessionContext:
+            def __enter__(self):
+                return _SessionDouble()
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with (
+            patch("strategy_studio.services.sync.open_session", return_value=_SessionContext()),
+            patch("strategy_studio.services.sync.ensure_data_provider", return_value=SimpleNamespace(id=401)),
+        ):
+            symbols = sync_service._resolve_tdx_pipeline_batch_symbols(limit=10)
+
+        self.assertEqual(symbols, ["SH600000"])
+
     def test_yahoo_pipeline_workflow_aggregates_three_intervals(self) -> None:
         session = SimpleNamespace()
         session.commit = lambda: None
