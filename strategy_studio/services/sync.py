@@ -7,6 +7,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from pathlib import Path
 import re
+from time import perf_counter
 
 import pandas as pd
 from sqlalchemy import select
@@ -1656,6 +1657,7 @@ def _rebuild_tdx_qfq_market_data(
     if interval != "1d":
         raise ValueError("当前前复权重算只支持 1d 日线。")
 
+    rebuild_started_at = perf_counter()
     with open_session() as session:
         raw_provider = ensure_data_provider(
             session,
@@ -1724,17 +1726,31 @@ def _rebuild_tdx_qfq_market_data(
         first_error_message = ""
         cancelled = False
         cancel_message = ""
+        preload_input_started_at = perf_counter()
         raw_frames_by_series, action_frames_by_instrument = _preload_tdx_qfq_input_frames(
             session,
             targets,
             action_provider,
         )
+        preload_input_ms = _elapsed_ms(preload_input_started_at)
+        preload_output_started_at = perf_counter()
         qfq_aliases_by_symbol, qfq_series_by_scope = _preload_tdx_qfq_output_entities(
             session,
             targets,
             provider,
             interval=interval,
         )
+        preload_output_ms = _elapsed_ms(preload_output_started_at)
+        timing_totals_ms = {
+            "segment_build_ms": 0,
+            "segment_replace_ms": 0,
+            "segment_apply_ms": 0,
+            "output_prepare_ms": 0,
+            "bar_upsert_ms": 0,
+        }
+        processed_symbol_timing_ms = 0
+        succeeded_symbol_timing_ms = 0
+        failed_symbol_timing_ms = 0
         pending_targets_since_commit = 0
 
         def commit_batch_progress() -> None:
@@ -1765,6 +1781,8 @@ def _rebuild_tdx_qfq_market_data(
                 interval=interval,
                 provider=provider,
             )
+            item_timing_json: dict[str, int] = {}
+            item_started_at = perf_counter()
             try:
                 # 单标的失败只回滚当前 savepoint，已处理的批次仍可继续累计并分批提交。
                 with session.begin_nested():
@@ -1772,8 +1790,11 @@ def _rebuild_tdx_qfq_market_data(
                     if raw_frame is None or raw_frame.empty:
                         raise ValueError(f"原始序列没有可用于前复权重算的日线数据：series_id={raw_series.id}")
                     action_frame = action_frames_by_instrument.get(instrument.id, _empty_action_frame())
+                    stage_started_at = perf_counter()
                     segment_frame = build_qfq_segment_frame(raw_frame, action_frame)
+                    item_timing_json["segment_build_ms"] = _elapsed_ms(stage_started_at)
                     segment_rows = segment_frame.to_dict(orient="records")
+                    stage_started_at = perf_counter()
                     seg_inserted, seg_updated, seg_deleted = replace_price_adjustment_segments(
                         session,
                         instrument,
@@ -1782,7 +1803,11 @@ def _rebuild_tdx_qfq_market_data(
                         adjustment_kind="qfq",
                         rows=segment_rows,
                     )
+                    item_timing_json["segment_replace_ms"] = _elapsed_ms(stage_started_at)
+                    stage_started_at = perf_counter()
                     adjusted_frame = apply_qfq_segment_frame(raw_frame, segment_frame)
+                    item_timing_json["segment_apply_ms"] = _elapsed_ms(stage_started_at)
+                    stage_started_at = perf_counter()
                     qfq_source_symbol = str(raw_alias.source_symbol or "").strip().upper()
                     qfq_alias = qfq_aliases_by_symbol.get(qfq_source_symbol)
                     if qfq_alias is None:
@@ -1832,13 +1857,17 @@ def _rebuild_tdx_qfq_market_data(
                         qfq_series.bar_type = "time"
                         qfq_series.timezone = raw_alias.timezone or instrument.timezone
                         qfq_series.is_active = True
+                    item_timing_json["output_prepare_ms"] = _elapsed_ms(stage_started_at)
+                    stage_started_at = perf_counter()
                     bars_inserted, bars_updated = upsert_market_data_frame(session, qfq_series, adjusted_frame)
+                    item_timing_json["bar_upsert_ms"] = _elapsed_ms(stage_started_at)
                     qfq_series.metadata_json = {
                         **qfq_series.metadata_json,
                         "raw_provider_key": raw_provider.provider_key,
                         "raw_series_id": raw_series.id,
                         "action_provider_key": action_provider.provider_key,
                     }
+                    item_timing_json["total_elapsed_ms"] = _elapsed_ms(item_started_at)
                     item.status = "succeeded"
                     item.stage = "completed"
                     item.instrument_id = instrument.id
@@ -1853,6 +1882,7 @@ def _rebuild_tdx_qfq_market_data(
                         "segment_rows_updated": seg_updated,
                         "segment_rows_deleted": seg_deleted,
                         "action_rows_used": len(action_frame),
+                        "timing_json": dict(item_timing_json),
                     }
                 succeeded_symbols += 1
                 segment_rows_inserted += seg_inserted
@@ -1861,17 +1891,30 @@ def _rebuild_tdx_qfq_market_data(
                 bar_rows_inserted += bars_inserted
                 bar_rows_updated += bars_updated
                 action_rows_used += len(action_frame)
+                processed_symbol_timing_ms += item_timing_json.get("total_elapsed_ms", 0)
+                succeeded_symbol_timing_ms += item_timing_json.get("total_elapsed_ms", 0)
+                for key in timing_totals_ms:
+                    timing_totals_ms[key] += item_timing_json.get(key, 0)
                 ingestion_job.targets_completed = succeeded_symbols
                 ingestion_job.error_count = failed_symbols
                 pending_targets_since_commit += 1
             except Exception as exc:
+                item_timing_json["total_elapsed_ms"] = _elapsed_ms(item_started_at)
                 if not first_error_message:
                     first_error_message = str(exc)
                 failed_symbols += 1
+                processed_symbol_timing_ms += item_timing_json.get("total_elapsed_ms", 0)
+                failed_symbol_timing_ms += item_timing_json.get("total_elapsed_ms", 0)
+                for key in timing_totals_ms:
+                    timing_totals_ms[key] += item_timing_json.get(key, 0)
                 item.status = "failed"
                 item.stage = "failed"
                 item.error_message = str(exc)
-                item.details_json = {"provider_key": provider.provider_key, "raw_series_id": raw_series.id}
+                item.details_json = {
+                    "provider_key": provider.provider_key,
+                    "raw_series_id": raw_series.id,
+                    "timing_json": dict(item_timing_json),
+                }
                 ingestion_job.targets_completed = succeeded_symbols
                 ingestion_job.error_count = failed_symbols
                 pending_targets_since_commit += 1
@@ -1885,6 +1928,23 @@ def _rebuild_tdx_qfq_market_data(
         ingestion_job.rows_inserted = bar_rows_inserted
         ingestion_job.rows_updated = bar_rows_updated
         ingestion_job.completed_at = datetime.now(UTC)
+        processed_symbols = succeeded_symbols + failed_symbols
+        timing_summary_json = {
+            "commit_every": TDX_QFQ_COMMIT_EVERY,
+            "processed_symbols": processed_symbols,
+            "preload_input_ms": preload_input_ms,
+            "preload_output_ms": preload_output_ms,
+            "segment_build_ms": timing_totals_ms["segment_build_ms"],
+            "segment_replace_ms": timing_totals_ms["segment_replace_ms"],
+            "segment_apply_ms": timing_totals_ms["segment_apply_ms"],
+            "output_prepare_ms": timing_totals_ms["output_prepare_ms"],
+            "bar_upsert_ms": timing_totals_ms["bar_upsert_ms"],
+            "symbol_total_ms": processed_symbol_timing_ms,
+            "symbol_avg_ms": int(round(processed_symbol_timing_ms / processed_symbols)) if processed_symbols else 0,
+            "succeeded_symbol_avg_ms": int(round(succeeded_symbol_timing_ms / succeeded_symbols)) if succeeded_symbols else 0,
+            "failed_symbol_avg_ms": int(round(failed_symbol_timing_ms / failed_symbols)) if failed_symbols else 0,
+            "total_elapsed_ms": _elapsed_ms(rebuild_started_at),
+        }
         ingestion_job.summary_json = {
             "provider_key": provider.provider_key,
             "symbols_total": len(targets),
@@ -1896,6 +1956,7 @@ def _rebuild_tdx_qfq_market_data(
             "bar_rows_inserted": bar_rows_inserted,
             "bar_rows_updated": bar_rows_updated,
             "action_rows_used": action_rows_used,
+            "timing_json": timing_summary_json,
         }
         if cancelled:
             ingestion_job.status = "cancelled"
@@ -1929,6 +1990,7 @@ def _rebuild_tdx_qfq_market_data(
             "segment_rows_updated": segment_rows_updated,
             "segment_rows_deleted": segment_rows_deleted,
             "action_rows_used": action_rows_used,
+            "timing_json": timing_summary_json,
             "error_message": ingestion_job.error_message,
             "status": ingestion_job.status,
         }
@@ -2279,6 +2341,10 @@ def _preload_tdx_qfq_output_entities(
         for series in series_rows
     }
     return alias_by_symbol, series_by_scope
+
+
+def _elapsed_ms(started_at: float) -> int:
+    return max(0, int(round((perf_counter() - started_at) * 1000)))
 
 
 def _load_raw_market_data_frame(session, series: MarketDataSeries) -> pd.DataFrame:

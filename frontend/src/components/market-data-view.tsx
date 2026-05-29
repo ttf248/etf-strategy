@@ -78,6 +78,32 @@ type WorkflowStepResult = {
   blocked_by?: string;
 };
 
+type IngestionTimingSummary = {
+  total_elapsed_ms: number;
+  preload_input_ms: number;
+  preload_output_ms: number;
+  segment_build_ms: number;
+  segment_replace_ms: number;
+  segment_apply_ms: number;
+  output_prepare_ms: number;
+  bar_upsert_ms: number;
+  symbol_total_ms: number;
+  symbol_avg_ms: number;
+  succeeded_symbol_avg_ms: number;
+  failed_symbol_avg_ms: number;
+  processed_symbols: number;
+  commit_every: number;
+};
+
+type IngestionItemTiming = {
+  total_elapsed_ms: number;
+  segment_build_ms: number;
+  segment_replace_ms: number;
+  segment_apply_ms: number;
+  output_prepare_ms: number;
+  bar_upsert_ms: number;
+};
+
 type ProviderPanelConfig = {
   providerKey: string;
   fallbackName: string;
@@ -250,6 +276,28 @@ function toNumberArray(value: unknown): number[] {
     .map((item) => Math.trunc(item));
 }
 
+function toFiniteNumber(value: unknown): number | null {
+  const normalized = Number(value);
+  return Number.isFinite(normalized) ? normalized : null;
+}
+
+function formatDurationMs(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "-";
+  }
+  const normalized = Math.max(0, Math.round(value));
+  if (normalized < 1000) {
+    return `${normalized}ms`;
+  }
+  const totalSeconds = Math.round(normalized / 1000);
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
+
 function extractWorkflowResults(job: MarketDataIngestionJob): WorkflowStepResult[] {
   const summary = isRecord(job.summary_json) ? job.summary_json : {};
   const rawResults = summary.workflow_results;
@@ -281,6 +329,54 @@ function extractWorkflowResults(job: MarketDataIngestionJob): WorkflowStepResult
 function extractChildIngestionJobIds(job: MarketDataIngestionJob): number[] {
   const summary = isRecord(job.summary_json) ? job.summary_json : {};
   return toNumberArray(summary.child_ingestion_job_ids ?? summary.ingestion_job_ids);
+}
+
+function extractJobTimingSummary(job: MarketDataIngestionJob): IngestionTimingSummary | null {
+  const summary = isRecord(job.summary_json) ? job.summary_json : {};
+  const timing = isRecord(summary.timing_json) ? summary.timing_json : null;
+  if (!timing) {
+    return null;
+  }
+  const totalElapsedMs = toFiniteNumber(timing.total_elapsed_ms);
+  if (totalElapsedMs === null) {
+    return null;
+  }
+  return {
+    total_elapsed_ms: totalElapsedMs,
+    preload_input_ms: toFiniteNumber(timing.preload_input_ms) ?? 0,
+    preload_output_ms: toFiniteNumber(timing.preload_output_ms) ?? 0,
+    segment_build_ms: toFiniteNumber(timing.segment_build_ms) ?? 0,
+    segment_replace_ms: toFiniteNumber(timing.segment_replace_ms) ?? 0,
+    segment_apply_ms: toFiniteNumber(timing.segment_apply_ms) ?? 0,
+    output_prepare_ms: toFiniteNumber(timing.output_prepare_ms) ?? 0,
+    bar_upsert_ms: toFiniteNumber(timing.bar_upsert_ms) ?? 0,
+    symbol_total_ms: toFiniteNumber(timing.symbol_total_ms) ?? 0,
+    symbol_avg_ms: toFiniteNumber(timing.symbol_avg_ms) ?? 0,
+    succeeded_symbol_avg_ms: toFiniteNumber(timing.succeeded_symbol_avg_ms) ?? 0,
+    failed_symbol_avg_ms: toFiniteNumber(timing.failed_symbol_avg_ms) ?? 0,
+    processed_symbols: toFiniteNumber(timing.processed_symbols) ?? 0,
+    commit_every: toFiniteNumber(timing.commit_every) ?? 0,
+  };
+}
+
+function extractItemTiming(item: MarketDataIngestionJobItem): IngestionItemTiming | null {
+  const details = isRecord(item.details_json) ? item.details_json : {};
+  const timing = isRecord(details.timing_json) ? details.timing_json : null;
+  if (!timing) {
+    return null;
+  }
+  const totalElapsedMs = toFiniteNumber(timing.total_elapsed_ms);
+  if (totalElapsedMs === null) {
+    return null;
+  }
+  return {
+    total_elapsed_ms: totalElapsedMs,
+    segment_build_ms: toFiniteNumber(timing.segment_build_ms) ?? 0,
+    segment_replace_ms: toFiniteNumber(timing.segment_replace_ms) ?? 0,
+    segment_apply_ms: toFiniteNumber(timing.segment_apply_ms) ?? 0,
+    output_prepare_ms: toFiniteNumber(timing.output_prepare_ms) ?? 0,
+    bar_upsert_ms: toFiniteNumber(timing.bar_upsert_ms) ?? 0,
+  };
 }
 
 function ingestionJobIsPending(status: string): boolean {
@@ -1246,6 +1342,10 @@ export function MarketDataView() {
     () => (selectedJobDetail ? extractChildIngestionJobIds(selectedJobDetail) : []),
     [selectedJobDetail],
   );
+  const selectedJobTimingSummary = useMemo(
+    () => (selectedJobDetail ? extractJobTimingSummary(selectedJobDetail) : null),
+    [selectedJobDetail],
+  );
 
   function applyCheckedSymbol(targetSymbol: string) {
     const normalizedSymbol = targetSymbol.trim().toUpperCase();
@@ -1982,6 +2082,48 @@ export function MarketDataView() {
                   失败子项 {selectedJobFailedItems.length}
                 </Tag>
               </div>
+              {selectedJobTimingSummary ? (
+                <div className="provider-panel-metric-grid">
+                  <div className="provider-panel-metric">
+                    <span>总耗时</span>
+                    <strong>{formatDurationMs(selectedJobTimingSummary.total_elapsed_ms)}</strong>
+                  </div>
+                  <div className="provider-panel-metric">
+                    <span>平均每标的</span>
+                    <strong>{formatDurationMs(selectedJobTimingSummary.symbol_avg_ms)}</strong>
+                  </div>
+                  <div className="provider-panel-metric">
+                    <span>输入预加载</span>
+                    <strong>{formatDurationMs(selectedJobTimingSummary.preload_input_ms)}</strong>
+                  </div>
+                  <div className="provider-panel-metric">
+                    <span>输出预加载</span>
+                    <strong>{formatDurationMs(selectedJobTimingSummary.preload_output_ms)}</strong>
+                  </div>
+                  <div className="provider-panel-metric">
+                    <span>构建区间</span>
+                    <strong>{formatDurationMs(selectedJobTimingSummary.segment_build_ms)}</strong>
+                  </div>
+                  <div className="provider-panel-metric">
+                    <span>写区间</span>
+                    <strong>{formatDurationMs(selectedJobTimingSummary.segment_replace_ms)}</strong>
+                  </div>
+                  <div className="provider-panel-metric">
+                    <span>应用公式</span>
+                    <strong>{formatDurationMs(selectedJobTimingSummary.segment_apply_ms)}</strong>
+                  </div>
+                  <div className="provider-panel-metric">
+                    <span>写 K 线</span>
+                    <strong>{formatDurationMs(selectedJobTimingSummary.bar_upsert_ms)}</strong>
+                  </div>
+                </div>
+              ) : null}
+              {selectedJobTimingSummary ? (
+                <Typography.Text type="secondary">
+                  已处理 {selectedJobTimingSummary.processed_symbols} 个标的，输出对象整理 {formatDurationMs(selectedJobTimingSummary.output_prepare_ms)}，
+                  当前按每 {selectedJobTimingSummary.commit_every} 个标的一次批量提交。
+                </Typography.Text>
+              ) : null}
               <Space wrap>
                 <Button
                   size="small"
@@ -2020,6 +2162,7 @@ export function MarketDataView() {
                     {selectedJobItems.map((item) => {
                       const itemSymbol = inferJobItemSymbol(item);
                       const itemProviderKey = inferJobItemProviderKey(item, selectedJobDetail.provider_key);
+                      const itemTiming = extractItemTiming(item);
                       return (
                         <article key={item.id} className="ingestion-mobile-card">
                           <div className="ingestion-mobile-card-head">
@@ -2035,6 +2178,12 @@ export function MarketDataView() {
                             <span>更新 {item.rows_updated.toLocaleString()}</span>
                           </div>
                           <small>{item.item_key}</small>
+                          {itemTiming ? (
+                            <small>
+                              耗时 {formatDurationMs(itemTiming.total_elapsed_ms)} / 构建 {formatDurationMs(itemTiming.segment_build_ms)} /
+                              写区间 {formatDurationMs(itemTiming.segment_replace_ms)} / 写 K 线 {formatDurationMs(itemTiming.bar_upsert_ms)}
+                            </small>
+                          ) : null}
                           {itemSymbol ? (
                             <Space wrap>
                               <Button size="small" onClick={() => void loadSymbolDiagnosticsData(itemSymbol)}>
@@ -2079,6 +2228,24 @@ export function MarketDataView() {
                       { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <StatusTag value={value} label={ingestionStatusLabel(value)} /> },
                       { title: "新增", dataIndex: "rows_inserted", width: 100, render: (value: number) => value.toLocaleString() },
                       { title: "更新", dataIndex: "rows_updated", width: 100, render: (value: number) => value.toLocaleString() },
+                      {
+                        title: "耗时",
+                        width: 240,
+                        render: (_, row) => {
+                          const itemTiming = extractItemTiming(row);
+                          if (!itemTiming) {
+                            return <Typography.Text type="secondary">-</Typography.Text>;
+                          }
+                          return (
+                            <div className="ingestion-provider-cell">
+                              <strong>{formatDurationMs(itemTiming.total_elapsed_ms)}</strong>
+                              <span>
+                                构建 {formatDurationMs(itemTiming.segment_build_ms)} / 写区间 {formatDurationMs(itemTiming.segment_replace_ms)} / 写 K 线 {formatDurationMs(itemTiming.bar_upsert_ms)}
+                              </span>
+                            </div>
+                          );
+                        },
+                      },
                       { title: "开始时间", dataIndex: "started_at", width: 180 },
                       { title: "完成时间", dataIndex: "completed_at", width: 180 },
                       { title: "错误", dataIndex: "error_message", width: 260 },

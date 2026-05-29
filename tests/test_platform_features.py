@@ -1875,6 +1875,14 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(ingestion_job.rows_inserted, 4)
         self.assertEqual(ingestion_job.error_count, 0)
         self.assertEqual(ingestion_job.status, "succeeded")
+        self.assertIn("timing_json", result)
+        self.assertIn("timing_json", ingestion_job.summary_json)
+        self.assertIn("total_elapsed_ms", ingestion_job.summary_json["timing_json"])
+        self.assertIn("bar_upsert_ms", ingestion_job.summary_json["timing_json"])
+        self.assertIn("timing_json", registry[601].details_json)
+        self.assertIn("timing_json", registry[602].details_json)
+        self.assertIn("segment_build_ms", registry[601].details_json["timing_json"])
+        self.assertIn("total_elapsed_ms", registry[602].details_json["timing_json"])
         self.assertEqual(session.commit_calls, 3)
 
     def test_rebuild_tdx_qfq_market_data_commits_failed_item_without_rolling_back_batch_progress(self) -> None:
@@ -2045,10 +2053,16 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(ingestion_job.error_count, 1)
         self.assertEqual(ingestion_job.status, "partially_failed")
         self.assertIn("segment rebuild failed", ingestion_job.error_message)
+        self.assertIn("timing_json", result)
+        self.assertIn("timing_json", ingestion_job.summary_json)
         self.assertEqual(failed_item.status, "failed")
         self.assertEqual(failed_item.stage, "failed")
+        self.assertIn("timing_json", failed_item.details_json)
+        self.assertIn("total_elapsed_ms", failed_item.details_json["timing_json"])
         self.assertEqual(succeeded_item.status, "succeeded")
         self.assertEqual(succeeded_item.stage, "completed")
+        self.assertIn("timing_json", succeeded_item.details_json)
+        self.assertIn("bar_upsert_ms", succeeded_item.details_json["timing_json"])
         self.assertEqual(session.commit_calls, 4)
 
 
