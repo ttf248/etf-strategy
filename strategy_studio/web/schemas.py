@@ -62,6 +62,7 @@ class StrategyTemplateUpdateModel(BaseModel):
 
 class SyncRequestModel(BaseModel):
     symbol: str | None = None
+    symbol_set: str | None = None
     provider: str = Field(default="yahoo")
     interval: str = Field(default="1d")
     proxy: str | None = None

@@ -44,6 +44,9 @@ http://127.0.0.1:3000/market-data
 
 ```powershell
 py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
+py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1d --limit 100
+py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 15m --period 60d --limit 100
+py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1m --period 7d --limit 100
 py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 1d
 py -3.13 main.py sync-now --provider tushare --symbol sh600000
 py -3.13 main.py sync-now --provider tdx_qfq --symbol sh600000 --interval 1d
@@ -65,6 +68,12 @@ py -3.13 main.py sync-now --provider tdx_qfq --limit 20
 ```
 
 当前 `provider=tdx` 只支持原始 `1d` 日线，并依赖 `STRATEGY_STUDIO_TDX_VIPDOC` 或 `STRATEGY_STUDIO_TDX_CONFIG_PATH` 指向有效的 `vipdoc` 配置。
+
+Yahoo 默认样本池注意事项：
+
+- `symbol_set=yahoo_global_active_100` 会按内置 100 个全球高活跃样本创建或更新 Yahoo 标的，并按 `limit` 控制本次实际执行数量。
+- `1d` 会下载可获得的完整日线历史；`15m` 默认应配 `--period 60d`；`1m` 默认应配 `--period 7d`。
+- 当前网络环境若无法直连 Yahoo，命令会明确返回失败状态与首个错误原因；常见情况是必须通过 `--proxy` 或 `STRATEGY_STUDIO_PROXY` 配置代理。
 
 Tushare 公司行动抓取注意事项：
 

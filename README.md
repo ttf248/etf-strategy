@@ -70,6 +70,9 @@ py -3.13 main.py init-db
 
 ```powershell
 py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
+py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1d --limit 100
+py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 15m --period 60d --limit 100
+py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1m --period 7d --limit 100
 py -3.13 main.py sync-now --provider tdx --interval 1d --limit 1
 py -3.13 main.py sync-now --provider tushare --symbol sh600000
 py -3.13 main.py sync-now --provider tdx_qfq --symbol sh600000 --interval 1d
@@ -113,13 +116,16 @@ VS Code 用户可以直接使用 `启动平台前后端全套`。
 
 ```powershell
 py -3.13 main.py sync-now --symbol 1810.HK --interval 15m --period 60d
+py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1d --limit 100
+py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 15m --period 60d --limit 100
+py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1m --period 7d --limit 100
 py -3.13 main.py sync-now --provider tdx --interval 1d --symbol sh600000
 py -3.13 main.py sync-now --provider tushare --symbol sh600000
 py -3.13 main.py sync-now --provider tushare --limit 10
 py -3.13 main.py sync-now --provider tdx_qfq --symbol sh600000 --interval 1d
 ```
 
-提交平台回测建议优先通过前端或 API 入队，Worker 会异步执行并把结果写回数据库；如需补齐行情覆盖或公司行动，可直接使用 `sync-now` 或前端 `/market-data` 页面。当前 `/market-data` 已支持在同一页查看多渠道摘要、统一导入任务列表，并直接触发 `provider=yahoo`、`provider=tdx`、`provider=tushare`、`provider=tdx_qfq` 的当前标的或批量任务。分钟线与更细粒度的多渠道任务编排仍在继续接入。
+提交平台回测建议优先通过前端或 API 入队，Worker 会异步执行并把结果写回数据库；如需补齐行情覆盖或公司行动，可直接使用 `sync-now` 或前端 `/market-data` 页面。当前 `provider=yahoo` 已支持通过 `--symbol-set yahoo_global_active_100` 导入内置 100 个全球高活跃样本，并分别同步 `1d / 15m / 1m`；前端 `/market-data` 的 Yahoo 批量按钮也会走同一套默认样本池。`provider=tdx`、`provider=tushare`、`provider=tdx_qfq` 则继续分别处理通达信原始日线、Tushare 公司行动和通达信前复权日线。分钟线与更细粒度的多渠道任务编排仍在继续接入。
 
 批量研究：
 

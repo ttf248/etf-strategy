@@ -198,12 +198,13 @@ def add_platform_subcommands(subparsers: argparse._SubParsersAction[argparse.Arg
     sync_parser = subparsers.add_parser("sync-now", help="立即同步指定渠道行情到数据库")
     sync_parser.add_argument("--provider", choices=["yahoo", "tdx", "tushare", "tdx_qfq"], default="yahoo", help="数据渠道：yahoo、tdx、tushare 或 tdx_qfq")
     sync_parser.add_argument("--symbol", default=None, help="指定单个标的；Yahoo 使用 1810.HK，TDX/QFQ 使用 sh600000，Tushare 使用 sh600000 或 600000.SH")
+    sync_parser.add_argument("--symbol-set", default=None, help="Yahoo 内置样本池，例如 yahoo_global_active_100")
     sync_parser.add_argument("--interval", default="1d", help="行情周期，例如 1d、15m、1m")
     sync_parser.add_argument("--proxy", default=None, help="Yahoo 代理地址")
     sync_parser.add_argument("--period", default=None, help="分钟线下载窗口，例如 7d、60d")
     sync_parser.add_argument("--vipdoc", default=None, help="通达信 vipdoc 根目录；仅 provider=tdx 时生效")
     sync_parser.add_argument("--force", action="store_true", help="忽略文件 manifest，强制重建当前导入范围；仅 provider=tdx 时生效")
-    sync_parser.add_argument("--limit", type=int, default=None, help="限制导入范围；provider=tdx 时限制文件数，provider=tushare 或 provider=tdx_qfq 时限制股票数")
+    sync_parser.add_argument("--limit", type=int, default=None, help="限制导入范围；provider=yahoo 时限制 symbol_set 或已知标的数量，provider=tdx 时限制文件数，provider=tushare 或 provider=tdx_qfq 时限制股票数")
 
     api_parser = subparsers.add_parser("api", help="启动 FastAPI 服务")
     api_parser.add_argument("--host", default=None, help="监听地址")
@@ -265,6 +266,7 @@ def handle_sync_now(args: argparse.Namespace) -> int:
     sync_market_data = _import_platform_module("strategy_studio.services.sync", "sync-now").sync_market_data
     result = sync_market_data(
         symbol=args.symbol,
+        symbol_set=getattr(args, "symbol_set", None),
         interval=args.interval,
         proxy=args.proxy,
         period=args.period,
@@ -273,10 +275,12 @@ def handle_sync_now(args: argparse.Namespace) -> int:
         force=getattr(args, "force", False),
         limit=getattr(args, "limit", None),
     )
+    status = str(result.get("status", "unknown"))
     message_parts = [
-        "同步完成：",
+        "同步结果：",
         f"provider={result.get('provider', args.provider)}",
         f"symbols={result['symbols_count']}",
+        f"status={status}",
         f"inserted={result['bars_inserted']}",
         f"updated={result['bars_updated']}",
     ]
@@ -284,8 +288,12 @@ def handle_sync_now(args: argparse.Namespace) -> int:
         message_parts.insert(2, f"run_id={result['run_id']}")
     if "ingestion_job_id" in result:
         message_parts.append(f"ingestion_job_id={result['ingestion_job_id']}")
+    if result.get("symbol_set"):
+        message_parts.append(f"symbol_set={result['symbol_set']}")
+    if result.get("error_message"):
+        message_parts.append(f"error={result['error_message']}")
     print(" ".join(message_parts))
-    return 0
+    return 0 if status in {"succeeded", "completed"} else 1
 
 
 def handle_api(args: argparse.Namespace) -> int:

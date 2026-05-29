@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+
 @dataclass(frozen=True)
 class SymbolSpec:
     """批量研究标的信息。"""
@@ -50,26 +51,123 @@ HSTECH_CONSTITUENTS: tuple[SymbolSpec, ...] = (
     SymbolSpec("1698.HK", "TME - SW", "恒生科技成分股", HSTECH_SOURCE),
 )
 
+YAHOO_US_ACTIVE_SOURCE = "美国高活跃股票与 ETF 样本，参考 2026-05 近期 Most Active 市场榜单整理"
+YAHOO_US_ACTIVE: tuple[SymbolSpec, ...] = (
+    SymbolSpec("SPY", "SPDR S&P 500 ETF TRUST", "美股高活跃 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("QQQ", "INVESCO QQQ TRUST", "美股高活跃 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("IWM", "ISHARES RUSSELL 2000 ETF", "美股高活跃 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("DIA", "SPDR DOW JONES INDUSTRIAL AVERAGE ETF", "美股高活跃 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("VOO", "VANGUARD S&P 500 ETF", "美股高活跃 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("VTI", "VANGUARD TOTAL STOCK MARKET ETF", "美股高活跃 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("TQQQ", "PROSHARES ULTRAPRO QQQ", "美股高活跃 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("SQQQ", "PROSHARES ULTRAPRO SHORT QQQ", "美股高活跃 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("SOXL", "DIREXION DAILY SEMICONDUCTOR BULL 3X SHARES", "美股高活跃 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("SOXS", "DIREXION DAILY SEMICONDUCTOR BEAR 3X SHARES", "美股高活跃 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("XLF", "FINANCIAL SELECT SECTOR SPDR FUND", "美股行业 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("XLK", "TECHNOLOGY SELECT SECTOR SPDR FUND", "美股行业 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("XLE", "ENERGY SELECT SECTOR SPDR FUND", "美股行业 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("TLT", "ISHARES 20+ YEAR TREASURY BOND ETF", "美股高活跃 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("HYG", "ISHARES IBOXX $ HIGH YIELD CORPORATE BOND ETF", "美股高活跃 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("GLD", "SPDR GOLD SHARES", "美股商品 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("SLV", "ISHARES SILVER TRUST", "美股商品 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("BITO", "PROSHARES BITCOIN STRATEGY ETF", "美股数字资产 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("IBIT", "ISHARES BITCOIN TRUST ETF", "美股数字资产 ETF", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("NVDA", "NVIDIA CORPORATION", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("TSLA", "TESLA, INC.", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("AAPL", "APPLE INC.", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("MSFT", "MICROSOFT CORPORATION", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("AMZN", "AMAZON.COM, INC.", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("META", "META PLATFORMS, INC.", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("GOOGL", "ALPHABET INC. CLASS A", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("AMD", "ADVANCED MICRO DEVICES, INC.", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("AVGO", "BROADCOM INC.", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("NFLX", "NETFLIX, INC.", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("PLTR", "PALANTIR TECHNOLOGIES INC.", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("SMCI", "SUPER MICRO COMPUTER, INC.", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("MSTR", "MICROSTRATEGY INCORPORATED", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("COIN", "COINBASE GLOBAL, INC.", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("JPM", "JPMORGAN CHASE & CO.", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+    SymbolSpec("BAC", "BANK OF AMERICA CORPORATION", "美股高活跃股票", YAHOO_US_ACTIVE_SOURCE),
+)
+
 CN_ETF_513050 = SymbolSpec("513050.SS", "中概互联网ETF", "国内ETF", "用户指定追加标的")
 INDEX_GRID_ETF_SOURCE = "用户指定的指数 ETF 网格验证样本"
 INDEX_GRID_159941 = SymbolSpec("159941.SZ", "纳指ETF", "指数ETF", INDEX_GRID_ETF_SOURCE)
 INDEX_GRID_159605 = SymbolSpec("159605.SZ", "中概互联网ETF", "指数ETF", INDEX_GRID_ETF_SOURCE)
 INDEX_GRID_159866 = SymbolSpec("159866.SZ", "日经ETF", "指数ETF", INDEX_GRID_ETF_SOURCE)
 
+YAHOO_CN_ACTIVE_SOURCE = "A 股与跨境 ETF 高活跃样本，结合当前项目研究口径整理"
+YAHOO_CN_ACTIVE: tuple[SymbolSpec, ...] = (
+    SymbolSpec("513050.SS", "中概互联网ETF", "A股跨境ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("159941.SZ", "纳指ETF", "A股跨境ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("159605.SZ", "中概互联网ETF", "A股跨境ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("159866.SZ", "日经ETF", "A股跨境ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("510300.SS", "沪深300ETF", "A股宽基ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("510500.SS", "中证500ETF", "A股宽基ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("510050.SS", "上证50ETF", "A股宽基ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("159915.SZ", "创业板ETF", "A股宽基ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("588000.SS", "科创50ETF", "A股宽基ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("512480.SS", "半导体ETF", "A股行业ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("512660.SS", "军工ETF", "A股行业ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("512690.SS", "酒ETF", "A股行业ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("159919.SZ", "沪深300ETF", "A股宽基ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("159949.SZ", "创业板50ETF", "A股宽基ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("159995.SZ", "芯片ETF", "A股行业ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("159920.SZ", "恒生ETF", "A股跨境ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("513100.SS", "纳指ETF", "A股跨境ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("513500.SS", "标普500ETF", "A股跨境ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("518880.SS", "黄金ETF", "A股商品ETF", YAHOO_CN_ACTIVE_SOURCE),
+    SymbolSpec("511010.SS", "国债ETF", "A股债券ETF", YAHOO_CN_ACTIVE_SOURCE),
+)
+
+YAHOO_JP_ACTIVE_SOURCE = "日本高活跃股票样本，参考 2026Q1 JPX 衍生品活跃标的与当前东京市场成交活跃度整理"
+YAHOO_JP_ACTIVE: tuple[SymbolSpec, ...] = (
+    SymbolSpec("7203.T", "TOYOTA MOTOR CORPORATION", "日本高活跃股票", YAHOO_JP_ACTIVE_SOURCE),
+    SymbolSpec("6758.T", "SONY GROUP CORPORATION", "日本高活跃股票", YAHOO_JP_ACTIVE_SOURCE),
+    SymbolSpec("9984.T", "SOFTBANK GROUP CORP.", "日本高活跃股票", YAHOO_JP_ACTIVE_SOURCE),
+    SymbolSpec("8306.T", "MITSUBISHI UFJ FINANCIAL GROUP, INC.", "日本高活跃股票", YAHOO_JP_ACTIVE_SOURCE),
+    SymbolSpec("8035.T", "TOKYO ELECTRON LIMITED", "日本高活跃股票", YAHOO_JP_ACTIVE_SOURCE),
+    SymbolSpec("6861.T", "KEYENCE CORPORATION", "日本高活跃股票", YAHOO_JP_ACTIVE_SOURCE),
+    SymbolSpec("6501.T", "HITACHI, LTD.", "日本高活跃股票", YAHOO_JP_ACTIVE_SOURCE),
+    SymbolSpec("9983.T", "FAST RETAILING CO., LTD.", "日本高活跃股票", YAHOO_JP_ACTIVE_SOURCE),
+    SymbolSpec("4063.T", "SHIN-ETSU CHEMICAL CO., LTD.", "日本高活跃股票", YAHOO_JP_ACTIVE_SOURCE),
+    SymbolSpec("9432.T", "NIPPON TELEGRAPH AND TELEPHONE CORPORATION", "日本高活跃股票", YAHOO_JP_ACTIVE_SOURCE),
+    SymbolSpec("6098.T", "RECRUIT HOLDINGS CO., LTD.", "日本高活跃股票", YAHOO_JP_ACTIVE_SOURCE),
+    SymbolSpec("7974.T", "NINTENDO CO., LTD.", "日本高活跃股票", YAHOO_JP_ACTIVE_SOURCE),
+    SymbolSpec("8058.T", "MITSUBISHI CORPORATION", "日本高活跃股票", YAHOO_JP_ACTIVE_SOURCE),
+    SymbolSpec("8316.T", "SUMITOMO MITSUI FINANCIAL GROUP, INC.", "日本高活跃股票", YAHOO_JP_ACTIVE_SOURCE),
+    SymbolSpec("1321.T", "NOMURA NF NIKKEI 225 ETF", "日本高活跃ETF", YAHOO_JP_ACTIVE_SOURCE),
+)
+
+YAHOO_GLOBAL_ACTIVE_100: tuple[SymbolSpec, ...] = (
+    *YAHOO_US_ACTIVE,
+    *HSTECH_CONSTITUENTS,
+    *YAHOO_CN_ACTIVE,
+    *YAHOO_JP_ACTIVE,
+)
+
 SYMBOL_SETS: dict[str, tuple[SymbolSpec, ...]] = {
     "hstech_plus_513050": (*HSTECH_CONSTITUENTS, CN_ETF_513050),
     "index_grid_etfs": (INDEX_GRID_159941, INDEX_GRID_159605, INDEX_GRID_159866),
+    "yahoo_global_active_100": YAHOO_GLOBAL_ACTIVE_100,
 }
 
 
 def symbol_specs_by_symbol() -> dict[str, SymbolSpec]:
     """按标的代码返回内置元信息映射。"""
-    specs = {spec.symbol.upper(): spec for spec in HSTECH_CONSTITUENTS}
-    specs[CN_ETF_513050.symbol.upper()] = CN_ETF_513050
-    specs[INDEX_GRID_159941.symbol.upper()] = INDEX_GRID_159941
-    specs[INDEX_GRID_159605.symbol.upper()] = INDEX_GRID_159605
-    specs[INDEX_GRID_159866.symbol.upper()] = INDEX_GRID_159866
+    specs: dict[str, SymbolSpec] = {}
+    for symbol_set in SYMBOL_SETS.values():
+        for spec in symbol_set:
+            specs[spec.symbol.upper()] = spec
     return specs
+
+
+def get_symbol_set(symbol_set: str) -> tuple[SymbolSpec, ...]:
+    """读取内置标的池。"""
+    normalized = symbol_set.strip()
+    if normalized not in SYMBOL_SETS:
+        raise ValueError(f"未知标的池：{symbol_set}")
+    return SYMBOL_SETS[normalized]
 
 
 def resolve_symbol_spec(symbol: str, default_symbol: str = "1810.HK") -> SymbolSpec:

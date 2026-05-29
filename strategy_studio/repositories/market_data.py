@@ -45,12 +45,10 @@ def _safe_int(value: object) -> int:
 
 
 def _infer_exchange(symbol: str) -> str:
-    if symbol.endswith(".HK"):
-        return "HK"
-    if symbol.endswith(".SS"):
-        return "SS"
-    if symbol.endswith(".SZ"):
-        return "SZ"
+    if "." in symbol:
+        suffix = symbol.rsplit(".", maxsplit=1)[-1].upper()
+        if suffix:
+            return suffix
     return "US"
 
 

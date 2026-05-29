@@ -53,7 +53,7 @@ from strategy_studio.repositories.market_data import (
     upsert_price_frame,
     upsert_source_file_manifest,
 )
-from strategy_studio.symbols import resolve_symbol_spec
+from strategy_studio.symbols import SymbolSpec, get_symbol_set, resolve_symbol_spec
 
 
 def sync_market_data(
@@ -66,6 +66,7 @@ def sync_market_data(
     vipdoc_path: str | None = None,
     force: bool = False,
     limit: int | None = None,
+    symbol_set: str | None = None,
 ) -> dict[str, object]:
     """按 provider 分发行情同步。
 
@@ -76,7 +77,14 @@ def sync_market_data(
     """
     normalized_provider = provider.strip().lower()
     if normalized_provider == "yahoo":
-        return _sync_yahoo_market_data(symbol=symbol, interval=interval, proxy=proxy, period=period)
+        return _sync_yahoo_market_data(
+            symbol=symbol,
+            interval=interval,
+            proxy=proxy,
+            period=period,
+            limit=limit,
+            symbol_set=symbol_set,
+        )
     if normalized_provider == "tdx":
         return _sync_tdx_market_data(
             symbol=symbol,
@@ -98,6 +106,8 @@ def _sync_yahoo_market_data(
     interval: str,
     proxy: str | None,
     period: str | None,
+    limit: int | None,
+    symbol_set: str | None,
 ) -> dict[str, object]:
     with open_session() as session:
         provider = ensure_data_provider(
@@ -110,22 +120,21 @@ def _sync_yahoo_market_data(
             config_json={"supports_intervals": ["1d", "15m", "1m"]},
             status="active",
         )
-        if symbol:
-            symbols = [symbol.strip().upper()]
-        else:
-            symbols = [str(item["symbol"]) for item in list_instruments(session)]
-        if not symbols:
-            raise ValueError("当前数据库中没有可同步的标的，请先在数据库中创建标的或显式传入 --symbol。")
+        target_specs = _resolve_yahoo_targets(session, symbol=symbol, symbol_set=symbol_set, limit=limit)
+        if not target_specs:
+            raise ValueError("当前没有可同步的 Yahoo 标的。请显式传入 --symbol，或使用 --symbol-set 载入内置样本池。")
+        symbols = [spec.symbol for spec in target_specs]
 
-        run = create_sync_run(session, job_type="manual" if symbol else "scheduled", interval=interval)
+        is_manual_request = bool(symbol) or bool(symbol_set)
+        run = create_sync_run(session, job_type="manual" if is_manual_request else "scheduled", interval=interval)
         run.symbols_count = len(symbols)
         ingestion_job = create_data_ingestion_job(
             session,
             provider=provider,
             job_type="yahoo_sync",
-            requested_via="manual" if symbol else "scheduler",
-            target_scope_json={"symbols": symbols, "interval": interval},
-            options_json={"proxy_configured": bool(proxy), "period": period or ""},
+            requested_via="manual" if is_manual_request else "scheduler",
+            target_scope_json={"symbols": symbols, "interval": interval, "symbol_set": symbol_set or ""},
+            options_json={"proxy_configured": bool(proxy), "period": period or "", "limit": limit or 0},
         )
         ingestion_job.targets_total = len(symbols)
         session.commit()
@@ -135,7 +144,9 @@ def _sync_yahoo_market_data(
         total_series_inserted = 0
         total_series_updated = 0
         failed_symbols = 0
-        for current_symbol in symbols:
+        first_error_message = ""
+        for current_spec in target_specs:
+            current_symbol = current_spec.symbol
             item = create_sync_run_item(session, run, current_symbol)
             ingestion_item = create_data_ingestion_job_item(
                 session,
@@ -147,7 +158,6 @@ def _sync_yahoo_market_data(
             )
             session.commit()
             try:
-                spec = resolve_symbol_spec(current_symbol)
                 effective_period = period
                 if is_intraday_interval(interval) and not effective_period:
                     effective_period = "7d" if interval == "1m" else "60d"
@@ -157,13 +167,13 @@ def _sync_yahoo_market_data(
                     period=effective_period if is_intraday_interval(interval) else None,
                     proxy=proxy,
                 )
-                instrument = get_or_create_instrument(session, symbol=current_symbol, name=spec.name)
+                instrument = get_or_create_instrument(session, symbol=current_symbol, name=current_spec.name)
                 alias = get_or_create_instrument_alias(
                     session,
                     instrument=instrument,
                     provider=provider,
                     source_symbol=current_symbol,
-                    source_name=spec.name,
+                    source_name=current_spec.name,
                     market=instrument.exchange,
                     exchange=instrument.exchange,
                     security_type=instrument.asset_type,
@@ -223,6 +233,8 @@ def _sync_yahoo_market_data(
                     ingestion_item.status = "failed"
                     ingestion_item.stage = "failed"
                     ingestion_item.error_message = str(exc)
+                if not first_error_message:
+                    first_error_message = str(exc)
                 failed_symbols += 1
                 session.commit()
 
@@ -255,10 +267,16 @@ def _sync_yahoo_market_data(
         ingestion_job.completed_at = datetime.now(UTC)
         if failed_symbols == len(symbols):
             ingestion_job.status = "failed"
-            ingestion_job.error_message = "本次 Yahoo 同步全部失败。"
+            ingestion_job.error_message = (
+                f"本次 Yahoo 同步全部失败。首个错误：{first_error_message}" if first_error_message else "本次 Yahoo 同步全部失败。"
+            )
         elif failed_symbols:
             ingestion_job.status = "partially_failed"
-            ingestion_job.error_message = f"本次 Yahoo 同步有 {failed_symbols} 个标的失败。"
+            ingestion_job.error_message = (
+                f"本次 Yahoo 同步有 {failed_symbols} 个标的失败。首个错误：{first_error_message}"
+                if first_error_message
+                else f"本次 Yahoo 同步有 {failed_symbols} 个标的失败。"
+            )
         else:
             ingestion_job.status = "succeeded" if total_series_inserted or total_series_updated else "completed"
         session.commit()
@@ -273,6 +291,8 @@ def _sync_yahoo_market_data(
             "bars_updated": total_updated,
             "series_bars_inserted": total_series_inserted,
             "series_bars_updated": total_series_updated,
+            "symbol_set": symbol_set or "",
+            "error_message": ingestion_job.error_message,
             "status": run.status,
         }
 
@@ -326,6 +346,7 @@ def _sync_tdx_market_data(
         failed_files = 0
         rows_inserted = 0
         rows_updated = 0
+        first_error_message = ""
         for source_file in source_files:
             relative_path = source_file.relative_to(vipdoc).as_posix()
             item = create_data_ingestion_job_item(
@@ -493,6 +514,8 @@ def _sync_tdx_market_data(
                     item.details_json = {"provider_key": provider.provider_key, "source_path": relative_path}
                 if ingestion_job is not None:
                     ingestion_job.error_count += 1
+                if not first_error_message:
+                    first_error_message = str(exc)
                 failed_files += 1
                 session.commit()
 
@@ -512,10 +535,18 @@ def _sync_tdx_market_data(
         }
         if failed_files == len(source_files):
             ingestion_job.status = "failed"
-            ingestion_job.error_message = "本次通达信原始日线导入全部失败。"
+            ingestion_job.error_message = (
+                f"本次通达信原始日线导入全部失败。首个错误：{first_error_message}"
+                if first_error_message
+                else "本次通达信原始日线导入全部失败。"
+            )
         elif failed_files:
             ingestion_job.status = "partially_failed"
-            ingestion_job.error_message = f"本次通达信原始日线导入有 {failed_files} 个文件失败。"
+            ingestion_job.error_message = (
+                f"本次通达信原始日线导入有 {failed_files} 个文件失败。首个错误：{first_error_message}"
+                if first_error_message
+                else f"本次通达信原始日线导入有 {failed_files} 个文件失败。"
+            )
         else:
             ingestion_job.status = "succeeded"
         session.commit()
@@ -532,6 +563,7 @@ def _sync_tdx_market_data(
             "files_imported": imported_files,
             "files_skipped": skipped_files,
             "files_failed": failed_files,
+            "error_message": ingestion_job.error_message,
             "status": ingestion_job.status,
             "vipdoc_path": str(vipdoc),
         }
@@ -584,6 +616,7 @@ def _sync_tushare_corporate_actions(
         rows_deleted = 0
         fetched_rows = 0
         implemented_rows = 0
+        first_error_message = ""
         for target in targets:
             ts_code = str(target["ts_code"]).upper()
             item = create_data_ingestion_job_item(
@@ -661,6 +694,8 @@ def _sync_tushare_corporate_actions(
                     }
                 if ingestion_job is not None:
                     ingestion_job.error_count += 1
+                if not first_error_message:
+                    first_error_message = str(exc)
                 failed_symbols += 1
                 session.commit()
 
@@ -681,10 +716,18 @@ def _sync_tushare_corporate_actions(
         }
         if failed_symbols == len(targets):
             ingestion_job.status = "failed"
-            ingestion_job.error_message = "本次 Tushare 公司行动抓取全部失败。"
+            ingestion_job.error_message = (
+                f"本次 Tushare 公司行动抓取全部失败。首个错误：{first_error_message}"
+                if first_error_message
+                else "本次 Tushare 公司行动抓取全部失败。"
+            )
         elif failed_symbols:
             ingestion_job.status = "partially_failed"
-            ingestion_job.error_message = f"本次 Tushare 公司行动抓取有 {failed_symbols} 个标的失败。"
+            ingestion_job.error_message = (
+                f"本次 Tushare 公司行动抓取有 {failed_symbols} 个标的失败。首个错误：{first_error_message}"
+                if first_error_message
+                else f"本次 Tushare 公司行动抓取有 {failed_symbols} 个标的失败。"
+            )
         else:
             ingestion_job.status = "succeeded"
         session.commit()
@@ -699,6 +742,7 @@ def _sync_tushare_corporate_actions(
             "events_deleted": rows_deleted,
             "fetched_rows": fetched_rows,
             "implemented_rows": implemented_rows,
+            "error_message": ingestion_job.error_message,
             "status": ingestion_job.status,
         }
 
@@ -771,6 +815,7 @@ def _rebuild_tdx_qfq_market_data(
         bar_rows_inserted = 0
         bar_rows_updated = 0
         action_rows_used = 0
+        first_error_message = ""
 
         for target in targets:
             instrument = target["instrument"]
@@ -866,6 +911,8 @@ def _rebuild_tdx_qfq_market_data(
                     item.details_json = {"provider_key": provider.provider_key, "raw_series_id": raw_series.id}
                 if ingestion_job is not None:
                     ingestion_job.error_count += 1
+                if not first_error_message:
+                    first_error_message = str(exc)
                 failed_symbols += 1
                 session.commit()
 
@@ -889,10 +936,18 @@ def _rebuild_tdx_qfq_market_data(
         }
         if failed_symbols == len(targets):
             ingestion_job.status = "failed"
-            ingestion_job.error_message = "本次通达信前复权日线重算全部失败。"
+            ingestion_job.error_message = (
+                f"本次通达信前复权日线重算全部失败。首个错误：{first_error_message}"
+                if first_error_message
+                else "本次通达信前复权日线重算全部失败。"
+            )
         elif failed_symbols:
             ingestion_job.status = "partially_failed"
-            ingestion_job.error_message = f"本次通达信前复权日线重算有 {failed_symbols} 个标的失败。"
+            ingestion_job.error_message = (
+                f"本次通达信前复权日线重算有 {failed_symbols} 个标的失败。首个错误：{first_error_message}"
+                if first_error_message
+                else f"本次通达信前复权日线重算有 {failed_symbols} 个标的失败。"
+            )
         else:
             ingestion_job.status = "succeeded"
         session.commit()
@@ -908,6 +963,7 @@ def _rebuild_tdx_qfq_market_data(
             "segment_rows_updated": segment_rows_updated,
             "segment_rows_deleted": segment_rows_deleted,
             "action_rows_used": action_rows_used,
+            "error_message": ingestion_job.error_message,
             "status": ingestion_job.status,
         }
 
@@ -930,6 +986,45 @@ def _resolve_tdx_vipdoc_path(override_path: str | None) -> Path:
         "未配置通达信 vipdoc 路径。请通过 --vipdoc、STRATEGY_STUDIO_TDX_VIPDOC，"
         "或在 STRATEGY_STUDIO_TDX_CONFIG_PATH 指向的配置文件中提供 vipdoc。"
     )
+
+
+def _resolve_yahoo_targets(
+    session,
+    *,
+    symbol: str | None,
+    symbol_set: str | None,
+    limit: int | None,
+) -> list[SymbolSpec]:
+    """解析 Yahoo 同步目标。
+
+    优先级：
+    1. 单个 `symbol`
+    2. 指定内置 `symbol_set`
+    3. 数据库中已存在的标的
+    """
+    if symbol and symbol.strip():
+        return [resolve_symbol_spec(symbol)]
+
+    if symbol_set and symbol_set.strip():
+        specs = list(get_symbol_set(symbol_set))
+        return specs[:limit] if limit is not None else specs
+
+    instrument_rows = list_instruments(session)
+    if limit is not None:
+        instrument_rows = instrument_rows[:limit]
+    targets: list[SymbolSpec] = []
+    for row in instrument_rows:
+        current_symbol = str(row["symbol"]).strip().upper()
+        resolved = resolve_symbol_spec(current_symbol)
+        targets.append(
+            SymbolSpec(
+                symbol=current_symbol,
+                name=str(row.get("name") or resolved.name or current_symbol),
+                category=resolved.category,
+                source=resolved.source,
+            )
+        )
+    return targets
 
 
 def _resolve_tushare_targets(

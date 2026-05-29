@@ -28,6 +28,8 @@ instruments + price_bars
 
 `price_bars` 使用 `instrument_id + interval + bar_time` 唯一约束，重复导入会更新已有 K 线，不会生成重复记录。
 
+当前 Yahoo 同步除了单标的外，还支持 `symbol_set=yahoo_global_active_100` 批量样本池。前端 `/market-data` 的 Yahoo 批量任务和 CLI `sync-now --provider yahoo --symbol-set yahoo_global_active_100` 走的是同一套入口；若网络环境要求代理，统一任务会在 `data_ingestion_jobs` 中保留失败状态和首个错误原因。
+
 通达信当前已接通的链路为：
 
 ```text

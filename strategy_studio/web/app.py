@@ -110,6 +110,7 @@ def create_app() -> FastAPI:
     def post_sync(request: SyncRequestModel) -> dict[str, object]:
         return sync_market_data(
             symbol=request.symbol,
+            symbol_set=request.symbol_set,
             interval=request.interval,
             proxy=request.proxy,
             period=request.period,

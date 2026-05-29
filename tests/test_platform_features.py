@@ -8,7 +8,7 @@ import pandas as pd
 from fastapi.testclient import TestClient
 
 from strategy_studio.cli import build_parser
-from strategy_studio.platform_cli import handle_api, handle_check_db
+from strategy_studio.platform_cli import handle_api, handle_check_db, handle_sync_now
 from strategy_studio.services.backtests import _estimate_eta_seconds, _normalize_artifacts, _resolve_effective_parallelism
 from strategy_studio.services.platform import record_platform_heartbeat
 from strategy_studio.services.sync import sync_market_data
@@ -27,6 +27,7 @@ class PlatformFeatureTests(unittest.TestCase):
         init_args = parser.parse_args(["init-db"])
         check_db_args = parser.parse_args(["check-db", "--json"])
         sync_args = parser.parse_args(["sync-now", "--provider", "tdx", "--symbol", "sh600000", "--interval", "1d", "--force", "--limit", "3"])
+        yahoo_set_args = parser.parse_args(["sync-now", "--provider", "yahoo", "--symbol-set", "yahoo_global_active_100", "--interval", "15m", "--limit", "100"])
         tushare_args = parser.parse_args(["sync-now", "--provider", "tushare", "--symbol", "600000.SH", "--limit", "2"])
         qfq_args = parser.parse_args(["sync-now", "--provider", "tdx_qfq", "--symbol", "sh600000", "--interval", "1d", "--limit", "2"])
         api_args = parser.parse_args(["api", "--host", "127.0.0.1", "--port", "8000"])
@@ -41,6 +42,9 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(sync_args.symbol, "sh600000")
         self.assertTrue(sync_args.force)
         self.assertEqual(sync_args.limit, 3)
+        self.assertEqual(yahoo_set_args.provider, "yahoo")
+        self.assertEqual(yahoo_set_args.symbol_set, "yahoo_global_active_100")
+        self.assertEqual(yahoo_set_args.limit, 100)
         self.assertEqual(tushare_args.provider, "tushare")
         self.assertEqual(tushare_args.symbol, "600000.SH")
         self.assertEqual(tushare_args.limit, 2)
@@ -136,6 +140,7 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(response.json()["provider"], "tdx")
         mock_sync.assert_called_once_with(
             symbol="sh600000",
+            symbol_set=None,
             interval="1d",
             proxy=None,
             period=None,
@@ -167,6 +172,7 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(response.json()["provider"], "tushare")
         mock_sync.assert_called_once_with(
             symbol="sh600000",
+            symbol_set=None,
             interval="1d",
             proxy=None,
             period=None,
@@ -198,6 +204,7 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(response.json()["provider"], "tdx_qfq")
         mock_sync.assert_called_once_with(
             symbol="sh600000",
+            symbol_set=None,
             interval="1d",
             proxy=None,
             period=None,
@@ -433,6 +440,46 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertIn("数据库检查状态", rendered)
         self.assertIn("database missing", rendered)
 
+    def test_handle_sync_now_returns_failure_for_failed_provider_run(self) -> None:
+        args = SimpleNamespace(
+            symbol=None,
+            symbol_set="yahoo_global_active_100",
+            interval="1d",
+            proxy=None,
+            period=None,
+            provider="yahoo",
+            vipdoc=None,
+            force=False,
+            limit=1,
+        )
+
+        def fake_import(module_name: str, command_name: str):
+            self.assertEqual(module_name, "strategy_studio.services.sync")
+            self.assertEqual(command_name, "sync-now")
+            return SimpleNamespace(
+                sync_market_data=lambda **_: {
+                    "provider": "yahoo",
+                    "symbols_count": 1,
+                    "bars_inserted": 0,
+                    "bars_updated": 0,
+                    "ingestion_job_id": 9,
+                    "symbol_set": "yahoo_global_active_100",
+                    "status": "failed",
+                    "error_message": "需要代理",
+                }
+            )
+
+        with (
+            patch("strategy_studio.platform_cli._import_platform_module", side_effect=fake_import),
+            patch("builtins.print") as mock_print,
+        ):
+            exit_code = handle_sync_now(args)
+
+        self.assertEqual(exit_code, 1)
+        rendered = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
+        self.assertIn("status=failed", rendered)
+        self.assertIn("symbol_set=yahoo_global_active_100", rendered)
+
     def test_sync_market_data_writes_unified_market_data_tables(self) -> None:
         session = SimpleNamespace()
         session.commit = lambda: None
@@ -492,12 +539,11 @@ class PlatformFeatureTests(unittest.TestCase):
         with (
             patch("strategy_studio.services.sync.open_session", return_value=_SessionContext()),
             patch("strategy_studio.services.sync.ensure_data_provider", return_value=provider) as mock_provider,
-            patch("strategy_studio.services.sync.list_instruments", return_value=[]),
             patch("strategy_studio.services.sync.create_sync_run", return_value=run),
             patch("strategy_studio.services.sync.create_sync_run_item", return_value=run_item),
             patch("strategy_studio.services.sync.create_data_ingestion_job", return_value=ingestion_job),
             patch("strategy_studio.services.sync.create_data_ingestion_job_item", return_value=ingestion_item),
-            patch("strategy_studio.services.sync.resolve_symbol_spec", return_value=SimpleNamespace(name="XIAOMI - W")),
+            patch("strategy_studio.services.sync._resolve_yahoo_targets", return_value=[SimpleNamespace(symbol="1810.HK", name="XIAOMI - W")]),
             patch("strategy_studio.services.sync.download_price_bars", return_value=bars),
             patch("strategy_studio.services.sync.get_or_create_instrument", return_value=instrument),
             patch("strategy_studio.services.sync.get_or_create_instrument_alias", return_value=alias) as mock_alias,
@@ -521,6 +567,31 @@ class PlatformFeatureTests(unittest.TestCase):
         mock_alias.assert_called_once()
         mock_series.assert_called_once()
         mock_upsert_series.assert_called_once()
+
+    def test_sync_market_data_dispatches_yahoo_symbol_set(self) -> None:
+        with patch(
+            "strategy_studio.services.sync._sync_yahoo_market_data",
+            return_value={"provider": "yahoo", "ingestion_job_id": 4, "symbols_count": 100, "bars_inserted": 8000, "bars_updated": 0, "status": "succeeded"},
+        ) as mock_yahoo:
+            result = sync_market_data(
+                symbol=None,
+                symbol_set="yahoo_global_active_100",
+                interval="15m",
+                proxy=None,
+                provider="yahoo",
+                period="60d",
+                limit=100,
+            )
+
+        self.assertEqual(result["provider"], "yahoo")
+        mock_yahoo.assert_called_once_with(
+            symbol=None,
+            symbol_set="yahoo_global_active_100",
+            interval="15m",
+            proxy=None,
+            period="60d",
+            limit=100,
+        )
 
     def test_sync_market_data_dispatches_tdx_provider(self) -> None:
         with patch(
@@ -812,3 +883,35 @@ class StrategyTemplateServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+    def test_web_api_market_data_sync_route_supports_yahoo_symbol_set(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.sync_market_data",
+            return_value={"provider": "yahoo", "ingestion_job_id": 5, "symbols_count": 100, "bars_inserted": 2000, "bars_updated": 0, "status": "succeeded"},
+        ) as mock_sync:
+            response = client.post(
+                "/api/market-data/sync",
+                json={
+                    "provider": "yahoo",
+                    "symbol_set": "yahoo_global_active_100",
+                    "interval": "15m",
+                    "period": "60d",
+                    "limit": 100,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["provider"], "yahoo")
+        mock_sync.assert_called_once_with(
+            symbol=None,
+            symbol_set="yahoo_global_active_100",
+            interval="15m",
+            proxy=None,
+            period="60d",
+            provider="yahoo",
+            vipdoc_path=None,
+            force=False,
+            limit=100,
+        )

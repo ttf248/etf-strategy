@@ -71,9 +71,9 @@ const providerPanelConfigs: ProviderPanelConfig[] = [
     providerKey: "yahoo",
     fallbackName: "Yahoo Finance",
     title: "Yahoo 回测样本",
-    description: "下载 Yahoo 行情，并继续双写当前回测主表与统一行情表。适合先把一个可直接回测的样本补齐。",
+    description: "下载 Yahoo 行情，并继续双写当前回测主表与统一行情表。默认批量入口会使用内置 100 个全球高活跃样本，适合作为长期维护的回测底仓。",
     currentActionLabel: "同步当前标的",
-    batchActionLabel: "同步全部标的当前周期",
+    batchActionLabel: "同步默认样本池",
     symbolHint: "示例：1810.HK、SPY",
     currentIntervalLabel: "当前周期",
   },
@@ -457,7 +457,25 @@ export function MarketDataView() {
       if (mode === "current") {
         await syncSymbolForInterval(syncInterval);
       } else {
-        await syncAll();
+        setSyncingActionKey(`${providerKey}:${mode}`);
+        try {
+          await apiFetch("/api/market-data/sync", {
+            method: "POST",
+            body: JSON.stringify({
+              provider: "yahoo",
+              symbol_set: "yahoo_global_active_100",
+              interval: syncInterval,
+              period: syncPeriodForInterval(syncInterval),
+              limit: batchLimit,
+            }),
+          });
+          messageApi.success(`Yahoo 默认样本池 ${syncInterval} 同步完成`);
+          await loadStatsData(false);
+        } catch (error) {
+          messageApi.error(error instanceof Error ? error.message : "同步失败");
+        } finally {
+          setSyncingActionKey(null);
+        }
       }
       return;
     }
@@ -891,7 +909,7 @@ export function MarketDataView() {
                   loading={syncingActionKey === `${provider.providerKey}:batch`}
                   onClick={() => void runProviderAction(provider.providerKey, "batch")}
                 >
-                  {provider.providerKey === "yahoo" ? provider.batchActionLabel : `${provider.batchActionLabel} ${batchLimit} 项`}
+                  {provider.providerKey === "yahoo" ? `${provider.batchActionLabel} ${batchLimit} 个` : `${provider.batchActionLabel} ${batchLimit} 项`}
                 </Button>
               </div>
             </article>
