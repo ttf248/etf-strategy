@@ -145,36 +145,69 @@ a {
 }
 
 .platform-header {
-  min-height: 74px;
-  padding: 16px 28px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: rgba(255, 255, 255, 0.84);
-  border-bottom: 1px solid rgba(219, 227, 239, 0.82);
-  backdrop-filter: blur(18px);
+  height: auto !important;
+  min-height: 0;
+  padding: 24px 28px 0;
+  background: transparent !important;
+  line-height: normal;
 }
 
 .mobile-menu-trigger {
   display: none !important;
 }
 
-.platform-header-main {
+.platform-header-surface {
+  width: 100%;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 22px 24px;
+  border: 1px solid rgba(219, 227, 239, 0.92);
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96)),
+    rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.06);
+}
+
+.platform-header-surface.tone-ready {
+  background:
+    linear-gradient(135deg, rgba(219, 234, 254, 0.52), rgba(255, 255, 255, 0.98) 42%, rgba(240, 253, 250, 0.84)),
+    rgba(255, 255, 255, 0.96);
+}
+
+.platform-header-surface.tone-active {
+  background:
+    linear-gradient(135deg, rgba(209, 250, 229, 0.56), rgba(255, 255, 255, 0.98) 42%, rgba(236, 253, 245, 0.92)),
+    rgba(255, 255, 255, 0.96);
+}
+
+.platform-header-surface.tone-attention {
+  border-color: rgba(194, 65, 58, 0.18);
+  background:
+    linear-gradient(135deg, rgba(254, 226, 226, 0.6), rgba(255, 255, 255, 0.98) 42%, rgba(255, 251, 235, 0.92)),
+    rgba(255, 255, 255, 0.96);
+}
+
+.platform-header-topline {
   display: flex;
-  min-width: 0;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.platform-header-page {
   flex: 1 1 auto;
-  flex-direction: column;
-  gap: 6px;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 0.94fr) minmax(280px, 0.86fr);
+  gap: 18px;
+  align-items: start;
 }
 
 .platform-header-title {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  gap: 4px;
+  gap: 6px;
 }
 
 .platform-header-kicker {
@@ -186,76 +219,48 @@ a {
 .platform-header-name {
   color: #101828;
   font-weight: 700;
-  font-size: 26px;
-  line-height: 32px;
+  font-size: 30px;
+  line-height: 36px;
 }
 
-.platform-header-copy {
-  max-width: 860px;
+.platform-header-context {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid rgba(219, 227, 239, 0.84);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.platform-header-context-label {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.platform-header-context p {
   margin: 0;
   color: var(--muted-strong);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: 14px;
-  line-height: 22px;
-}
-
-.platform-header-copy strong {
-  color: #334155;
   font-size: 13px;
   line-height: 20px;
 }
 
-.platform-header-copy span {
-  color: var(--muted-strong);
-}
-
-.platform-meta-strip {
-  padding: 18px 28px 0;
-}
-
-.shell-banner {
+.platform-guidance-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(240px, 0.8fr) minmax(240px, 0.72fr);
+  grid-template-columns: minmax(0, 1.28fr) minmax(280px, 0.82fr);
   gap: 18px;
-  padding: 20px;
-  border: 1px solid rgba(219, 227, 239, 0.9);
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(219, 227, 239, 0.82);
 }
 
-.shell-banner.tone-ready {
-  background:
-    linear-gradient(120deg, rgba(219, 234, 254, 0.4), rgba(255, 255, 255, 0.9)),
-    rgba(255, 255, 255, 0.96);
-}
-
-.shell-banner.tone-active {
-  background:
-    linear-gradient(120deg, rgba(209, 250, 229, 0.42), rgba(255, 255, 255, 0.9)),
-    rgba(255, 255, 255, 0.96);
-}
-
-.shell-banner.tone-attention {
-  border-color: rgba(194, 65, 58, 0.16);
-  background:
-    linear-gradient(120deg, rgba(254, 226, 226, 0.52), rgba(255, 255, 255, 0.9)),
-    rgba(255, 255, 255, 0.96);
-}
-
-.shell-banner-main {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 14px;
-}
-
-.shell-banner-copy {
+.platform-guidance-main {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 
 .research-guidance-kicker {
@@ -265,93 +270,97 @@ a {
   line-height: 18px;
 }
 
-.shell-banner-copy strong {
+.platform-guidance-main strong {
   color: #0f172a;
-  font-size: 28px;
-  line-height: 36px;
+  font-size: 30px;
+  line-height: 38px;
 }
 
-.shell-banner-copy p {
+.platform-guidance-main p {
   margin: 0;
   color: var(--muted);
   font-size: 14px;
   line-height: 22px;
 }
 
-.shell-banner-summary {
-  display: grid;
-  gap: 10px;
-  align-content: start;
-}
-
-.shell-summary-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 14px 16px;
-  border: 1px solid rgba(219, 227, 239, 0.88);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.78);
-}
-
-.shell-summary-item span {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.shell-summary-item strong {
-  color: #0f172a;
-  font-size: 17px;
-  line-height: 23px;
-}
-
-.shell-summary-item p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 19px;
-}
-
-.shell-banner-actions-panel {
+.platform-guidance-actions {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   gap: 16px;
   padding: 16px 18px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.74);
   border: 1px solid rgba(219, 227, 239, 0.88);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.78);
 }
 
-.shell-banner-actions-copy {
+.platform-guidance-actions-copy {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.shell-banner-actions-copy strong {
+.platform-guidance-actions-copy strong {
   color: #0f172a;
   font-size: 15px;
   line-height: 22px;
 }
 
-.shell-banner-actions-copy p {
+.platform-guidance-actions-copy p {
   margin: 0;
   color: var(--muted);
   font-size: 12px;
   line-height: 19px;
 }
 
-.shell-banner-actions {
+.platform-guidance-action-group {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
 }
 
+.platform-guidance-signals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(219, 227, 239, 0.82);
+}
+
+.platform-guidance-signal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(219, 227, 239, 0.88);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.platform-guidance-signal span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.platform-guidance-signal strong {
+  color: #0f172a;
+  font-size: 17px;
+  line-height: 24px;
+}
+
+.platform-guidance-signal p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 19px;
+}
+
 .platform-content {
   min-height: calc(100vh - 64px);
-  padding: 24px 28px 40px;
+  padding: 20px 28px 40px;
 }
 
 .content-frame {
@@ -3429,9 +3438,8 @@ a {
 
   .platform-header {
     height: auto;
-    min-height: 58px;
-    padding: 14px 16px;
-    align-items: flex-start;
+    min-height: 0;
+    padding: 16px 16px 0;
   }
 
   .mobile-menu-trigger {
@@ -3439,8 +3447,18 @@ a {
     flex: 0 0 auto;
   }
 
-  .platform-header-main {
-    width: calc(100% - 52px);
+  .platform-header-surface {
+    padding: 16px;
+    border-radius: 22px;
+  }
+
+  .platform-header-topline {
+    gap: 12px;
+  }
+
+  .platform-header-page {
+    grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .platform-header-name {
@@ -3448,26 +3466,31 @@ a {
     line-height: 30px;
   }
 
-  .platform-header-copy {
-    font-size: 13px;
-    line-height: 20px;
-  }
-
-  .platform-meta-strip {
-    padding: 12px 16px 0;
-  }
-
-  .shell-banner {
+  .platform-guidance-panel {
     grid-template-columns: 1fr;
+    gap: 14px;
+    margin-top: 16px;
+    padding-top: 16px;
   }
 
-  .shell-banner-copy strong {
+  .platform-guidance-main strong {
     font-size: 24px;
     line-height: 32px;
   }
 
-  .shell-banner-actions-panel {
+  .platform-guidance-actions {
     padding: 14px 16px;
+  }
+
+  .platform-guidance-action-group {
+    grid-template-columns: 1fr;
+  }
+
+  .platform-guidance-signals {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 16px;
+    padding-top: 16px;
   }
 
   .platform-content {

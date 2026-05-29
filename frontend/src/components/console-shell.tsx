@@ -472,52 +472,55 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
       </Sider>
       <Layout className="platform-main">
         <Header className="platform-header">
-          {showMobileNav ? <Button className="mobile-menu-trigger" icon={<MenuOutlined />} onClick={() => setMobileMenuOpen(true)} /> : null}
-          <div className="platform-header-main">
-            <div className="platform-header-title">
-              <span className="platform-header-kicker">{current.kicker}</span>
-              <span className="platform-header-name">{current.title}</span>
+          <div className={`platform-header-surface tone-${shellGuidance.tone}`}>
+            <div className="platform-header-topline">
+              {showMobileNav ? <Button className="mobile-menu-trigger" icon={<MenuOutlined />} onClick={() => setMobileMenuOpen(true)} /> : null}
+              <div className="platform-header-page">
+                <div className="platform-header-title">
+                  <span className="platform-header-kicker">{current.kicker}</span>
+                  <span className="platform-header-name">{current.title}</span>
+                </div>
+                <div className="platform-header-context">
+                  <span className="platform-header-context-label">{current.tipTitle}</span>
+                  <p>{current.tipText}</p>
+                </div>
+              </div>
             </div>
-            <p className="platform-header-copy">
-              <strong>{current.tipTitle}</strong>
-              <span>{current.tipText}</span>
-            </p>
-          </div>
-        </Header>
-        <div className="platform-meta-strip">
-          <div className={`shell-banner tone-${shellGuidance.tone}`}>
-            <div className="shell-banner-main">
-              <div className="shell-banner-copy">
+
+            <div className="platform-guidance-panel">
+              <div className="platform-guidance-main">
                 <span className="research-guidance-kicker">{shellGuidance.kicker}</span>
                 <strong>{shellGuidance.title}</strong>
                 <p>{shellGuidance.description}</p>
               </div>
+
+              <div className="platform-guidance-actions">
+                <div className="platform-guidance-actions-copy">
+                  <strong>先按主动作推进</strong>
+                  <p>主线不成立时，再切到次动作继续判断，避免首屏同时处理太多入口。</p>
+                </div>
+                <div className="platform-guidance-action-group">
+                  <Button type="primary">
+                    <Link href={shellGuidance.primaryHref}>{shellGuidance.primaryLabel}</Link>
+                  </Button>
+                  <Button>
+                    <Link href={shellGuidance.secondaryHref}>{shellGuidance.secondaryLabel}</Link>
+                  </Button>
+                </div>
+              </div>
             </div>
-            <div className="shell-banner-summary" aria-label="当前研究摘要">
+
+            <div className="platform-guidance-signals" aria-label="当前研究摘要">
               {shellSummaryItems.map((item) => (
-                <article key={item.label} className="shell-summary-item">
+                <article key={item.label} className="platform-guidance-signal">
                   <span>{item.label}</span>
                   <strong>{item.value}</strong>
                   <p>{item.detail}</p>
                 </article>
               ))}
             </div>
-            <div className="shell-banner-actions-panel">
-              <div className="shell-banner-actions-copy">
-                <strong>现在先做这一件</strong>
-                <p>先按主动作推进；只有主线不成立时，再切到次动作继续判断。</p>
-              </div>
-              <div className="shell-banner-actions">
-                <Button type="primary">
-                  <Link href={shellGuidance.primaryHref}>{shellGuidance.primaryLabel}</Link>
-                </Button>
-                <Button>
-                  <Link href={shellGuidance.secondaryHref}>{shellGuidance.secondaryLabel}</Link>
-                </Button>
-              </div>
-            </div>
           </div>
-        </div>
+        </Header>
         <Content className="platform-content">
           <div className="content-frame">{children}</div>
         </Content>
