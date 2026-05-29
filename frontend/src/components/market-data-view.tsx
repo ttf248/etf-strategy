@@ -12,6 +12,7 @@ import {
   type MarketDataIngestionJob,
   type MarketDataIngestionJobDetail,
   type MarketDataIngestionJobItem,
+  type MarketDataJobActionResult,
   type MarketDataProviderSummary,
   type MarketDataSeriesRow,
   type MarketDataSyncEnqueueResult,
@@ -202,6 +203,12 @@ function ingestionStatusLabel(status: string): string {
   if (status === "queued") {
     return "排队中";
   }
+  if (status === "cancel_requested") {
+    return "等待取消";
+  }
+  if (status === "cancelled") {
+    return "已取消";
+  }
   if (status === "skipped") {
     return "已跳过";
   }
@@ -277,7 +284,7 @@ function extractChildIngestionJobIds(job: MarketDataIngestionJob): number[] {
 }
 
 function ingestionJobIsPending(status: string): boolean {
-  return status === "queued" || status === "running";
+  return status === "queued" || status === "running" || status === "cancel_requested";
 }
 
 function normalizeFocusSymbol(rawSymbol: string): string {
@@ -927,6 +934,49 @@ export function MarketDataView() {
     }
   }
 
+  async function cancelIngestionJob(jobId: number) {
+    try {
+      const result = await apiFetch<MarketDataJobActionResult>(`/api/market-data/ingestion-jobs/${jobId}/cancel`, {
+        method: "POST",
+      });
+      if (result.changed) {
+        messageApi.success(
+          result.status === "cancel_requested"
+            ? `已请求取消任务 #${jobId}`
+            : `任务 #${jobId} 已取消`,
+        );
+      } else {
+        messageApi.warning(`任务 #${jobId} 当前状态为 ${ingestionStatusLabel(result.status)}，无需再次取消`);
+      }
+      await loadStatsData(false);
+      if (selectedJobId === jobId) {
+        await openJobDetail(jobId, false);
+      }
+      if (diagnosticSymbol) {
+        await loadSymbolDiagnosticsData(diagnosticSymbol, false);
+      }
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "取消任务失败");
+    }
+  }
+
+  async function retryIngestionJob(jobId: number) {
+    try {
+      const result = await apiFetch<MarketDataJobActionResult>(`/api/market-data/ingestion-jobs/${jobId}/retry`, {
+        method: "POST",
+      });
+      if (result.changed) {
+        messageApi.success(`任务 #${jobId} 已重新入队`);
+      } else {
+        messageApi.warning(`任务 #${jobId} 当前状态为 ${ingestionStatusLabel(result.status)}，暂不可重试`);
+      }
+      await loadStatsData(false);
+      await openJobDetail(jobId, false);
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "重试任务失败");
+    }
+  }
+
   function closeJobDetail() {
     setSelectedJobId(null);
     setSelectedJobDetail(null);
@@ -1420,9 +1470,25 @@ export function MarketDataView() {
                   {ingestionJobIsPending(job.status) ? <small>Worker 领取后会自动刷新当前列表与详情。</small> : null}
                   {extractChildIngestionJobIds(job).length > 0 ? <small>子任务 #{extractChildIngestionJobIds(job).join(", #")}</small> : null}
                   {job.error_message ? <Typography.Text type="danger">{job.error_message}</Typography.Text> : null}
-                  <Button size="small" onClick={() => void openJobDetail(job.id)}>
-                    查看详情
-                  </Button>
+                  <Space wrap>
+                    <Button size="small" onClick={() => void openJobDetail(job.id)}>
+                      查看详情
+                    </Button>
+                    <Button
+                      size="small"
+                      disabled={!["queued", "running"].includes(job.status)}
+                      onClick={() => void cancelIngestionJob(job.id)}
+                    >
+                      取消
+                    </Button>
+                    <Button
+                      size="small"
+                      disabled={!["failed", "partially_failed", "cancelled"].includes(job.status)}
+                      onClick={() => void retryIngestionJob(job.id)}
+                    >
+                      重试
+                    </Button>
+                  </Space>
                   {renderWorkflowSummary(job)}
                 </article>
               ))}
@@ -1459,13 +1525,29 @@ export function MarketDataView() {
                 { title: "申请时间", dataIndex: "requested_at", width: 180 },
                 { title: "完成时间", dataIndex: "completed_at", width: 180 },
                 {
-                  title: "详情",
-                  width: 110,
+                  title: "操作",
+                  width: 260,
                   fixed: "right",
                   render: (_, row) => (
-                    <Button size="small" onClick={() => void openJobDetail(row.id)}>
-                      查看详情
-                    </Button>
+                    <Space wrap>
+                      <Button size="small" onClick={() => void openJobDetail(row.id)}>
+                        查看详情
+                      </Button>
+                      <Button
+                        size="small"
+                        disabled={!["queued", "running"].includes(row.status)}
+                        onClick={() => void cancelIngestionJob(row.id)}
+                      >
+                        取消
+                      </Button>
+                      <Button
+                        size="small"
+                        disabled={!["failed", "partially_failed", "cancelled"].includes(row.status)}
+                        onClick={() => void retryIngestionJob(row.id)}
+                      >
+                        重试
+                      </Button>
+                    </Space>
                   ),
                 },
               ]}
@@ -1900,6 +1982,22 @@ export function MarketDataView() {
                   失败子项 {selectedJobFailedItems.length}
                 </Tag>
               </div>
+              <Space wrap>
+                <Button
+                  size="small"
+                  disabled={!["queued", "running"].includes(selectedJobDetail.status)}
+                  onClick={() => void cancelIngestionJob(selectedJobDetail.id)}
+                >
+                  取消当前任务
+                </Button>
+                <Button
+                  size="small"
+                  disabled={!["failed", "partially_failed", "cancelled"].includes(selectedJobDetail.status)}
+                  onClick={() => void retryIngestionJob(selectedJobDetail.id)}
+                >
+                  按原条件重试
+                </Button>
+              </Space>
               {selectedChildJobIds.length > 0 ? (
                 <Space wrap>
                   {selectedChildJobIds.map((jobId) => (

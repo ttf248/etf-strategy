@@ -82,6 +82,12 @@ export type MarketDataSyncEnqueueResult = {
   requested_via: string;
 };
 
+export type MarketDataJobActionResult = {
+  job_id: number;
+  status: string;
+  changed: boolean;
+};
+
 export type MarketDataSeriesRow = {
   series_id: number;
   provider_key: string;

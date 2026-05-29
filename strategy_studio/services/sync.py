@@ -3,6 +3,7 @@ from __future__ import annotations
 """行情同步与原始导入服务。"""
 
 from collections import defaultdict
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from pathlib import Path
 import re
@@ -67,6 +68,10 @@ TDX_IMPORT_INTERVALS = ("1d", "1m", "5m")
 TDX_PIPELINE_INTERVALS = ("1d", "all")
 API_REQUESTED_VIA = "api"
 WORKER_CHILD_REQUESTED_VIA = "worker_child"
+_ACTIVE_ENQUEUED_MARKET_DATA_JOB_ID: ContextVar[int | None] = ContextVar(
+    "active_enqueued_market_data_job_id",
+    default=None,
+)
 
 _QUEUE_PROVIDER_DEFINITIONS: dict[str, dict[str, object]] = {
     "yahoo": {
@@ -242,6 +247,83 @@ def enqueue_market_data_sync(
         }
 
 
+def retry_market_data_ingestion_job(job_id: int) -> dict[str, object]:
+    with open_session() as session:
+        job = session.get(DataIngestionJob, job_id)
+        if job is None or job.requested_via != API_REQUESTED_VIA:
+            return {"job_id": job_id, "status": "not_found", "changed": False}
+        if job.status not in {"failed", "partially_failed", "cancelled"}:
+            return {"job_id": job_id, "status": job.status, "changed": False}
+
+        previous_status = job.status
+        retry_count = int(dict(job.summary_json or {}).get("retry_count") or 0) + 1
+        job.status = "queued"
+        job.started_at = None
+        job.completed_at = None
+        job.targets_completed = 0
+        job.rows_inserted = 0
+        job.rows_updated = 0
+        job.error_count = 0
+        job.error_message = ""
+        job.summary_json = {
+            **dict(job.summary_json or {}),
+            "retry_count": retry_count,
+            "last_terminal_status": previous_status,
+            "worker_stage": "queued",
+        }
+        session.commit()
+        return {"job_id": job_id, "status": "queued", "changed": True}
+
+
+def cancel_market_data_ingestion_job(job_id: int) -> dict[str, object]:
+    with open_session() as session:
+        job = session.get(DataIngestionJob, job_id)
+        if job is None or job.requested_via != API_REQUESTED_VIA:
+            return {"job_id": job_id, "status": "not_found", "changed": False}
+        if job.status == "queued":
+            job.status = "cancelled"
+            job.completed_at = datetime.now(UTC)
+            job.error_message = "任务已取消，未进入执行。"
+            job.summary_json = {
+                **dict(job.summary_json or {}),
+                "worker_stage": "cancelled",
+            }
+            session.commit()
+            return {"job_id": job_id, "status": "cancelled", "changed": True}
+        if job.status == "running":
+            job.status = "cancel_requested"
+            job.error_message = "已经收到取消请求，当前任务会在安全检查点尽快停止。"
+            job.summary_json = {
+                **dict(job.summary_json or {}),
+                "worker_stage": "cancel_requested",
+            }
+            session.commit()
+            return {"job_id": job_id, "status": "cancel_requested", "changed": True}
+        return {"job_id": job_id, "status": job.status, "changed": False}
+
+
+def _current_enqueued_market_data_job_id() -> int | None:
+    return _ACTIVE_ENQUEUED_MARKET_DATA_JOB_ID.get()
+
+
+def _is_current_enqueued_market_data_job_cancel_requested() -> bool:
+    job_id = _current_enqueued_market_data_job_id()
+    if job_id is None:
+        return False
+    with open_session() as session:
+        job = session.get(DataIngestionJob, job_id)
+        if job is None:
+            return False
+        return job.status in {"cancel_requested", "cancelled"}
+
+
+def _current_enqueued_market_data_job_cancel_message() -> str:
+    job_id = _current_enqueued_market_data_job_id()
+    if job_id is None:
+        return "任务已取消。"
+    return f"统一导入任务 #{job_id} 已请求取消，剩余目标不再继续执行。"
+
+
 def execute_next_market_data_job(worker_name: str | None = None) -> int | None:
     with open_session() as session:
         job = claim_next_queued_ingestion_job(session, requested_via=API_REQUESTED_VIA)
@@ -257,25 +339,29 @@ def execute_next_market_data_job(worker_name: str | None = None) -> int | None:
         }
         session.commit()
 
+    token = _ACTIVE_ENQUEUED_MARKET_DATA_JOB_ID.set(job_id)
     try:
-        result = sync_market_data(
-            symbol=str(target_scope_json.get("symbol") or "") or None,
-            symbol_set=str(target_scope_json.get("symbol_set") or "") or None,
-            interval=str(target_scope_json.get("interval") or "1d"),
-            proxy=str(target_scope_json.get("proxy") or "") or None,
-            period=str(target_scope_json.get("period") or "") or None,
-            provider=str(target_scope_json.get("provider") or "yahoo"),
-            vipdoc_path=str(target_scope_json.get("vipdoc_path") or "") or None,
-            force=bool(options_json.get("force")),
-            limit=int(options_json.get("limit") or 0) or None,
-            requested_via=WORKER_CHILD_REQUESTED_VIA,
-        )
-    except Exception as exc:
-        _finalize_enqueued_market_data_job_failure(job_id, str(exc), worker_name=worker_name)
-        return job_id
+        try:
+            result = sync_market_data(
+                symbol=str(target_scope_json.get("symbol") or "") or None,
+                symbol_set=str(target_scope_json.get("symbol_set") or "") or None,
+                interval=str(target_scope_json.get("interval") or "1d"),
+                proxy=str(target_scope_json.get("proxy") or "") or None,
+                period=str(target_scope_json.get("period") or "") or None,
+                provider=str(target_scope_json.get("provider") or "yahoo"),
+                vipdoc_path=str(target_scope_json.get("vipdoc_path") or "") or None,
+                force=bool(options_json.get("force")),
+                limit=int(options_json.get("limit") or 0) or None,
+                requested_via=WORKER_CHILD_REQUESTED_VIA,
+            )
+        except Exception as exc:
+            _finalize_enqueued_market_data_job_failure(job_id, str(exc), worker_name=worker_name)
+            return job_id
 
-    _finalize_enqueued_market_data_job_success(job_id, result, worker_name=worker_name)
-    return job_id
+        _finalize_enqueued_market_data_job_success(job_id, result, worker_name=worker_name)
+        return job_id
+    finally:
+        _ACTIVE_ENQUEUED_MARKET_DATA_JOB_ID.reset(token)
 
 
 def _normalize_summary_value(value: object) -> object:
@@ -314,7 +400,7 @@ def _finalize_enqueued_market_data_job_success(
         job.targets_completed = 1
         job.rows_inserted = int(result.get("series_bars_inserted") or result.get("bars_inserted") or 0)
         job.rows_updated = int(result.get("series_bars_updated") or result.get("bars_updated") or 0)
-        job.error_count = 0 if normalized_status in {"succeeded", "completed", "skipped"} else max(1, int(job.error_count or 0))
+        job.error_count = 0 if normalized_status in {"succeeded", "completed", "skipped", "cancelled"} else max(1, int(job.error_count or 0))
         job.error_message = str(result.get("error_message") or "")
         job.completed_at = datetime.now(UTC)
         job.summary_json = {
@@ -442,17 +528,23 @@ def _run_tdx_pipeline_workflow(
         blocked_by = ""
         blocked_message = ""
         first_error_message = ""
+        cancelled = False
 
         for step in steps:
             item = step_items[step["key"]]
+            if _is_current_enqueued_market_data_job_cancel_requested():
+                cancelled = True
+                blocked = True
+                blocked_by = "cancel_requested"
+                blocked_message = _current_enqueued_market_data_job_cancel_message()
             if blocked:
-                item.status = "skipped"
+                item.status = "cancelled" if cancelled else "skipped"
                 item.stage = "completed"
                 item.error_message = ""
                 item.details_json = {
                     **dict(item.details_json or {}),
-                    "status": "skipped",
-                    "reason": "upstream_failed",
+                    "status": "cancelled" if cancelled else "skipped",
+                    "reason": "cancel_requested" if cancelled else "upstream_failed",
                     "blocked_by": blocked_by,
                     "blocked_message": blocked_message,
                 }
@@ -463,12 +555,12 @@ def _run_tdx_pipeline_workflow(
                         "step_label": step["label"],
                         "provider": step["provider"],
                         "interval": step["interval"],
-                        "status": "skipped",
+                        "status": "cancelled" if cancelled else "skipped",
                         "error_message": blocked_message,
                         "blocked_by": blocked_by,
                     }
                 )
-                step_statuses.append("skipped")
+                step_statuses.append("cancelled" if cancelled else "skipped")
                 session.commit()
                 continue
 
@@ -549,6 +641,13 @@ def _run_tdx_pipeline_workflow(
                     blocked_message = error_message or f"{step['label']}失败。"
                     if not first_error_message:
                         first_error_message = blocked_message
+                elif status == "cancelled":
+                    cancelled = True
+                    blocked = True
+                    blocked_by = step["key"]
+                    blocked_message = error_message or _current_enqueued_market_data_job_cancel_message()
+                    if not first_error_message:
+                        first_error_message = blocked_message
                 elif status == "partially_failed" and error_message and not first_error_message:
                     first_error_message = error_message
                 session.commit()
@@ -604,7 +703,10 @@ def _run_tdx_pipeline_workflow(
             "bars_inserted": bars_inserted_total,
             "bars_updated": bars_updated_total,
         }
-        if any(status == "failed" for status in step_statuses):
+        if any(status == "cancelled" for status in step_statuses):
+            ingestion_job.status = "cancelled"
+            ingestion_job.error_message = blocked_message or _current_enqueued_market_data_job_cancel_message()
+        elif any(status == "failed" for status in step_statuses):
             ingestion_job.status = "failed"
             ingestion_job.error_message = (
                 f"A 股统一补数链路执行失败。首个错误：{first_error_message}"
@@ -707,7 +809,13 @@ def _sync_yahoo_market_data(
         total_series_updated = 0
         failed_symbols = 0
         first_error_message = ""
+        cancelled = False
+        cancel_message = ""
         for current_spec in target_specs:
+            if _is_current_enqueued_market_data_job_cancel_requested():
+                cancelled = True
+                cancel_message = _current_enqueued_market_data_job_cancel_message()
+                break
             current_symbol = current_spec.symbol
             item = create_sync_run_item(session, run, current_symbol)
             ingestion_item = create_data_ingestion_job_item(
@@ -809,7 +917,10 @@ def _sync_yahoo_market_data(
         run.completed_at = datetime.now(UTC)
         run.bars_inserted = total_inserted
         run.bars_updated = total_updated
-        if failed_symbols == len(symbols):
+        if cancelled:
+            run.status = "cancelled"
+            run.error_message = cancel_message
+        elif failed_symbols == len(symbols):
             run.status = "failed"
         elif failed_symbols:
             run.status = "partially_failed"
@@ -827,7 +938,10 @@ def _sync_yahoo_market_data(
             "symbols_failed": failed_symbols,
         }
         ingestion_job.completed_at = datetime.now(UTC)
-        if failed_symbols == len(symbols):
+        if cancelled:
+            ingestion_job.status = "cancelled"
+            ingestion_job.error_message = cancel_message
+        elif failed_symbols == len(symbols):
             ingestion_job.status = "failed"
             ingestion_job.error_message = (
                 f"本次 Yahoo 同步全部失败。首个错误：{first_error_message}" if first_error_message else "本次 Yahoo 同步全部失败。"
@@ -884,7 +998,13 @@ def _sync_tdx_market_data(
     skipped_intervals: list[str] = []
     failed_intervals: list[str] = []
     first_error_message = ""
+    cancelled = False
+    cancel_message = ""
     for current_interval in TDX_IMPORT_INTERVALS:
+        if _is_current_enqueued_market_data_job_cancel_requested():
+            cancelled = True
+            cancel_message = _current_enqueued_market_data_job_cancel_message()
+            break
         try:
             result = _sync_tdx_single_interval_market_data(
                 symbol=symbol,
@@ -903,6 +1023,10 @@ def _sync_tdx_market_data(
         interval_results.append(result)
         if result.get("status") == "skipped" and int(result.get("symbols_count") or 0) == 0:
             skipped_intervals.append(current_interval)
+        if result.get("status") == "cancelled":
+            cancelled = True
+            cancel_message = str(result.get("error_message") or "") or _current_enqueued_market_data_job_cancel_message()
+            break
 
     effective_results = [item for item in interval_results if int(item.get("symbols_count") or 0) > 0]
     if not effective_results:
@@ -927,7 +1051,9 @@ def _sync_tdx_market_data(
     symbols_count_total = sum(int(item.get("symbols_count") or 0) for item in effective_results)
 
     status = "completed"
-    if (failed_intervals or child_failed_intervals) and all(item == "failed" for item in statuses):
+    if cancelled:
+        status = "cancelled"
+    elif (failed_intervals or child_failed_intervals) and all(item == "failed" for item in statuses):
         status = "failed"
     elif failed_intervals or child_failed_intervals or any(item == "partially_failed" for item in statuses):
         status = "partially_failed"
@@ -935,7 +1061,9 @@ def _sync_tdx_market_data(
         status = "succeeded"
 
     error_message = ""
-    if failed_intervals or child_failed_intervals:
+    if cancelled:
+        error_message = cancel_message or _current_enqueued_market_data_job_cancel_message()
+    elif failed_intervals or child_failed_intervals:
         interval_labels = [*failed_intervals, *[item for item in child_failed_intervals if item not in failed_intervals]]
         first_child_error = next(
             (
@@ -1054,7 +1182,13 @@ def _sync_tdx_single_interval_market_data(
         rows_inserted = 0
         rows_updated = 0
         first_error_message = ""
+        cancelled = False
+        cancel_message = ""
         for source_file in source_files:
+            if _is_current_enqueued_market_data_job_cancel_requested():
+                cancelled = True
+                cancel_message = _current_enqueued_market_data_job_cancel_message()
+                break
             relative_path = source_file.relative_to(vipdoc).as_posix()
             item = create_data_ingestion_job_item(
                 session,
@@ -1249,7 +1383,10 @@ def _sync_tdx_single_interval_market_data(
             "files_skipped": skipped_files,
             "files_failed": failed_files,
         }
-        if failed_files == len(source_files):
+        if cancelled:
+            ingestion_job.status = "cancelled"
+            ingestion_job.error_message = cancel_message
+        elif failed_files == len(source_files):
             ingestion_job.status = "failed"
             ingestion_job.error_message = (
                 f"本次通达信原始 {interval} 导入全部失败。首个错误：{first_error_message}"
@@ -1367,7 +1504,13 @@ def _sync_tushare_corporate_actions(
         fetched_rows = 0
         implemented_rows = 0
         first_error_message = ""
+        cancelled = False
+        cancel_message = ""
         for target in targets:
+            if _is_current_enqueued_market_data_job_cancel_requested():
+                cancelled = True
+                cancel_message = _current_enqueued_market_data_job_cancel_message()
+                break
             ts_code = str(target["ts_code"]).upper()
             item = create_data_ingestion_job_item(
                 session,
@@ -1464,7 +1607,10 @@ def _sync_tushare_corporate_actions(
             "implemented_rows": implemented_rows,
             "deleted_rows": rows_deleted,
         }
-        if failed_symbols == len(targets):
+        if cancelled:
+            ingestion_job.status = "cancelled"
+            ingestion_job.error_message = cancel_message
+        elif failed_symbols == len(targets):
             ingestion_job.status = "failed"
             ingestion_job.error_message = (
                 f"本次 Tushare 公司行动抓取全部失败。首个错误：{first_error_message}"
@@ -1575,6 +1721,8 @@ def _rebuild_tdx_qfq_market_data(
         bar_rows_updated = 0
         action_rows_used = 0
         first_error_message = ""
+        cancelled = False
+        cancel_message = ""
         raw_frames_by_series, action_frames_by_instrument = _preload_tdx_qfq_input_frames(
             session,
             targets,
@@ -1582,6 +1730,10 @@ def _rebuild_tdx_qfq_market_data(
         )
 
         for target in targets:
+            if _is_current_enqueued_market_data_job_cancel_requested():
+                cancelled = True
+                cancel_message = _current_enqueued_market_data_job_cancel_message()
+                break
             instrument = target["instrument"]
             raw_series = target["series"]
             raw_alias = target["alias"]
@@ -1700,7 +1852,10 @@ def _rebuild_tdx_qfq_market_data(
             "bar_rows_updated": bar_rows_updated,
             "action_rows_used": action_rows_used,
         }
-        if failed_symbols == len(targets):
+        if cancelled:
+            ingestion_job.status = "cancelled"
+            ingestion_job.error_message = cancel_message
+        elif failed_symbols == len(targets):
             ingestion_job.status = "failed"
             ingestion_job.error_message = (
                 f"本次通达信前复权日线重算全部失败。首个错误：{first_error_message}"

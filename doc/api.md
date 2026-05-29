@@ -42,6 +42,8 @@ http://127.0.0.1:8000/docs
 - `GET /api/market-data/bars`
 - `GET /api/market-data/sync-runs`
 - `POST /api/market-data/sync`
+- `POST /api/market-data/ingestion-jobs/{job_id}/retry`
+- `POST /api/market-data/ingestion-jobs/{job_id}/cancel`
 
 这些接口用于查询标的、行情覆盖、统计信息、导入任务详情、K 线数据、同步历史，以及手动触发行情同步。其中 `GET /api/market-data/stats` 当前除了保留旧 `coverages / recent_sync_runs` 外，还会返回：
 
@@ -140,6 +142,18 @@ http://127.0.0.1:8000/docs
 当前 `provider=yahoo` 已支持通过 `symbol_set=yahoo_global_active_100` 导入内置 100 个全球高活跃样本；若同步失败，返回体会附带 `status` 和统一任务 `error_message`。`provider=tdx` 当前支持原始 `1d / 1m / 5m` 导入，分别对应 `.day`、`.lc1/.1`、`.lc5/.5` 文件，并共用同一套 `source_file_manifests` 增量状态；若传 `interval=all`，服务会顺序编排三个 TDX 周期，并在返回体中给出聚合统计与子任务 `ingestion_job_ids`。`provider=tdx_pipeline` 会再向上封装一层 workflow：`interval=1d` 时执行 `tdx 1d -> tushare -> tdx_qfq 1d`，`interval=all` 时执行 `tdx all -> tushare -> tdx_qfq 1d`。当 workflow 以批量模式运行且未显式传 `symbol` 时，后两步会自动跟随数据库中已有的通达信原始 `1d` 标的集，而不是退回到 Tushare 的独立默认样本口径，并把 workflow 自身与所有子任务都记入统一任务域；`provider=tushare` 只支持 `dividend` 公司行动抓取，并且只把已有 `ex_date` 的实施事件写入 `corporate_action_events`；`provider=tdx_qfq` 只支持基于数据库中现有的通达信原始 `1d` 日线和 Tushare 公司行动重算前复权 `1d` 日线。
 
 前端和 API 现在默认只负责“入队”，不会阻塞等待导入结束。`POST /api/market-data/sync` 至少会返回 `provider / ingestion_job_id / status=queued / target_symbol / interval / requested_via=api`；实际导入由 `main.py worker` 在后台领取执行。若你需要命令行里同步等待最终结果，继续使用 `main.py sync-now`。
+
+`POST /api/market-data/ingestion-jobs/{job_id}/retry` 用于把失败、部分失败或已取消的 API 父任务重新放回队列。返回体包含：
+
+- `job_id`
+- `status`：成功重排时为 `queued`
+- `changed`：是否真正发生了状态变化
+
+`POST /api/market-data/ingestion-jobs/{job_id}/cancel` 用于取消统一导入任务。当前语义与回测任务保持一致：
+
+- `queued`：直接转成 `cancelled`
+- `running`：先转成 `cancel_requested`，Worker 会在 provider 子步骤或单个标的/文件循环的安全检查点停止后续处理
+- 其他终态：返回原状态，`changed=false`
 
 ## Backtests
 

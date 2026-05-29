@@ -37,7 +37,7 @@ from strategy_studio.services.platform import (
     fetch_platform_status,
     restart_platform_process,
 )
-from strategy_studio.services.sync import enqueue_market_data_sync
+from strategy_studio.services.sync import cancel_market_data_ingestion_job, enqueue_market_data_sync, retry_market_data_ingestion_job
 from strategy_studio.services.templates import (
     create_strategy_template_entry,
     get_strategy_template_detail,
@@ -160,6 +160,20 @@ def create_app() -> FastAPI:
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/market-data/ingestion-jobs/{job_id}/retry")
+    def post_market_data_retry(job_id: int) -> dict[str, object]:
+        result = retry_market_data_ingestion_job(job_id)
+        if result["status"] == "not_found":
+            raise HTTPException(status_code=404, detail="导入任务不存在。")
+        return result
+
+    @app.post("/api/market-data/ingestion-jobs/{job_id}/cancel")
+    def post_market_data_cancel(job_id: int) -> dict[str, object]:
+        result = cancel_market_data_ingestion_job(job_id)
+        if result["status"] == "not_found":
+            raise HTTPException(status_code=404, detail="导入任务不存在。")
+        return result
 
     @app.post("/api/backtests")
     def post_backtest(request: BacktestRequestModel) -> dict[str, object]:

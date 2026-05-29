@@ -506,6 +506,43 @@ class PlatformFeatureTests(unittest.TestCase):
             limit=1,
         )
 
+    def test_web_api_market_data_retry_and_cancel_routes(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with (
+            patch(
+                "strategy_studio.web.app.retry_market_data_ingestion_job",
+                return_value={"job_id": 31, "status": "queued", "changed": True},
+            ) as mock_retry,
+            patch(
+                "strategy_studio.web.app.cancel_market_data_ingestion_job",
+                return_value={"job_id": 32, "status": "cancel_requested", "changed": True},
+            ) as mock_cancel,
+        ):
+            retry_response = client.post("/api/market-data/ingestion-jobs/31/retry")
+            cancel_response = client.post("/api/market-data/ingestion-jobs/32/cancel")
+
+        self.assertEqual(retry_response.status_code, 200)
+        self.assertEqual(cancel_response.status_code, 200)
+        self.assertEqual(retry_response.json()["status"], "queued")
+        self.assertEqual(cancel_response.json()["status"], "cancel_requested")
+        mock_retry.assert_called_once_with(31)
+        mock_cancel.assert_called_once_with(32)
+
+    def test_web_api_market_data_cancel_route_returns_404(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.cancel_market_data_ingestion_job",
+            return_value={"job_id": 99, "status": "not_found", "changed": False},
+        ) as mock_cancel:
+            response = client.post("/api/market-data/ingestion-jobs/99/cancel")
+
+        self.assertEqual(response.status_code, 404)
+        mock_cancel.assert_called_once_with(99)
+
     def test_execute_next_market_data_job_reuses_sync_pipeline_for_queued_api_job(self) -> None:
         queued_job = SimpleNamespace(
             id=51,
@@ -577,6 +614,66 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(queued_job.rows_updated, 10)
         self.assertEqual(queued_job.summary_json["child_ingestion_job_ids"], [91])
         self.assertEqual(queued_job.summary_json["worker_name"], "worker-1")
+
+    def test_cancel_market_data_ingestion_job_marks_queued_job_cancelled(self) -> None:
+        queued_job = SimpleNamespace(
+            id=41,
+            requested_via="api",
+            status="queued",
+            completed_at=None,
+            error_message="",
+            summary_json={},
+        )
+        session = SimpleNamespace(get=lambda model, job_id: queued_job if job_id == 41 else None, commit=lambda: None)
+
+        class _SessionContext:
+            def __enter__(self) -> SimpleNamespace:
+                return session
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+        with patch("strategy_studio.services.sync.open_session", return_value=_SessionContext()):
+            result = sync_service.cancel_market_data_ingestion_job(41)
+
+        self.assertEqual(result["status"], "cancelled")
+        self.assertTrue(result["changed"])
+        self.assertEqual(queued_job.status, "cancelled")
+        self.assertEqual(queued_job.summary_json["worker_stage"], "cancelled")
+
+    def test_retry_market_data_ingestion_job_requeues_failed_api_job(self) -> None:
+        failed_job = SimpleNamespace(
+            id=52,
+            requested_via="api",
+            status="failed",
+            started_at=datetime(2026, 5, 29, 10, 0, 0),
+            completed_at=datetime(2026, 5, 29, 10, 5, 0),
+            targets_completed=1,
+            rows_inserted=10,
+            rows_updated=2,
+            error_count=1,
+            error_message="boom",
+            summary_json={},
+        )
+        session = SimpleNamespace(get=lambda model, job_id: failed_job if job_id == 52 else None, commit=lambda: None)
+
+        class _SessionContext:
+            def __enter__(self) -> SimpleNamespace:
+                return session
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+        with patch("strategy_studio.services.sync.open_session", return_value=_SessionContext()):
+            result = sync_service.retry_market_data_ingestion_job(52)
+
+        self.assertEqual(result["status"], "queued")
+        self.assertTrue(result["changed"])
+        self.assertEqual(failed_job.status, "queued")
+        self.assertEqual(failed_job.targets_completed, 0)
+        self.assertEqual(failed_job.rows_inserted, 0)
+        self.assertEqual(failed_job.error_count, 0)
+        self.assertEqual(failed_job.summary_json["retry_count"], 1)
 
     def test_web_api_platform_database_check_route(self) -> None:
         app = create_app()
