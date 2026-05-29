@@ -42,11 +42,17 @@ http://127.0.0.1:8000/docs
 `POST /api/market-data/sync` 支持字段：
 
 - `symbol`：可选；为空时同步数据库中已知标的。
+- `provider`：默认 `yahoo`；也可传 `tdx`。
 - `interval`：默认 `1d`。
 - `proxy`：可选代理。
 - `period`：分钟线窗口，例如 `60d` 或 `7d`。
+- `vipdoc_path`：通达信 `vipdoc` 根目录；仅 `provider=tdx` 时使用。
+- `force`：是否忽略文件 manifest 强制重建；仅 `provider=tdx` 时使用。
+- `limit`：限制文件数量；仅 `provider=tdx` 时使用。
 
 当前返回体除了旧版 `run_id / bars_inserted / bars_updated`，还会附带统一任务域的 `ingestion_job_id / series_bars_inserted / series_bars_updated`，便于后续前端切换到多数据源任务面板。
+
+当前 `provider=tdx` 只支持原始 `1d` 日线导入。分钟线、公司行动与前复权重算会继续沿同一任务域扩展。
 
 ## Backtests
 

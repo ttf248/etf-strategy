@@ -36,6 +36,7 @@ http://127.0.0.1:3000/platform
 
 ```powershell
 py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
+py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 1d
 ```
 
 同步所有已知标的：
@@ -43,6 +44,15 @@ py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
 ```powershell
 py -3.13 main.py sync-now --interval 15m --period 60d
 ```
+
+按通达信原始文件导入：
+
+```powershell
+py -3.13 main.py sync-now --provider tdx --interval 1d --limit 100
+py -3.13 main.py sync-now --provider tdx --interval 1d --force
+```
+
+当前 `provider=tdx` 只支持原始 `1d` 日线，并依赖 `STRATEGY_STUDIO_TDX_VIPDOC` 或 `STRATEGY_STUDIO_TDX_CONFIG_PATH` 指向有效的 `vipdoc` 配置。
 
 Scheduler 默认在 Asia/Shanghai 时区运行：
 

@@ -113,6 +113,10 @@ def create_app() -> FastAPI:
             interval=request.interval,
             proxy=request.proxy,
             period=request.period,
+            provider=request.provider,
+            vipdoc_path=request.vipdoc_path,
+            force=request.force,
+            limit=request.limit,
         )
 
     @app.post("/api/backtests")

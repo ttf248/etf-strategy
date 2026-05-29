@@ -62,9 +62,13 @@ class StrategyTemplateUpdateModel(BaseModel):
 
 class SyncRequestModel(BaseModel):
     symbol: str | None = None
+    provider: str = Field(default="yahoo")
     interval: str = Field(default="1d")
     proxy: str | None = None
     period: str | None = None
+    vipdoc_path: str | None = None
+    force: bool = False
+    limit: int | None = Field(default=None, ge=1)
 
 
 class BacktestBulkActionModel(BaseModel):

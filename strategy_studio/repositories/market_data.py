@@ -22,6 +22,8 @@ from strategy_studio.db.models import (
     MarketDataBar,
     MarketDataSeries,
     PriceBar,
+    SourceFileManifest,
+    utc_now,
 )
 
 
@@ -314,6 +316,7 @@ def upsert_market_data_frame(
             "close": float(item["Close"]),
             "adj_close": float(item["Close"]),
             "volume": int(item["Volume"]),
+            "turnover_amount": float(item["Amount"]) if "Amount" in item and item["Amount"] is not None else None,
             "data_status": "ready",
             "payload_json": {},
         }
@@ -331,6 +334,7 @@ def upsert_market_data_frame(
                     "close": statement.excluded.close,
                     "adj_close": statement.excluded.adj_close,
                     "volume": statement.excluded.volume,
+                    "turnover_amount": statement.excluded.turnover_amount,
                     "data_status": statement.excluded.data_status,
                     "payload_json": statement.excluded.payload_json,
                     "ingested_at": func.now(),
@@ -347,6 +351,65 @@ def upsert_market_data_frame(
     inserted_count = len(all_rows) - len(existing)
     updated_count = len(existing)
     return inserted_count, updated_count
+
+
+def get_source_file_manifest(
+    session: Session,
+    provider: DataProvider,
+    source_path: str,
+) -> SourceFileManifest | None:
+    return session.scalar(
+        select(SourceFileManifest).where(
+            SourceFileManifest.provider_id == provider.id,
+            SourceFileManifest.source_path == source_path,
+        )
+    )
+
+
+def upsert_source_file_manifest(
+    session: Session,
+    provider: DataProvider,
+    *,
+    source_path: str,
+    file_kind: str,
+    market: str,
+    interval: str,
+    source_size: int,
+    source_mtime: float,
+    record_count: int,
+    tail_hash: str | None,
+    status: str,
+    last_bar_time: str | datetime | None,
+    instrument_id: int | None = None,
+    series_id: int | None = None,
+    payload_json: dict[str, object] | None = None,
+) -> SourceFileManifest:
+    manifest = get_source_file_manifest(session, provider, source_path)
+    if manifest is None:
+        manifest = SourceFileManifest(
+            provider_id=provider.id,
+            source_path=source_path,
+        )
+        session.add(manifest)
+
+    manifest.instrument_id = instrument_id
+    manifest.series_id = series_id
+    manifest.file_kind = file_kind
+    manifest.market = market
+    manifest.interval = interval
+    manifest.source_size = source_size
+    manifest.source_mtime = source_mtime
+    manifest.record_count = record_count
+    manifest.tail_hash = tail_hash or ""
+    manifest.status = status
+    manifest.payload_json = payload_json or {}
+    if last_bar_time:
+        manifest.last_bar_time = pd.Timestamp(last_bar_time).to_pydatetime()
+    else:
+        manifest.last_bar_time = None
+    manifest.updated_at = utc_now()
+    session.flush()
+    return manifest
 
 
 def create_data_ingestion_job(

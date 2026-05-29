@@ -195,11 +195,15 @@ def add_platform_subcommands(subparsers: argparse._SubParsersAction[argparse.Arg
     check_db_parser = subparsers.add_parser("check-db", help="检查 PostgreSQL 连通性、建库状态和迁移版本")
     check_db_parser.add_argument("--json", action="store_true", help="以 JSON 输出完整诊断结果")
 
-    sync_parser = subparsers.add_parser("sync-now", help="立即同步 Yahoo 行情到数据库")
-    sync_parser.add_argument("--symbol", default=None, help="指定单个标的；不传则同步数据库中已知全部标的")
+    sync_parser = subparsers.add_parser("sync-now", help="立即同步指定渠道行情到数据库")
+    sync_parser.add_argument("--provider", choices=["yahoo", "tdx"], default="yahoo", help="数据渠道：yahoo 或 tdx")
+    sync_parser.add_argument("--symbol", default=None, help="指定单个标的；Yahoo 使用 1810.HK 这类代码，TDX 使用 sh600000 这类代码")
     sync_parser.add_argument("--interval", default="1d", help="行情周期，例如 1d、15m、1m")
     sync_parser.add_argument("--proxy", default=None, help="Yahoo 代理地址")
     sync_parser.add_argument("--period", default=None, help="分钟线下载窗口，例如 7d、60d")
+    sync_parser.add_argument("--vipdoc", default=None, help="通达信 vipdoc 根目录；仅 provider=tdx 时生效")
+    sync_parser.add_argument("--force", action="store_true", help="忽略文件 manifest，强制重建当前导入范围；仅 provider=tdx 时生效")
+    sync_parser.add_argument("--limit", type=int, default=None, help="限制导入文件数；仅 provider=tdx 时生效")
 
     api_parser = subparsers.add_parser("api", help="启动 FastAPI 服务")
     api_parser.add_argument("--host", default=None, help="监听地址")
@@ -259,14 +263,28 @@ def handle_check_db(args: argparse.Namespace) -> int:
 
 def handle_sync_now(args: argparse.Namespace) -> int:
     sync_market_data = _import_platform_module("strategy_studio.services.sync", "sync-now").sync_market_data
-    result = sync_market_data(symbol=args.symbol, interval=args.interval, proxy=args.proxy, period=args.period)
-    print(
-        "同步完成："
-        f"run_id={result['run_id']} "
-        f"symbols={result['symbols_count']} "
-        f"inserted={result['bars_inserted']} "
-        f"updated={result['bars_updated']}"
+    result = sync_market_data(
+        symbol=args.symbol,
+        interval=args.interval,
+        proxy=args.proxy,
+        period=args.period,
+        provider=args.provider,
+        vipdoc_path=getattr(args, "vipdoc", None),
+        force=getattr(args, "force", False),
+        limit=getattr(args, "limit", None),
     )
+    message_parts = [
+        "同步完成：",
+        f"provider={result.get('provider', args.provider)}",
+        f"symbols={result['symbols_count']}",
+        f"inserted={result['bars_inserted']}",
+        f"updated={result['bars_updated']}",
+    ]
+    if "run_id" in result:
+        message_parts.insert(2, f"run_id={result['run_id']}")
+    if "ingestion_job_id" in result:
+        message_parts.append(f"ingestion_job_id={result['ingestion_job_id']}")
+    print(" ".join(message_parts))
     return 0
 
 

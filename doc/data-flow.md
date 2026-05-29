@@ -4,9 +4,10 @@
 
 ## 行情进入系统
 
-当前自动同步主链路只有一种正式在线来源：
+当前自动同步主链路有两类正式来源：
 
 - Yahoo 同步：通过 `sync-now`、Scheduler 或前端同步按钮触发。
+- 通达信原始导入：通过 `sync-now --provider tdx` 或后续统一任务面板触发。
 
 标准流程：
 
@@ -24,6 +25,23 @@ instruments + price_bars
 ```
 
 `price_bars` 使用 `instrument_id + interval + bar_time` 唯一约束，重复导入会更新已有 K 线，不会生成重复记录。
+
+通达信当前已接通的链路为：
+
+```text
+vipdoc/*.day
+    |
+    v
+二进制解析 + 证券类型缩放
+    |
+    v
+market_data_series(adjustment_kind=raw)
+    |
+    v
+market_data_bars + source_file_manifests + data_ingestion_jobs
+```
+
+同一文件再次导入时，会先比较 `source_size / source_mtime / record_count / tail_hash`；未变化则跳过，严格尾部增长时走安全增量窗口。
 
 为后续接入通达信和 Tushare，数据库已预留多数据源基础结构：
 

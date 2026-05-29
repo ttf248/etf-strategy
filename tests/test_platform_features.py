@@ -26,6 +26,7 @@ class PlatformFeatureTests(unittest.TestCase):
 
         init_args = parser.parse_args(["init-db"])
         check_db_args = parser.parse_args(["check-db", "--json"])
+        sync_args = parser.parse_args(["sync-now", "--provider", "tdx", "--symbol", "sh600000", "--interval", "1d", "--force", "--limit", "3"])
         api_args = parser.parse_args(["api", "--host", "127.0.0.1", "--port", "8000"])
         replace_args = parser.parse_args(["api", "--replace-existing"])
         worker_args = parser.parse_args(["worker", "--poll-interval", "3", "--max-concurrent-jobs", "2", "--max-optimization-workers", "4"])
@@ -33,6 +34,11 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(init_args.command, "init-db")
         self.assertEqual(check_db_args.command, "check-db")
         self.assertTrue(check_db_args.json)
+        self.assertEqual(sync_args.command, "sync-now")
+        self.assertEqual(sync_args.provider, "tdx")
+        self.assertEqual(sync_args.symbol, "sh600000")
+        self.assertTrue(sync_args.force)
+        self.assertEqual(sync_args.limit, 3)
         self.assertFalse(hasattr(init_args, "with_migration"))
         self.assertEqual(api_args.command, "api")
         self.assertEqual(api_args.host, "127.0.0.1")
@@ -85,6 +91,39 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(health_response.json()["status"], "ok")
         self.assertEqual(stats_response.status_code, 200)
         self.assertEqual(stats_response.json()["instrument_count"], 2)
+
+    def test_web_api_market_data_sync_route_passes_provider_specific_fields(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.sync_market_data",
+            return_value={"provider": "tdx", "ingestion_job_id": 3, "symbols_count": 1, "bars_inserted": 200, "bars_updated": 10, "status": "succeeded"},
+        ) as mock_sync:
+            response = client.post(
+                "/api/market-data/sync",
+                json={
+                    "provider": "tdx",
+                    "symbol": "sh600000",
+                    "interval": "1d",
+                    "vipdoc_path": "G:/new_tdx64/vipdoc",
+                    "force": True,
+                    "limit": 2,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["provider"], "tdx")
+        mock_sync.assert_called_once_with(
+            symbol="sh600000",
+            interval="1d",
+            proxy=None,
+            period=None,
+            provider="tdx",
+            vipdoc_path="G:/new_tdx64/vipdoc",
+            force=True,
+            limit=2,
+        )
 
     def test_web_api_platform_database_check_route(self) -> None:
         app = create_app()
@@ -400,6 +439,30 @@ class PlatformFeatureTests(unittest.TestCase):
         mock_alias.assert_called_once()
         mock_series.assert_called_once()
         mock_upsert_series.assert_called_once()
+
+    def test_sync_market_data_dispatches_tdx_provider(self) -> None:
+        with patch(
+            "strategy_studio.services.sync._sync_tdx_market_data",
+            return_value={"provider": "tdx", "ingestion_job_id": 9, "symbols_count": 2, "bars_inserted": 30, "bars_updated": 0, "status": "succeeded"},
+        ) as mock_tdx:
+            result = sync_market_data(
+                symbol="sh600000",
+                interval="1d",
+                proxy=None,
+                provider="tdx",
+                vipdoc_path="G:/new_tdx64/vipdoc",
+                force=True,
+                limit=5,
+            )
+
+        self.assertEqual(result["provider"], "tdx")
+        mock_tdx.assert_called_once_with(
+            symbol="sh600000",
+            interval="1d",
+            vipdoc_path="G:/new_tdx64/vipdoc",
+            force=True,
+            limit=5,
+        )
 
 
 class StrategyTemplateServiceTests(unittest.TestCase):
