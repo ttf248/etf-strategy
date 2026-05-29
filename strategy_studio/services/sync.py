@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from contextvars import ContextVar
 from datetime import UTC, datetime
+import json
 from hashlib import sha1
 from pathlib import Path
 import re
@@ -1850,24 +1851,12 @@ def _rebuild_tdx_qfq_market_data(
                     if raw_frame is None or raw_frame.empty:
                         raise ValueError(f"原始序列没有可用于前复权重算的日线数据：series_id={raw_series.id}")
                     action_frame = action_frames_by_instrument.get(instrument.id, _empty_action_frame())
+                    raw_frame_digest = _build_market_data_frame_digest(raw_frame)
                     stage_started_at = perf_counter()
                     segment_frame = build_qfq_segment_frame(raw_frame, action_frame)
                     item_timing_json["segment_build_ms"] = _elapsed_ms(stage_started_at)
                     segment_rows = segment_frame.to_dict(orient="records")
-                    stage_started_at = perf_counter()
-                    seg_inserted, seg_updated, seg_deleted = replace_price_adjustment_segments(
-                        session,
-                        instrument,
-                        provider,
-                        action_provider=action_provider,
-                        adjustment_kind="qfq",
-                        rows=segment_rows,
-                    )
-                    item_timing_json["segment_replace_ms"] = _elapsed_ms(stage_started_at)
-                    stage_started_at = perf_counter()
-                    adjusted_frame = apply_qfq_segment_frame(raw_frame, segment_frame)
-                    item_timing_json["segment_apply_ms"] = _elapsed_ms(stage_started_at)
-                    adjusted_frame_digest = _build_market_data_frame_digest(adjusted_frame)
+                    segment_frame_digest = _build_segment_frame_digest(segment_frame)
                     if qfq_alias is None:
                         qfq_alias = get_or_create_instrument_alias(
                             session,
@@ -1915,20 +1904,55 @@ def _rebuild_tdx_qfq_market_data(
                         qfq_series.bar_type = "time"
                         qfq_series.timezone = raw_alias.timezone or instrument.timezone
                         qfq_series.is_active = True
-                    existing_frame_digest = str(dict(qfq_series.metadata_json or {}).get("adjusted_frame_digest") or "")
-                    if existing_frame_digest and existing_frame_digest == adjusted_frame_digest:
+                    existing_qfq_metadata = dict(qfq_series.metadata_json or {})
+                    existing_frame_digest = str(existing_qfq_metadata.get("adjusted_frame_digest") or "")
+                    existing_raw_frame_digest = str(existing_qfq_metadata.get("raw_frame_digest") or "")
+                    existing_segment_frame_digest = str(existing_qfq_metadata.get("segment_frame_digest") or "")
+                    if (
+                        existing_raw_frame_digest
+                        and existing_segment_frame_digest
+                        and existing_raw_frame_digest == raw_frame_digest
+                        and existing_segment_frame_digest == segment_frame_digest
+                    ):
+                        seg_inserted = 0
+                        seg_updated = 0
+                        seg_deleted = 0
+                        item_timing_json["segment_replace_ms"] = 0
+                        item_timing_json["segment_apply_ms"] = 0
                         bars_inserted = 0
                         bars_updated = 0
                         item_timing_json["bar_upsert_ms"] = 0
+                        adjusted_frame_digest = existing_frame_digest
                     else:
                         stage_started_at = perf_counter()
-                        bars_inserted, bars_updated = upsert_market_data_frame(session, qfq_series, adjusted_frame)
-                        item_timing_json["bar_upsert_ms"] = _elapsed_ms(stage_started_at)
+                        seg_inserted, seg_updated, seg_deleted = replace_price_adjustment_segments(
+                            session,
+                            instrument,
+                            provider,
+                            action_provider=action_provider,
+                            adjustment_kind="qfq",
+                            rows=segment_rows,
+                        )
+                        item_timing_json["segment_replace_ms"] = _elapsed_ms(stage_started_at)
+                        stage_started_at = perf_counter()
+                        adjusted_frame = apply_qfq_segment_frame(raw_frame, segment_frame)
+                        item_timing_json["segment_apply_ms"] = _elapsed_ms(stage_started_at)
+                        adjusted_frame_digest = _build_market_data_frame_digest(adjusted_frame)
+                        if existing_frame_digest and existing_frame_digest == adjusted_frame_digest:
+                            bars_inserted = 0
+                            bars_updated = 0
+                            item_timing_json["bar_upsert_ms"] = 0
+                        else:
+                            stage_started_at = perf_counter()
+                            bars_inserted, bars_updated = upsert_market_data_frame(session, qfq_series, adjusted_frame)
+                            item_timing_json["bar_upsert_ms"] = _elapsed_ms(stage_started_at)
                     qfq_series.metadata_json = {
                         **qfq_series.metadata_json,
                         "raw_provider_key": raw_provider.provider_key,
                         "raw_series_id": raw_series.id,
                         "action_provider_key": action_provider.provider_key,
+                        "raw_frame_digest": raw_frame_digest,
+                        "segment_frame_digest": segment_frame_digest,
                         "adjusted_frame_digest": adjusted_frame_digest,
                     }
                     item_timing_json["total_elapsed_ms"] = _elapsed_ms(item_started_at)
@@ -1946,6 +1970,13 @@ def _rebuild_tdx_qfq_market_data(
                         "segment_rows_updated": seg_updated,
                         "segment_rows_deleted": seg_deleted,
                         "action_rows_used": len(action_frame),
+                        "segment_replace_skipped": (
+                            seg_inserted == 0
+                            and seg_updated == 0
+                            and seg_deleted == 0
+                            and existing_raw_frame_digest == raw_frame_digest
+                            and existing_segment_frame_digest == segment_frame_digest
+                        ),
                         "bar_upsert_skipped": bars_inserted == 0 and bars_updated == 0 and existing_frame_digest == adjusted_frame_digest,
                         "timing_json": dict(item_timing_json),
                     }
@@ -2459,6 +2490,23 @@ def _build_market_data_frame_digest(frame: pd.DataFrame) -> str:
     normalized = frame.copy()
     normalized["Date"] = pd.to_datetime(normalized["Date"]).dt.tz_localize(None)
     digest_columns = [column for column in ("Date", "Open", "High", "Low", "Close", "Volume", "Amount") if column in normalized.columns]
+    hashed_rows = pd.util.hash_pandas_object(normalized[digest_columns].reset_index(drop=True), index=False)
+    return sha1(hashed_rows.to_numpy().tobytes()).hexdigest()
+
+
+def _build_segment_frame_digest(frame: pd.DataFrame) -> str:
+    if frame.empty:
+        return "empty"
+    normalized = frame.copy()
+    if "start_date" in normalized.columns:
+        normalized["start_date"] = pd.to_datetime(normalized["start_date"]).dt.strftime("%Y-%m-%d")
+    if "end_date" in normalized.columns:
+        normalized["end_date"] = pd.to_datetime(normalized["end_date"]).dt.strftime("%Y-%m-%d")
+    if "payload_json" in normalized.columns:
+        normalized["payload_json"] = normalized["payload_json"].map(
+            lambda value: json.dumps(value or {}, ensure_ascii=True, sort_keys=True)
+        )
+    digest_columns = [column for column in ("start_date", "end_date", "adjust_a", "adjust_b", "status", "payload_json") if column in normalized.columns]
     hashed_rows = pd.util.hash_pandas_object(normalized[digest_columns].reset_index(drop=True), index=False)
     return sha1(hashed_rows.to_numpy().tobytes()).hexdigest()
 

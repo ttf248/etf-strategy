@@ -1998,7 +1998,7 @@ class PlatformFeatureTests(unittest.TestCase):
         }
 
         replace_results = [RuntimeError("segment rebuild failed"), (1, 0, 0)]
-        qfq_series_ids = [911]
+        qfq_series_ids = [911, 912]
 
         def fake_replace_segments(*_args, **_kwargs):
             result = replace_results.pop(0)
@@ -2324,7 +2324,21 @@ class PlatformFeatureTests(unittest.TestCase):
                 {"Date": "2026-05-29", "Open": 10.6, "High": 11.2, "Low": 10.1, "Close": 11.0, "Volume": 110, "Amount": 1100.0, "AdjustA": 1.0, "AdjustB": 0.0},
             ]
         )
+        segment_frame = pd.DataFrame(
+            [
+                {
+                    "start_date": "2026-05-28",
+                    "end_date": "2026-05-29",
+                    "adjust_a": 1.0,
+                    "adjust_b": 0.0,
+                    "status": "ready",
+                    "payload_json": {"source": "test"},
+                }
+            ]
+        )
         digest = sync_service._build_market_data_frame_digest(adjusted_frame)
+        raw_digest = sync_service._build_market_data_frame_digest(adjusted_frame.drop(columns=["AdjustA", "AdjustB"]))
+        segment_digest = sync_service._build_segment_frame_digest(segment_frame)
         raw_frames = {731: adjusted_frame.drop(columns=["AdjustA", "AdjustB"])}
         action_frames = {
             831: pd.DataFrame(columns=["ex_date", "cash_dividend", "stock_bonus_ratio", "stock_conversion_ratio", "rights_ratio", "rights_price", "status"]),
@@ -2356,6 +2370,8 @@ class PlatformFeatureTests(unittest.TestCase):
                     "raw_provider_key": "tdx",
                     "raw_series_id": 731,
                     "action_provider_key": "tushare",
+                    "raw_frame_digest": raw_digest,
+                    "segment_frame_digest": segment_digest,
                     "adjusted_frame_digest": digest,
                 },
             )
@@ -2370,23 +2386,9 @@ class PlatformFeatureTests(unittest.TestCase):
             patch("strategy_studio.services.sync._preload_tdx_qfq_action_updated_at", return_value={831: None}),
             patch("strategy_studio.services.sync._preload_tdx_qfq_input_frames", return_value=(raw_frames, action_frames, {831: None})),
             patch("strategy_studio.services.sync._preload_tdx_qfq_output_entities", return_value=(preloaded_qfq_aliases, preloaded_qfq_series)),
-            patch(
-                "strategy_studio.services.sync.build_qfq_segment_frame",
-                return_value=pd.DataFrame(
-                    [
-                        {
-                            "start_date": "2026-05-28",
-                            "end_date": "2026-05-29",
-                            "adjust_a": 1.0,
-                            "adjust_b": 0.0,
-                            "status": "ready",
-                            "payload_json": {"source": "test"},
-                        }
-                    ]
-                ),
-            ),
-            patch("strategy_studio.services.sync.apply_qfq_segment_frame", return_value=adjusted_frame),
-            patch("strategy_studio.services.sync.replace_price_adjustment_segments", return_value=(1, 0, 0)),
+            patch("strategy_studio.services.sync.build_qfq_segment_frame", return_value=segment_frame),
+            patch("strategy_studio.services.sync.apply_qfq_segment_frame", side_effect=AssertionError("区间摘要一致时不应再应用前复权")),
+            patch("strategy_studio.services.sync.replace_price_adjustment_segments", side_effect=AssertionError("区间摘要一致时不应重写区间")),
             patch("strategy_studio.services.sync.upsert_market_data_frame", side_effect=AssertionError("摘要一致时不应重写 K 线")),
         ):
             result = sync_service._rebuild_tdx_qfq_market_data(
@@ -2401,7 +2403,10 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(result["bars_inserted"], 0)
         self.assertEqual(result["bars_updated"], 0)
         self.assertEqual(succeeded_item.status, "succeeded")
+        self.assertTrue(succeeded_item.details_json["segment_replace_skipped"])
         self.assertTrue(succeeded_item.details_json["bar_upsert_skipped"])
+        self.assertEqual(succeeded_item.details_json["timing_json"]["segment_replace_ms"], 0)
+        self.assertEqual(succeeded_item.details_json["timing_json"]["segment_apply_ms"], 0)
         self.assertEqual(succeeded_item.details_json["timing_json"]["bar_upsert_ms"], 0)
 
 
