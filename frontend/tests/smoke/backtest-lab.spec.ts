@@ -72,7 +72,7 @@ test("首页到回测提交主路径可用", async ({ page, request }) => {
   await expect(page.getByRole("heading", { name: "从数据覆盖到结果复盘的策略研究工作台" })).toBeVisible();
   await expect(page.getByText("当前研究状态")).toBeVisible();
   await expect(page.getByText("只有服务异常、任务停滞或连续失败时，再进入系统状态")).toBeVisible();
-  await expect(page.getByRole("link", { name: "发起回测" })).toHaveAttribute("href", "/backtests");
+  await expect(page.getByRole("link", { name: "发起回测", exact: true })).toHaveAttribute("href", "/backtests");
 
   const launchParams = new URLSearchParams({
     symbol: preset.symbol,
@@ -85,16 +85,21 @@ test("首页到回测提交主路径可用", async ({ page, request }) => {
   await expect(page.getByText("已载入推荐研究样本")).toBeVisible();
   await expect(page.getByText("标准研究起点")).toBeVisible();
   await expect(page.getByText("先看最近几次任务，再决定要不要展开完整历史")).toBeVisible();
-  await expect(page.locator('input[placeholder="例如 1810.HK"]')).toHaveValue(preset.symbol);
+  await expect(page.locator('input[placeholder="例如 1810.HK、SH600000、10#AUDUSD"]')).toHaveValue(preset.symbol);
+  await expect(page.getByText("行情来源")).toBeVisible();
+  await expect(page.getByText("复权口径")).toBeVisible();
 
   await page.getByRole("button", { name: "下一步" }).click();
   await expect(page.getByText("选择策略与模板")).toBeVisible();
-  await page.getByRole("button", { name: /使用推荐模板：/ }).click();
+  const recommendTemplateButton = page.getByRole("button", { name: /使用推荐模板：/ });
+  if (await recommendTemplateButton.count()) {
+    await recommendTemplateButton.click();
+  }
 
   await page.getByRole("button", { name: "下一步" }).click();
   await expect(page.getByText("确认执行配置并提交")).toBeVisible();
-  await expect(page.getByText("系统会为该配置创建任务")).toBeVisible();
-  await expect(page.getByText("优先关注最近一条记录")).toBeVisible();
+  await expect(page.getByText("当前将按这套配置创建任务")).toBeVisible();
+  await expect(page.getByText("先盯最近任务，再去结果页")).toBeVisible();
   await expect(page.getByText(preset.symbol).first()).toBeVisible();
 
   const submitResponsePromise = page.waitForResponse((response) => {

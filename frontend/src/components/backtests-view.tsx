@@ -116,6 +116,8 @@ function buildSubmissionGuides(params: {
   selectedExecutionProfile: string;
   selectedJobs: number;
   selectedValidationRatio?: number;
+  selectedMarketDataProvider?: string;
+  selectedMarketDataAdjustmentKind?: string;
 }): GuideCard[] {
   const {
     symbol,
@@ -125,12 +127,19 @@ function buildSubmissionGuides(params: {
     selectedExecutionProfile,
     selectedJobs,
     selectedValidationRatio,
+    selectedMarketDataProvider,
+    selectedMarketDataAdjustmentKind,
   } = params;
+  const marketDataSourceLabel = !selectedMarketDataProvider
+    ? "自动选择（优先旧 Yahoo 回测表，再回退统一序列）"
+    : selectedMarketDataAdjustmentKind
+      ? `${selectedMarketDataProvider} / ${selectedMarketDataAdjustmentKind}`
+      : selectedMarketDataProvider;
   return [
     {
       title: "这次会提交什么",
       value: `${symbol || "-"} / ${selectedInterval} / ${strategyLabel(selectedStrategy)}`,
-      description: `本次会按 ${selectedTemplate?.template_name ?? "未选模板"} 发起任务。提交成功后，系统会保留这次配置快照，方便后续直接重跑。`,
+      description: `本次会按 ${selectedTemplate?.template_name ?? "未选模板"} 发起任务，读取来源为 ${marketDataSourceLabel}。提交成功后，系统会保留这次配置快照，方便后续直接重跑。`,
     },
     {
       title: "系统会怎么跑",
@@ -146,6 +155,35 @@ function buildSubmissionGuides(params: {
       description: "提交后无需反复刷新多个页面。下方最近任务会自动更新当前阶段、预计剩余时间和资源占用摘要。",
     },
   ];
+}
+
+function marketDataProviderLabel(provider: string | undefined): string {
+  if (!provider) {
+    return "自动选择";
+  }
+  if (provider === "yahoo") {
+    return "Yahoo";
+  }
+  if (provider === "tdx") {
+    return "通达信原始";
+  }
+  if (provider === "tdx_qfq") {
+    return "通达信前复权";
+  }
+  return provider;
+}
+
+function marketDataAdjustmentLabel(adjustmentKind: string | undefined): string {
+  if (!adjustmentKind) {
+    return "自动判断";
+  }
+  if (adjustmentKind === "raw") {
+    return "raw 原始";
+  }
+  if (adjustmentKind === "qfq") {
+    return "qfq 前复权";
+  }
+  return adjustmentKind;
 }
 
 function buildTemplateFieldValues(template: StrategyTemplate) {
@@ -431,6 +469,8 @@ export function BacktestsView() {
   const selectedSymbol = Form.useWatch("symbol", form) ?? "";
   const selectedTemplateId = Form.useWatch("template_id", form) as number | undefined;
   const selectedExecutionProfile = Form.useWatch("execution_profile", form) ?? "realistic";
+  const selectedMarketDataProvider = Form.useWatch("market_data_provider", form) as string | undefined;
+  const selectedMarketDataAdjustmentKind = Form.useWatch("market_data_adjustment_kind", form) as string | undefined;
   const selectedJobsValue = Form.useWatch("jobs", form);
   const selectedValidationRatioValue = Form.useWatch("validation_ratio", form);
 
@@ -484,26 +524,49 @@ export function BacktestsView() {
         selectedExecutionProfile,
         selectedJobs,
         selectedValidationRatio,
+        selectedMarketDataProvider,
+        selectedMarketDataAdjustmentKind,
       }),
     [
       selectedExecutionProfile,
       selectedInterval,
       selectedJobs,
+      selectedMarketDataAdjustmentKind,
+      selectedMarketDataProvider,
       selectedStrategy,
       selectedSymbol,
       selectedTemplate,
       selectedValidationRatio,
     ],
   );
+  const marketDataProviderOptions = useMemo(
+    () => [
+      { label: "自动选择", value: "__auto__" },
+      { label: "Yahoo", value: "yahoo" },
+      { label: "通达信原始", value: "tdx" },
+      { label: "通达信前复权", value: "tdx_qfq" },
+    ],
+    [],
+  );
+  const marketDataAdjustmentOptions = useMemo(
+    () => [
+      { label: "自动判断", value: "__auto__" },
+      { label: "raw 原始", value: "raw" },
+      { label: "qfq 前复权", value: "qfq" },
+    ],
+    [],
+  );
   const queryPreset = useMemo(() => {
     const symbol = searchParams.get("symbol")?.trim().toUpperCase();
     const interval = searchParams.get("interval");
     const strategyKind = searchParams.get("strategy_kind");
     const templateIdRaw = searchParams.get("template_id");
+    const marketDataProvider = searchParams.get("market_data_provider")?.trim().toLowerCase() || undefined;
+    const marketDataAdjustmentKind = searchParams.get("market_data_adjustment_kind")?.trim().toLowerCase() || undefined;
     const templateId = templateIdRaw ? Number(templateIdRaw) : undefined;
     const validIntervals = new Set(intervalOptions.map((item) => item.value));
     const validStrategies = new Set(strategyOptions.map((item) => item.value));
-    if (!symbol && !interval && !strategyKind && templateId === undefined) {
+    if (!symbol && !interval && !strategyKind && templateId === undefined && !marketDataProvider && !marketDataAdjustmentKind) {
       return null;
     }
     return {
@@ -511,6 +574,8 @@ export function BacktestsView() {
       interval: interval && validIntervals.has(interval) ? interval : undefined,
       strategy_kind: strategyKind && validStrategies.has(strategyKind) ? strategyKind : undefined,
       template_id: templateId !== undefined && Number.isFinite(templateId) ? templateId : undefined,
+      market_data_provider: marketDataProvider,
+      market_data_adjustment_kind: marketDataAdjustmentKind,
     };
   }, [searchParams]);
 
@@ -581,6 +646,12 @@ export function BacktestsView() {
     }
     if (queryPreset.template_id !== undefined) {
       nextValues.template_id = queryPreset.template_id;
+    }
+    if (queryPreset.market_data_provider) {
+      nextValues.market_data_provider = queryPreset.market_data_provider;
+    }
+    if (queryPreset.market_data_adjustment_kind) {
+      nextValues.market_data_adjustment_kind = queryPreset.market_data_adjustment_kind;
     }
     form.setFieldsValue(nextValues);
     basePresetAppliedRef.current = true;
@@ -711,6 +782,19 @@ export function BacktestsView() {
                 form.setFieldValue("template_id", undefined);
               }
             }
+            if ("market_data_provider" in changedValues) {
+              const nextProvider = changedValues.market_data_provider;
+              if (!nextProvider) {
+                form.setFieldValue("market_data_adjustment_kind", undefined);
+              } else if (nextProvider === "tdx_qfq") {
+                form.setFieldValue("market_data_adjustment_kind", "qfq");
+              } else if (nextProvider === "yahoo" || nextProvider === "tdx") {
+                const currentAdjustmentKind = form.getFieldValue("market_data_adjustment_kind");
+                if (!currentAdjustmentKind || currentAdjustmentKind === "qfq") {
+                  form.setFieldValue("market_data_adjustment_kind", "raw");
+                }
+              }
+            }
           }}
         >
           <div className="wizard-first-run-banner">
@@ -741,7 +825,13 @@ export function BacktestsView() {
                 <div className="wizard-preset-banner">
                   <strong>已载入推荐研究样本</strong>
                   <span>
-                    {[queryPreset.symbol, queryPreset.interval, queryPreset.strategy_kind ? strategyLabel(queryPreset.strategy_kind) : undefined]
+                    {[
+                      queryPreset.symbol,
+                      queryPreset.interval,
+                      queryPreset.strategy_kind ? strategyLabel(queryPreset.strategy_kind) : undefined,
+                      queryPreset.market_data_provider ? marketDataProviderLabel(queryPreset.market_data_provider) : undefined,
+                      queryPreset.market_data_adjustment_kind ? marketDataAdjustmentLabel(queryPreset.market_data_adjustment_kind) : undefined,
+                    ]
                       .filter(Boolean)
                       .join(" / ")}
                     ，确认无误后可直接进入下一步。
@@ -749,11 +839,35 @@ export function BacktestsView() {
                 </div>
               ) : null}
               <div className="template-form-grid">
-                <Form.Item name="symbol" label="回测标的" rules={[{ required: true, message: "请输入回测标的" }]} extra="使用 Yahoo 代码，例如 1810.HK、0700.HK、513050.SS。">
-                  <Input placeholder="例如 1810.HK" />
+                <Form.Item name="symbol" label="回测标的" rules={[{ required: true, message: "请输入回测标的" }]} extra="支持统一标的代码，例如 1810.HK、SH600000、10#AUDUSD。">
+                  <Input placeholder="例如 1810.HK、SH600000、10#AUDUSD" />
                 </Form.Item>
                 <Form.Item name="interval" label="数据周期" extra="常用基线周期为 15m 或 1d。">
                   <Select options={intervalOptions} />
+                </Form.Item>
+                <Form.Item
+                  name="market_data_provider"
+                  label="行情来源"
+                  extra="默认先用旧 Yahoo 回测表；若你想直接使用统一主干表里的 TDX 原始或前复权序列，可在这里显式指定。"
+                >
+                  <Select
+                    allowClear
+                    placeholder="默认自动选择"
+                    options={marketDataProviderOptions}
+                    onChange={(value) => form.setFieldValue("market_data_provider", value === "__auto__" ? undefined : value)}
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="market_data_adjustment_kind"
+                  label="复权口径"
+                  extra="通常保留自动判断即可；若同一标的同周期同时存在 raw 和 qfq，再显式指定。"
+                >
+                  <Select
+                    allowClear
+                    placeholder="默认自动判断"
+                    options={marketDataAdjustmentOptions}
+                    onChange={(value) => form.setFieldValue("market_data_adjustment_kind", value === "__auto__" ? undefined : value)}
+                  />
                 </Form.Item>
               </div>
               {beginnerPresets.length > 0 ? (
@@ -771,6 +885,8 @@ export function BacktestsView() {
                             interval: preset.interval,
                             strategy_kind: preset.strategyKind,
                             template_id: undefined,
+                            market_data_provider: undefined,
+                            market_data_adjustment_kind: undefined,
                           });
                         }}
                       >
@@ -880,6 +996,8 @@ export function BacktestsView() {
                     <div className="detail-item"><span className="detail-label">周期</span><span className="detail-value">{selectedInterval}</span></div>
                     <div className="detail-item"><span className="detail-label">策略</span><span className="detail-value">{strategyLabel(selectedStrategy)}</span></div>
                     <div className="detail-item"><span className="detail-label">模板</span><span className="detail-value">{selectedTemplate?.template_name ?? recommendedTemplate?.template_name ?? "未选择模板"}</span></div>
+                    <div className="detail-item"><span className="detail-label">行情来源</span><span className="detail-value">{marketDataProviderLabel(selectedMarketDataProvider)}</span></div>
+                    <div className="detail-item"><span className="detail-label">复权口径</span><span className="detail-value">{marketDataAdjustmentLabel(selectedMarketDataAdjustmentKind)}</span></div>
                   </div>
                   <div className="submit-reading-grid">
                     {submissionGuides.map((item) => (

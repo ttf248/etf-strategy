@@ -507,6 +507,12 @@ export function DashboardView() {
         interval: String(latestSucceededPayload.interval ?? "15m"),
         strategyKind: String(latestSucceededPayload.strategy_kind ?? "grid"),
         templateId: latestSucceededTemplateId,
+        marketDataProvider:
+          typeof latestSucceededPayload.market_data_provider === "string" ? latestSucceededPayload.market_data_provider : undefined,
+        marketDataAdjustmentKind:
+          typeof latestSucceededPayload.market_data_adjustment_kind === "string"
+            ? latestSucceededPayload.market_data_adjustment_kind
+            : undefined,
       })
     : null;
   const startRecommendation = buildStartRecommendation({

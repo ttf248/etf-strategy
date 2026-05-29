@@ -146,6 +146,13 @@ Scheduler 默认在 Asia/Shanghai 时区运行：
 2. 若请求带了 `market_data_provider` / `market_data_adjustment_kind`，或旧表没有该标的周期，则继续尝试从 `market_data_series + market_data_bars` 读取。
 3. 如果统一主干表里同一标的/周期存在多条可用序列，例如同时有 `tdx raw` 和 `tdx_qfq qfq`，当前会明确报错，要求请求方显式指定 provider 或复权口径，避免 Worker 误选错误序列。
 
+前端 `/backtests` 现在已经直接暴露了这两个可选字段：
+
+- “行情来源”：可选 `Yahoo`、`通达信原始`、`通达信前复权`，留空表示自动选择。
+- “复权口径”：可选 `raw`、`qfq`，留空表示自动判断。
+
+若你是从 `/market-data` 的“基于当前标的创建回测”跳过去，且当前标的只存在于统一主干表，页面会自动把对应 provider / adjustment 预填好，避免再手工选择一次。
+
 ## 日志
 
 排查顺序：

@@ -120,6 +120,13 @@ type ProviderPanelModel = ProviderPanelConfig & {
   currentTarget: string;
 };
 
+type UnifiedBacktestLaunchTarget = {
+  interval: string;
+  strategyKind: string;
+  marketDataProvider: string;
+  marketDataAdjustmentKind: string;
+};
+
 const tdxIntervalOptions: ProviderIntervalOption[] = [
   { label: "all 全部周期", value: "all" },
   { label: "1d 原始日线", value: "1d" },
@@ -448,6 +455,44 @@ function compareCoverageProfile(left: CoverageProfile, right: CoverageProfile) {
     return intervalDiff;
   }
   return left.symbol.localeCompare(right.symbol);
+}
+
+function selectUnifiedBacktestLaunchTarget(rows: MarketDataSeriesRow[]): UnifiedBacktestLaunchTarget | null {
+  const supportedRows = rows
+    .filter((item) => item.is_active && item.bar_count > 0 && ["1d", "15m", "1m"].includes(item.interval))
+    .filter((item) => ["yahoo", "tdx", "tdx_qfq"].includes(item.provider_key));
+  if (supportedRows.length === 0) {
+    return null;
+  }
+  const sortedRows = [...supportedRows].sort((left, right) => {
+    const score = (row: MarketDataSeriesRow) => {
+      if (row.interval === "15m") {
+        return 0;
+      }
+      if (row.interval === "1d" && row.adjustment_kind === "qfq") {
+        return 1;
+      }
+      if (row.interval === "1d") {
+        return 2;
+      }
+      if (row.interval === "1m") {
+        return 3;
+      }
+      return 99;
+    };
+    const scoreDiff = score(left) - score(right);
+    if (scoreDiff !== 0) {
+      return scoreDiff;
+    }
+    return right.bar_count - left.bar_count;
+  });
+  const selected = sortedRows[0];
+  return {
+    interval: selected.interval,
+    strategyKind: selected.interval === "1d" ? "dca" : "grid",
+    marketDataProvider: selected.provider_key,
+    marketDataAdjustmentKind: selected.adjustment_kind,
+  };
 }
 
 function buildStartDecisionCards(
@@ -1333,20 +1378,30 @@ export function MarketDataView() {
 
   const checkedSymbolLaunchHref = useMemo(() => {
     const normalizedSymbol = checkedSymbol.trim().toUpperCase();
-    if (!normalizedSymbol || symbolRows.length === 0) {
+    if (!normalizedSymbol) {
       return null;
     }
-    if (symbolIntervals.has("15m")) {
+    if (symbolRows.length > 0 && symbolIntervals.has("15m")) {
       return buildBacktestLaunchHref({ symbol: normalizedSymbol, interval: "15m", strategyKind: "grid" });
     }
-    if (symbolIntervals.has("1d")) {
+    if (symbolRows.length > 0 && symbolIntervals.has("1d")) {
       return buildBacktestLaunchHref({ symbol: normalizedSymbol, interval: "1d", strategyKind: "dca" });
     }
-    if (symbolIntervals.has("1m")) {
+    if (symbolRows.length > 0 && symbolIntervals.has("1m")) {
       return buildBacktestLaunchHref({ symbol: normalizedSymbol, interval: "1m", strategyKind: "grid" });
     }
+    const unifiedLaunchTarget = selectUnifiedBacktestLaunchTarget(checkedSymbolSeriesRows);
+    if (unifiedLaunchTarget) {
+      return buildBacktestLaunchHref({
+        symbol: normalizedSymbol,
+        interval: unifiedLaunchTarget.interval,
+        strategyKind: unifiedLaunchTarget.strategyKind,
+        marketDataProvider: unifiedLaunchTarget.marketDataProvider,
+        marketDataAdjustmentKind: unifiedLaunchTarget.marketDataAdjustmentKind,
+      });
+    }
     return null;
-  }, [checkedSymbol, symbolIntervals, symbolRows.length]);
+  }, [checkedSymbol, checkedSymbolSeriesRows, symbolIntervals, symbolRows.length]);
   const startDecisionCards = useMemo(
     () => buildStartDecisionCards(checkedSymbol, symbolRows, symbolIntervals, intervalRecommendations, readySymbolCount),
     [checkedSymbol, intervalRecommendations, readySymbolCount, symbolIntervals, symbolRows],

@@ -14,6 +14,8 @@ export type BacktestLaunchPreset = {
   interval?: string;
   strategyKind?: string;
   templateId?: number;
+  marketDataProvider?: string;
+  marketDataAdjustmentKind?: string;
 };
 
 type GroupedCoverage = {
@@ -125,6 +127,12 @@ export function buildBacktestLaunchHref(preset: BacktestLaunchPreset): string {
   }
   if (preset.templateId !== undefined) {
     searchParams.set("template_id", String(preset.templateId));
+  }
+  if (preset.marketDataProvider) {
+    searchParams.set("market_data_provider", preset.marketDataProvider);
+  }
+  if (preset.marketDataAdjustmentKind) {
+    searchParams.set("market_data_adjustment_kind", preset.marketDataAdjustmentKind);
   }
   return `/backtests?${searchParams.toString()}`;
 }
