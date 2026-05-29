@@ -117,6 +117,46 @@ class MarketDataRepositoryTests(unittest.TestCase):
         self.assertEqual(series.last_bar_time, datetime(2026, 5, 28, 0, 0))
         self.assertIsNotNone(series.last_ingested_at)
 
+    def test_upsert_market_data_frame_skips_conflict_update_when_values_unchanged(self) -> None:
+        session = _SessionDouble(execute_results=[[]])
+        series = SimpleNamespace(
+            id=19,
+            first_bar_time=datetime(2026, 5, 1, 0, 0),
+            last_bar_time=datetime(2026, 5, 10, 0, 0),
+            last_ingested_at=None,
+        )
+        frame = pd.DataFrame(
+            [
+                {
+                    "Date": "2026-05-09",
+                    "Open": 8.0,
+                    "High": 8.3,
+                    "Low": 7.9,
+                    "Close": 8.1,
+                    "Volume": 80,
+                    "Amount": 810.0,
+                },
+                {
+                    "Date": "2026-05-10",
+                    "Open": 8.2,
+                    "High": 8.4,
+                    "Low": 8.0,
+                    "Close": 8.3,
+                    "Volume": 82,
+                    "Amount": 830.0,
+                },
+            ]
+        )
+
+        inserted_count, updated_count = upsert_market_data_frame(session, series, frame)
+
+        self.assertEqual(inserted_count, 0)
+        self.assertEqual(updated_count, 0)
+        self.assertEqual(session.execute_calls, 1)
+        self.assertEqual(series.first_bar_time, datetime(2026, 5, 1, 0, 0))
+        self.assertEqual(series.last_bar_time, datetime(2026, 5, 10, 0, 0))
+        self.assertIsNotNone(series.last_ingested_at)
+
 
 if __name__ == "__main__":
     unittest.main()

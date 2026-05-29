@@ -331,6 +331,17 @@ def upsert_market_data_frame(
     updated_count = 0
     for row_batch in _chunked(all_rows, size=1500):
         statement = insert(MarketDataBar).values(row_batch)
+        update_required = (
+            MarketDataBar.open.is_distinct_from(statement.excluded.open)
+            | MarketDataBar.high.is_distinct_from(statement.excluded.high)
+            | MarketDataBar.low.is_distinct_from(statement.excluded.low)
+            | MarketDataBar.close.is_distinct_from(statement.excluded.close)
+            | MarketDataBar.adj_close.is_distinct_from(statement.excluded.adj_close)
+            | MarketDataBar.volume.is_distinct_from(statement.excluded.volume)
+            | MarketDataBar.turnover_amount.is_distinct_from(statement.excluded.turnover_amount)
+            | MarketDataBar.data_status.is_distinct_from(statement.excluded.data_status)
+            | MarketDataBar.payload_json.is_distinct_from(statement.excluded.payload_json)
+        )
         # 直接依赖 PostgreSQL RETURNING 回传 insert/update 数量，避免预查一轮已存在时间戳。
         result = session.execute(
             statement.on_conflict_do_update(
@@ -347,6 +358,7 @@ def upsert_market_data_frame(
                     "payload_json": statement.excluded.payload_json,
                     "ingested_at": func.now(),
                 },
+                where=update_required,
             ).returning(literal_column("xmax = 0", type_=BOOLEAN).label("inserted"))
         )
         for row in result:
