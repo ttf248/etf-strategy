@@ -26,6 +26,11 @@ SERVICE_LOG_KEYWORDS = {
     "worker": ("worker", "backtest"),
     "scheduler": ("scheduler", "sync"),
 }
+TDX_RUNTIME_FILE_PATTERNS = {
+    "1d": ("lday/*.day", "*.day"),
+    "1m": ("minline/*.lc1", "minline/*.1", "*.lc1", "*.1"),
+    "5m": ("fzline/*.lc5", "fzline/*.5", "*.lc5", "*.5"),
+}
 
 
 def _is_missing_heartbeat_table(exc: Exception) -> bool:
@@ -200,6 +205,37 @@ def _resolve_market_roots(vipdoc_path: Path) -> list[str]:
         return []
 
 
+def _build_tdx_market_inventory(vipdoc_path: Path) -> dict[str, object]:
+    """汇总各市场可见的 K 线文件数，便于导入前先确认范围。"""
+    inventory = {
+        "total_files": 0,
+        "by_interval": {"1d": 0, "1m": 0, "5m": 0},
+        "by_market": {},
+    }
+    try:
+        market_dirs = sorted(item for item in vipdoc_path.iterdir() if item.is_dir())
+    except OSError:
+        return inventory
+
+    for market_dir in market_dirs:
+        market_payload = {"1d": 0, "1m": 0, "5m": 0, "total_files": 0}
+        for interval, patterns in TDX_RUNTIME_FILE_PATTERNS.items():
+            matched_paths: set[Path] = set()
+            for pattern in patterns:
+                try:
+                    matched_paths.update(path for path in market_dir.glob(pattern) if path.is_file())
+                except OSError:
+                    continue
+            count = len(matched_paths)
+            market_payload[interval] = count
+            market_payload["total_files"] += count
+            inventory["by_interval"][interval] += count
+        if market_payload["total_files"] > 0:
+            inventory["by_market"][market_dir.name.lower()] = market_payload
+            inventory["total_files"] += market_payload["total_files"]
+    return inventory
+
+
 def _build_yahoo_runtime_payload() -> dict[str, object]:
     proxy = os.getenv("STRATEGY_STUDIO_PROXY", "").strip()
     return {
@@ -225,6 +261,11 @@ def _build_tdx_runtime_payload() -> dict[str, object]:
         path_source = "config_file"
     else:
         path_source = "missing"
+    inventory = _build_tdx_market_inventory(resolved_path) if resolved_path and vipdoc_exists else {
+        "total_files": 0,
+        "by_interval": {"1d": 0, "1m": 0, "5m": 0},
+        "by_market": {},
+    }
     return {
         "status": "ok" if vipdoc_exists else "misconfigured",
         "config_path": str(config_path),
@@ -233,6 +274,7 @@ def _build_tdx_runtime_payload() -> dict[str, object]:
         "vipdoc_exists": vipdoc_exists,
         "path_source": path_source,
         "market_roots": _resolve_market_roots(resolved_path) if resolved_path and vipdoc_exists else [],
+        "market_inventory": inventory,
         "supports_intervals": ["1d", "1m", "5m", "all"],
         "error_message": "" if vipdoc_exists else "未解析到可访问的通达信 vipdoc 目录。",
     }

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 from datetime import UTC, datetime
+from pathlib import Path
+import tempfile
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -769,6 +771,11 @@ class PlatformFeatureTests(unittest.TestCase):
                     "vipdoc_exists": True,
                     "path_source": "config_file",
                     "market_roots": ["sh", "sz", "bj"],
+                    "market_inventory": {
+                        "total_files": 9338,
+                        "by_interval": {"1d": 3200, "1m": 3069, "5m": 3069},
+                        "by_market": {"sh": {"1d": 1600, "1m": 1534, "5m": 1534, "total_files": 4668}},
+                    },
                     "supports_intervals": ["1d", "1m", "5m", "all"],
                     "error_message": "",
                 },
@@ -828,6 +835,11 @@ class PlatformFeatureTests(unittest.TestCase):
                 "vipdoc_exists": True,
                 "path_source": "config_file",
                 "market_roots": ["sh", "sz", "bj"],
+                "market_inventory": {
+                    "total_files": 9338,
+                    "by_interval": {"1d": 3200, "1m": 3069, "5m": 3069},
+                    "by_market": {"sh": {"1d": 1600, "1m": 1534, "5m": 1534, "total_files": 4668}},
+                },
                 "supports_intervals": ["1d", "1m", "5m", "all"],
                 "error_message": "",
             },
@@ -857,7 +869,37 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(payload["api"]["status"], "ok")
         self.assertEqual(payload["frontend"]["status"], "down")
         self.assertEqual(payload["market_data_runtime"]["tdx"]["vipdoc_path"], "G:/new_tdx64/vipdoc")
+        self.assertEqual(payload["market_data_runtime"]["tdx"]["market_inventory"]["total_files"], 9338)
         self.assertTrue(payload["market_data_runtime"]["tushare"]["token_present"])
+
+    def test_build_tdx_runtime_payload_includes_market_inventory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            vipdoc = Path(temp_dir) / "vipdoc"
+            (vipdoc / "sh" / "lday").mkdir(parents=True)
+            (vipdoc / "sh" / "minline").mkdir(parents=True)
+            (vipdoc / "sh" / "fzline").mkdir(parents=True)
+            (vipdoc / "ds" / "lday").mkdir(parents=True)
+            (vipdoc / "ds" / "minline").mkdir(parents=True)
+            (vipdoc / "sh" / "lday" / "sh600000.day").write_bytes(b"\x00" * 32)
+            (vipdoc / "sh" / "minline" / "sh600000.lc1").write_bytes(b"\x00" * 32)
+            (vipdoc / "sh" / "fzline" / "sh600000.lc5").write_bytes(b"\x00" * 32)
+            (vipdoc / "ds" / "lday" / "10#AUDUSD.day").write_bytes(b"\x00" * 32)
+            (vipdoc / "ds" / "minline" / "10#AUDUSD.lc1").write_bytes(b"\x00" * 32)
+
+            fake_settings = SimpleNamespace(tdx_config_path="F:/trade/tdx/config.local.yaml")
+            with (
+                patch("strategy_studio.services.platform.load_platform_settings", return_value=fake_settings),
+                patch.dict("os.environ", {"STRATEGY_STUDIO_TDX_VIPDOC": str(vipdoc)}, clear=False),
+            ):
+                payload = platform_service._build_tdx_runtime_payload()
+
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["path_source"], "env")
+        self.assertEqual(payload["market_roots"], ["ds", "sh"])
+        self.assertEqual(payload["market_inventory"]["total_files"], 5)
+        self.assertEqual(payload["market_inventory"]["by_interval"], {"1d": 2, "1m": 2, "5m": 1})
+        self.assertEqual(payload["market_inventory"]["by_market"]["sh"]["total_files"], 3)
+        self.assertEqual(payload["market_inventory"]["by_market"]["ds"]["1d"], 1)
 
     def test_heartbeat_missing_table_does_not_break_runtime_loop(self) -> None:
         missing_table_error = Exception("psycopg.errors.UndefinedTable: relation platform_heartbeats does not exist")

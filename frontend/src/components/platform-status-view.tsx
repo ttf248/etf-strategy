@@ -194,6 +194,22 @@ function formatRuntimeSource(value: string): string {
   return "未配置";
 }
 
+function formatTdxInventorySummary(tdx: PlatformStatus["market_data_runtime"]["tdx"]): string {
+  const intervalCounts = tdx.market_inventory.by_interval;
+  return `文件总数 ${tdx.market_inventory.total_files}；1d=${intervalCounts["1d"] ?? 0} / 1m=${intervalCounts["1m"] ?? 0} / 5m=${intervalCounts["5m"] ?? 0}`;
+}
+
+function formatTdxMarketSummary(tdx: PlatformStatus["market_data_runtime"]["tdx"]): string {
+  const markets = Object.entries(tdx.market_inventory.by_market);
+  if (markets.length === 0) {
+    return "未识别";
+  }
+  return markets
+    .slice(0, 4)
+    .map(([market, counts]) => `${market}:${counts.total_files}`)
+    .join(" / ");
+}
+
 function buildMarketDataRuntimeGuides(status: PlatformStatus): MarketDataRuntimeGuide[] {
   const yahoo = status.market_data_runtime.yahoo;
   const tdx = status.market_data_runtime.tdx;
@@ -212,9 +228,11 @@ function buildMarketDataRuntimeGuides(status: PlatformStatus): MarketDataRuntime
       title: "通达信原始行情",
       status: tdx.status,
       value: tdx.vipdoc_exists ? "已解析到可访问 vipdoc" : "未解析到 vipdoc",
-      description: tdx.vipdoc_path ? `vipdoc：${tdx.vipdoc_path}` : "当前还没有可用于原始导入的 vipdoc 根目录。",
+      description: tdx.vipdoc_path
+        ? `vipdoc：${tdx.vipdoc_path}；${tdx.vipdoc_exists ? formatTdxInventorySummary(tdx) : "等待目录配置生效。"}`
+        : "当前还没有可用于原始导入的 vipdoc 根目录。",
       detail: tdx.vipdoc_exists
-        ? `来源：${formatRuntimeSource(tdx.path_source)}；市场目录：${tdx.market_roots.length > 0 ? tdx.market_roots.join(" / ") : "未识别"}；支持 ${tdx.supports_intervals.join(" / ")}。`
+        ? `来源：${formatRuntimeSource(tdx.path_source)}；市场目录：${tdx.market_roots.length > 0 ? tdx.market_roots.join(" / ") : "未识别"}；市场文件摘要：${formatTdxMarketSummary(tdx)}；支持 ${tdx.supports_intervals.join(" / ")}。`
         : `来源：${formatRuntimeSource(tdx.path_source)}；配置文件：${tdx.config_path}；${tdx.error_message || "需要补齐 TDX 路径配置。"} `,
     },
     {

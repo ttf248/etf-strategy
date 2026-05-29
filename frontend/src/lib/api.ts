@@ -284,6 +284,11 @@ export type PlatformStatus = {
       vipdoc_exists: boolean;
       path_source: string;
       market_roots: string[];
+      market_inventory: {
+        total_files: number;
+        by_interval: Record<string, number>;
+        by_market: Record<string, { total_files: number } & Record<string, number>>;
+      };
       supports_intervals: string[];
       error_message: string;
     };

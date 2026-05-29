@@ -31,7 +31,7 @@ http://127.0.0.1:8000/docs
 `GET /api/platform/status` 当前除了 API / Frontend / Database / Heartbeats / Queue / Sync Schedule 外，还会返回：
 
 - `market_data_runtime.yahoo`：Yahoo 默认样本池、三周期 workflow 和代理配置存在性。
-- `market_data_runtime.tdx`：`STRATEGY_STUDIO_TDX_VIPDOC` 或 `STRATEGY_STUDIO_TDX_CONFIG_PATH` 解析出的 `vipdoc` 路径、来源、是否存在，以及第一层市场目录摘要。
+- `market_data_runtime.tdx`：`STRATEGY_STUDIO_TDX_VIPDOC` 或 `STRATEGY_STUDIO_TDX_CONFIG_PATH` 解析出的 `vipdoc` 路径、来源、是否存在、第一层市场目录摘要，以及按 `1d / 1m / 5m` 和市场目录汇总的可见 K 线文件数。
 - `market_data_runtime.tushare`：Tushare 配置文件、token 是否存在、来源、限速、超时和重试参数。
 
 这些字段用于前端 `/platform` 维护页直接判断“数据库、TDX 路径、Tushare 凭据是否已经具备触发多数据源导入任务的前提”，避免必须先跑任务再从失败结果倒推配置问题。
