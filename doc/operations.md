@@ -37,6 +37,7 @@ http://127.0.0.1:3000/platform
 ```powershell
 py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
 py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 1d
+py -3.13 main.py sync-now --provider tushare --symbol sh600000
 ```
 
 同步所有已知标的：
@@ -50,9 +51,17 @@ py -3.13 main.py sync-now --interval 15m --period 60d
 ```powershell
 py -3.13 main.py sync-now --provider tdx --interval 1d --limit 100
 py -3.13 main.py sync-now --provider tdx --interval 1d --force
+py -3.13 main.py sync-now --provider tushare --limit 20
 ```
 
 当前 `provider=tdx` 只支持原始 `1d` 日线，并依赖 `STRATEGY_STUDIO_TDX_VIPDOC` 或 `STRATEGY_STUDIO_TDX_CONFIG_PATH` 指向有效的 `vipdoc` 配置。
+
+Tushare 公司行动抓取注意事项：
+
+- 优先通过 `STRATEGY_STUDIO_TUSHARE_TOKEN` 提供 token；未设置时，会尝试从 `STRATEGY_STUDIO_TUSHARE_CONFIG_PATH` 指向的 yaml 中读取 `tushare.token`。
+- 当前只写入 `dividend` 中已有 `ex_date` 的实施事件，落库表为 `corporate_action_events`。
+- 当前未传 `--symbol` 时必须同时给 `--limit`，避免误触发全市场全量抓取。
+- 当前按单个 `ts_code` 全量覆盖写入；如果同一事件被源端修订，下一次抓取会直接替换旧记录。
 
 Scheduler 默认在 Asia/Shanghai 时区运行：
 

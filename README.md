@@ -1,12 +1,12 @@
 # Strategy Studio
 
-Strategy Studio 是一个中文优先的开源策略研究平台，用于从 Yahoo Finance、通达信等渠道获取行情、长期存储 K 线、提交异步回测任务，并在 Web 前端按新手流程创建回测、查看报告和准备数据。
+Strategy Studio 是一个中文优先的开源策略研究平台，用于从 Yahoo Finance、通达信、Tushare 等渠道获取行情或公司行动、长期存储结构化数据、提交异步回测任务，并在 Web 前端按新手流程创建回测、查看报告和准备数据。
 
 当前架构由 Python 研究引擎、FastAPI 后端、PostgreSQL、Worker、Scheduler 和 Next.js 前端组成。CLI 仍然保留，但只承担数据库同步、数据库回测与运维命令。
 
 ## 功能概览
 
-- 行情数据：Yahoo 在线同步、通达信原始日线导入、PostgreSQL 长期存储。
+- 行情数据：Yahoo 在线同步、通达信原始日线导入、Tushare 公司行动抓取、PostgreSQL 长期存储。
 - 回测执行：API 入队，Worker 异步执行，报告结构化落库。
 - 参数模板：在数据库中管理策略、周期、执行口径和寻参空间。
 - 多策略研究：网格、定投、双均线趋势、MACD 趋势、唐奇安突破、放量突破、布林带均值回归、日线反弹、分钟反抽和指数回落网格共用同一套工作流。
@@ -71,6 +71,7 @@ py -3.13 main.py init-db
 ```powershell
 py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
 py -3.13 main.py sync-now --provider tdx --interval 1d --limit 1
+py -3.13 main.py sync-now --provider tushare --symbol sh600000
 ```
 
 生产环境请通过 `STRATEGY_STUDIO_DATABASE_URL` 覆盖默认连接。仓库不再提交样例行情和历史报告；平台回测结果默认只写入数据库，日常使用应优先围绕数据库、API 和前端页面展开。
@@ -112,9 +113,11 @@ VS Code 用户可以直接使用 `启动平台前后端全套`。
 ```powershell
 py -3.13 main.py sync-now --symbol 1810.HK --interval 15m --period 60d
 py -3.13 main.py sync-now --provider tdx --interval 1d --symbol sh600000
+py -3.13 main.py sync-now --provider tushare --symbol sh600000
+py -3.13 main.py sync-now --provider tushare --limit 10
 ```
 
-提交平台回测建议优先通过前端或 API 入队，Worker 会异步执行并把结果写回数据库；如需补齐行情覆盖，可直接使用 `sync-now` 或前端数据覆盖页。当前 `provider=tdx` 已支持原始 `1d` 导入并写入统一主干表，分钟线、公司行动和前复权链路仍在继续接入。
+提交平台回测建议优先通过前端或 API 入队，Worker 会异步执行并把结果写回数据库；如需补齐行情覆盖或公司行动，可直接使用 `sync-now` 或前端数据覆盖页。当前 `provider=tdx` 已支持原始 `1d` 导入并写入统一主干表；`provider=tushare` 已支持按标的或小范围股票清单抓取 `dividend` 实施事件并写入 `corporate_action_events`。分钟线和前复权重算链路仍在继续接入。
 
 批量研究：
 
@@ -170,6 +173,11 @@ tests/           unittest 测试
 - `STRATEGY_STUDIO_PROXY`
 - `STRATEGY_STUDIO_TDX_VIPDOC`
 - `STRATEGY_STUDIO_TDX_CONFIG_PATH`
+- `STRATEGY_STUDIO_TUSHARE_TOKEN`
+- `STRATEGY_STUDIO_TUSHARE_CONFIG_PATH`
+- `STRATEGY_STUDIO_TUSHARE_RATE_LIMIT_PER_MINUTE`
+- `STRATEGY_STUDIO_TUSHARE_TIMEOUT_SECONDS`
+- `STRATEGY_STUDIO_TUSHARE_RETRIES`
 - `STRATEGY_STUDIO_ENABLE_PROCESS_CONTROL`
 - `STRATEGY_STUDIO_API_ORIGIN`
 
@@ -180,6 +188,7 @@ tests/           unittest 测试
 后端：
 
 ```powershell
+py -3.13 -m unittest tests.test_tushare_data
 py -3.13 -m unittest tests.test_platform_features tests.test_repo_contracts
 py -3.13 -m unittest tests.test_grid_strategy tests.test_yahoo_data
 git diff --check

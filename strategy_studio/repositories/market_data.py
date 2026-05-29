@@ -8,10 +8,12 @@ from datetime import datetime
 
 import pandas as pd
 from sqlalchemy import Select, func, select
+from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from strategy_studio.db.models import (
+    CorporateActionEvent,
     DataIngestionJob,
     DataIngestionJobItem,
     DataProvider,
@@ -410,6 +412,77 @@ def upsert_source_file_manifest(
     manifest.updated_at = utc_now()
     session.flush()
     return manifest
+
+
+def replace_corporate_action_events_for_symbol(
+    session: Session,
+    instrument: Instrument,
+    provider: DataProvider,
+    *,
+    source_symbol: str,
+    rows: list[dict[str, object]],
+) -> tuple[int, int, int]:
+    """按单个 source_symbol 全量替换公司行动，避免源端修订后留下陈旧事件。"""
+    normalized_symbol = source_symbol.strip().upper()
+    existing_rows = session.scalars(
+        select(CorporateActionEvent).where(
+            CorporateActionEvent.provider_id == provider.id,
+            CorporateActionEvent.source_symbol == normalized_symbol,
+        )
+    ).all()
+    existing_keys = {
+        (
+            row.source_symbol,
+            row.action_type,
+            row.ex_date,
+            row.record_date,
+            row.announce_date,
+        )
+        for row in existing_rows
+    }
+    new_keys = {
+        (
+            str(item["source_symbol"]).strip().upper(),
+            str(item["action_type"]).strip().lower(),
+            item.get("ex_date"),
+            item.get("record_date"),
+            item.get("announce_date"),
+        )
+        for item in rows
+    }
+    updated_count = len(existing_keys & new_keys)
+    inserted_count = len(new_keys - existing_keys)
+    deleted_count = len(existing_keys - new_keys)
+
+    session.execute(
+        delete(CorporateActionEvent).where(
+            CorporateActionEvent.provider_id == provider.id,
+            CorporateActionEvent.source_symbol == normalized_symbol,
+        )
+    )
+    for item in rows:
+        session.add(
+            CorporateActionEvent(
+                instrument_id=instrument.id,
+                provider_id=provider.id,
+                source_symbol=normalized_symbol,
+                action_type=str(item["action_type"]).strip().lower(),
+                announce_date=item.get("announce_date"),
+                record_date=item.get("record_date"),
+                ex_date=item.get("ex_date"),
+                pay_date=item.get("pay_date"),
+                end_date=item.get("end_date"),
+                cash_dividend=float(item.get("cash_dividend") or 0.0),
+                stock_bonus_ratio=float(item.get("stock_bonus_ratio") or 0.0),
+                stock_conversion_ratio=float(item.get("stock_conversion_ratio") or 0.0),
+                rights_ratio=float(item.get("rights_ratio") or 0.0),
+                rights_price=float(item.get("rights_price") or 0.0),
+                status=str(item.get("status") or "implemented"),
+                raw_payload_json=dict(item.get("raw_payload_json") or {}),
+            )
+        )
+    session.flush()
+    return inserted_count, updated_count, deleted_count
 
 
 def create_data_ingestion_job(

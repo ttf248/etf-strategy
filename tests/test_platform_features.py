@@ -27,6 +27,7 @@ class PlatformFeatureTests(unittest.TestCase):
         init_args = parser.parse_args(["init-db"])
         check_db_args = parser.parse_args(["check-db", "--json"])
         sync_args = parser.parse_args(["sync-now", "--provider", "tdx", "--symbol", "sh600000", "--interval", "1d", "--force", "--limit", "3"])
+        tushare_args = parser.parse_args(["sync-now", "--provider", "tushare", "--symbol", "600000.SH", "--limit", "2"])
         api_args = parser.parse_args(["api", "--host", "127.0.0.1", "--port", "8000"])
         replace_args = parser.parse_args(["api", "--replace-existing"])
         worker_args = parser.parse_args(["worker", "--poll-interval", "3", "--max-concurrent-jobs", "2", "--max-optimization-workers", "4"])
@@ -39,6 +40,9 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(sync_args.symbol, "sh600000")
         self.assertTrue(sync_args.force)
         self.assertEqual(sync_args.limit, 3)
+        self.assertEqual(tushare_args.provider, "tushare")
+        self.assertEqual(tushare_args.symbol, "600000.SH")
+        self.assertEqual(tushare_args.limit, 2)
         self.assertFalse(hasattr(init_args, "with_migration"))
         self.assertEqual(api_args.command, "api")
         self.assertEqual(api_args.host, "127.0.0.1")
@@ -123,6 +127,37 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=True,
             limit=2,
+        )
+
+    def test_web_api_market_data_sync_route_supports_tushare_provider(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.sync_market_data",
+            return_value={"provider": "tushare", "ingestion_job_id": 7, "symbols_count": 1, "bars_inserted": 3, "bars_updated": 1, "status": "succeeded"},
+        ) as mock_sync:
+            response = client.post(
+                "/api/market-data/sync",
+                json={
+                    "provider": "tushare",
+                    "symbol": "sh600000",
+                    "interval": "1d",
+                    "limit": 1,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["provider"], "tushare")
+        mock_sync.assert_called_once_with(
+            symbol="sh600000",
+            interval="1d",
+            proxy=None,
+            period=None,
+            provider="tushare",
+            vipdoc_path=None,
+            force=False,
+            limit=1,
         )
 
     def test_web_api_platform_database_check_route(self) -> None:
@@ -462,6 +497,27 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=True,
             limit=5,
+        )
+
+    def test_sync_market_data_dispatches_tushare_provider(self) -> None:
+        with patch(
+            "strategy_studio.services.sync._sync_tushare_corporate_actions",
+            return_value={"provider": "tushare", "ingestion_job_id": 14, "symbols_count": 1, "bars_inserted": 3, "bars_updated": 1, "status": "succeeded"},
+        ) as mock_tushare:
+            result = sync_market_data(
+                symbol="sh600000",
+                interval="1d",
+                proxy=None,
+                provider="tushare",
+                limit=1,
+                force=True,
+            )
+
+        self.assertEqual(result["provider"], "tushare")
+        mock_tushare.assert_called_once_with(
+            symbol="sh600000",
+            limit=1,
+            force=True,
         )
 
 

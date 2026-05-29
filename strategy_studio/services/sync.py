@@ -20,6 +20,16 @@ from strategy_studio.data.tdx import (
     read_day_frame_tail,
     security_type_to_asset_type,
 )
+from strategy_studio.data.tushare import (
+    DIVIDEND_FIELDS,
+    build_corporate_action_records,
+    fetch_stock_basic,
+    load_tushare_client_settings,
+    symbol_to_ts_code,
+    ts_code_to_instrument_symbol,
+    ts_code_to_market,
+    TushareClient,
+)
 from strategy_studio.data.yahoo import download_price_bars, is_intraday_interval
 from strategy_studio.db.session import open_session
 from strategy_studio.db.settings import load_platform_settings
@@ -34,6 +44,7 @@ from strategy_studio.repositories.market_data import (
     get_or_create_market_data_series,
     get_source_file_manifest,
     list_instruments,
+    replace_corporate_action_events_for_symbol,
     upsert_market_data_frame,
     upsert_price_frame,
     upsert_source_file_manifest,
@@ -56,6 +67,7 @@ def sync_market_data(
 
     - `yahoo`：下载 Yahoo 行情，兼容旧 `price_bars` 并同步写入新主干表。
     - `tdx`：导入通达信原始 `.day` 日线，写入统一序列表与文件 manifest。
+    - `tushare`：抓取 Tushare dividend 实施事件，写入 `corporate_action_events`。
     """
     normalized_provider = provider.strip().lower()
     if normalized_provider == "yahoo":
@@ -68,6 +80,8 @@ def sync_market_data(
             force=force,
             limit=limit,
         )
+    if normalized_provider == "tushare":
+        return _sync_tushare_corporate_actions(symbol=symbol, limit=limit, force=force)
     raise ValueError(f"不支持的数据渠道：{provider}")
 
 
@@ -516,6 +530,172 @@ def _sync_tdx_market_data(
         }
 
 
+def _sync_tushare_corporate_actions(
+    *,
+    symbol: str | None,
+    limit: int | None,
+    force: bool,
+) -> dict[str, object]:
+    client = TushareClient(load_tushare_client_settings())
+    targets = _resolve_tushare_targets(client, symbol=symbol, limit=limit)
+
+    with open_session() as session:
+        provider = ensure_data_provider(
+            session,
+            provider_key="tushare",
+            provider_name="Tushare 公司行动",
+            provider_type="corporate_action",
+            transport="api",
+            timezone="Asia/Shanghai",
+            config_json={
+                "supports_actions": ["dividend"],
+                "config_path": client.settings.config_path,
+                "rate_limit_per_minute": client.settings.rate_limit_per_minute,
+            },
+            status="active",
+        )
+        ingestion_job = create_data_ingestion_job(
+            session,
+            provider=provider,
+            job_type="tushare_corporate_actions",
+            requested_via="manual",
+            target_scope_json={
+                "symbol": (symbol or "").strip(),
+                "limit": limit or 0,
+            },
+            options_json={
+                "force": force,
+            },
+        )
+        ingestion_job.targets_total = len(targets)
+        session.commit()
+
+        succeeded_symbols = 0
+        failed_symbols = 0
+        rows_inserted = 0
+        rows_updated = 0
+        rows_deleted = 0
+        fetched_rows = 0
+        implemented_rows = 0
+        for target in targets:
+            ts_code = str(target["ts_code"]).upper()
+            item = create_data_ingestion_job_item(
+                session,
+                ingestion_job,
+                item_key=f"{ts_code}:corp_actions:dividend",
+                source_symbol=ts_code,
+                interval="corp_actions",
+                provider=provider,
+            )
+            session.commit()
+            try:
+                raw_frame = client.query("dividend", params={"ts_code": ts_code}, fields=DIVIDEND_FIELDS)
+                records = build_corporate_action_records(raw_frame)
+                market = ts_code_to_market(ts_code)
+                instrument_symbol = ts_code_to_instrument_symbol(ts_code)
+                instrument = get_or_create_instrument(
+                    session,
+                    symbol=instrument_symbol,
+                    name=str(target.get("name") or instrument_symbol),
+                    asset_type="equity",
+                    timezone="Asia/Shanghai",
+                )
+                instrument.exchange = market
+                alias = get_or_create_instrument_alias(
+                    session,
+                    instrument=instrument,
+                    provider=provider,
+                    source_symbol=ts_code,
+                    source_name=str(target.get("name") or instrument_symbol),
+                    market=market,
+                    exchange=market,
+                    security_type="equity",
+                    timezone="Asia/Shanghai",
+                )
+                inserted, updated, deleted = replace_corporate_action_events_for_symbol(
+                    session,
+                    instrument,
+                    provider,
+                    source_symbol=ts_code,
+                    rows=records,
+                )
+                item.status = "succeeded"
+                item.stage = "completed"
+                item.instrument_id = instrument.id
+                item.rows_inserted = inserted
+                item.rows_updated = updated
+                item.details_json = {
+                    "provider_key": provider.provider_key,
+                    "source_symbol": ts_code,
+                    "alias_id": alias.id,
+                    "raw_rows": len(raw_frame),
+                    "implemented_rows": len(records),
+                    "deleted_rows": deleted,
+                }
+                ingestion_job.targets_completed += 1
+                succeeded_symbols += 1
+                fetched_rows += len(raw_frame)
+                implemented_rows += len(records)
+                rows_inserted += inserted
+                rows_updated += updated
+                rows_deleted += deleted
+                session.commit()
+            except Exception as exc:
+                session.rollback()
+                item = session.get(type(item), item.id)
+                ingestion_job = session.get(type(ingestion_job), ingestion_job.id)
+                if item is not None:
+                    item.status = "failed"
+                    item.stage = "failed"
+                    item.error_message = str(exc)
+                    item.details_json = {
+                        "provider_key": provider.provider_key,
+                        "source_symbol": ts_code,
+                    }
+                if ingestion_job is not None:
+                    ingestion_job.error_count += 1
+                failed_symbols += 1
+                session.commit()
+
+        ingestion_job = session.get(type(ingestion_job), ingestion_job.id)
+        if ingestion_job is None:
+            raise RuntimeError("统一导入任务记录丢失。")
+        ingestion_job.rows_inserted = rows_inserted
+        ingestion_job.rows_updated = rows_updated
+        ingestion_job.completed_at = datetime.now(UTC)
+        ingestion_job.summary_json = {
+            "provider_key": provider.provider_key,
+            "symbols_total": len(targets),
+            "symbols_succeeded": succeeded_symbols,
+            "symbols_failed": failed_symbols,
+            "fetched_rows": fetched_rows,
+            "implemented_rows": implemented_rows,
+            "deleted_rows": rows_deleted,
+        }
+        if failed_symbols == len(targets):
+            ingestion_job.status = "failed"
+            ingestion_job.error_message = "本次 Tushare 公司行动抓取全部失败。"
+        elif failed_symbols:
+            ingestion_job.status = "partially_failed"
+            ingestion_job.error_message = f"本次 Tushare 公司行动抓取有 {failed_symbols} 个标的失败。"
+        else:
+            ingestion_job.status = "succeeded"
+        session.commit()
+
+        return {
+            "provider": provider.provider_key,
+            "ingestion_job_id": ingestion_job.id,
+            "interval": "corp_actions",
+            "symbols_count": len(targets),
+            "bars_inserted": rows_inserted,
+            "bars_updated": rows_updated,
+            "events_deleted": rows_deleted,
+            "fetched_rows": fetched_rows,
+            "implemented_rows": implemented_rows,
+            "status": ingestion_job.status,
+        }
+
+
 def _resolve_tdx_vipdoc_path(override_path: str | None) -> Path:
     settings = load_platform_settings()
     if override_path and override_path.strip():
@@ -534,3 +714,41 @@ def _resolve_tdx_vipdoc_path(override_path: str | None) -> Path:
         "未配置通达信 vipdoc 路径。请通过 --vipdoc、STRATEGY_STUDIO_TDX_VIPDOC，"
         "或在 STRATEGY_STUDIO_TDX_CONFIG_PATH 指向的配置文件中提供 vipdoc。"
     )
+
+
+def _resolve_tushare_targets(
+    client: TushareClient,
+    *,
+    symbol: str | None,
+    limit: int | None,
+) -> list[dict[str, str]]:
+    if symbol and symbol.strip():
+        ts_code = symbol_to_ts_code(symbol)
+        instrument_symbol = ts_code_to_instrument_symbol(ts_code)
+        return [
+            {
+                "ts_code": ts_code,
+                "symbol": instrument_symbol,
+                "name": instrument_symbol,
+            }
+        ]
+    if limit is None:
+        raise ValueError("当前 Tushare 公司行动抓取需要显式传入 --symbol，或至少给出 --limit 控制抓取范围。")
+    stock_basic = fetch_stock_basic(client)
+    if stock_basic.empty:
+        raise ValueError("Tushare stock_basic 未返回可抓取的股票清单。")
+    targets = []
+    for row in stock_basic.head(limit).to_dict(orient="records"):
+        ts_code = str(row.get("ts_code") or "").upper()
+        if not ts_code:
+            continue
+        targets.append(
+            {
+                "ts_code": ts_code,
+                "symbol": ts_code_to_instrument_symbol(ts_code),
+                "name": str(row.get("name") or ts_code_to_instrument_symbol(ts_code)),
+            }
+        )
+    if not targets:
+        raise ValueError("Tushare 股票清单为空，无法构造抓取目标。")
+    return targets

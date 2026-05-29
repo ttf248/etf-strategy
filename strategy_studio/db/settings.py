@@ -15,6 +15,11 @@ DEFAULT_FRONTEND_PORT = 3000
 DEFAULT_SYNC_INTERVALS = ("1d", "15m", "1m")
 DEFAULT_TDX_CONFIG_PATH = r"F:\trade\tdx\config.local.yaml"
 DEFAULT_TDX_VIPDOC = ""
+DEFAULT_TUSHARE_CONFIG_PATH = r"F:\trade\tdx\config.local.yaml"
+DEFAULT_TUSHARE_TOKEN = ""
+DEFAULT_TUSHARE_RATE_LIMIT_PER_MINUTE = 90
+DEFAULT_TUSHARE_TIMEOUT_SECONDS = 15.0
+DEFAULT_TUSHARE_RETRIES = 3
 DEFAULT_WORKER_MAX_CONCURRENT_JOBS = 2
 DEFAULT_WORKER_MAX_OPTIMIZATION_WORKERS = 4
 
@@ -39,6 +44,11 @@ class PlatformSettings:
     sync_intervals: tuple[str, ...] = DEFAULT_SYNC_INTERVALS
     tdx_config_path: str = DEFAULT_TDX_CONFIG_PATH
     tdx_vipdoc: str = DEFAULT_TDX_VIPDOC
+    tushare_config_path: str = DEFAULT_TUSHARE_CONFIG_PATH
+    tushare_token: str = DEFAULT_TUSHARE_TOKEN
+    tushare_rate_limit_per_minute: int = DEFAULT_TUSHARE_RATE_LIMIT_PER_MINUTE
+    tushare_timeout_seconds: float = DEFAULT_TUSHARE_TIMEOUT_SECONDS
+    tushare_retries: int = DEFAULT_TUSHARE_RETRIES
     worker_max_concurrent_jobs: int = DEFAULT_WORKER_MAX_CONCURRENT_JOBS
     worker_max_optimization_workers: int = DEFAULT_WORKER_MAX_OPTIMIZATION_WORKERS
 
@@ -56,6 +66,20 @@ def load_platform_settings() -> PlatformSettings:
         frontend_port=int(os.getenv("STRATEGY_STUDIO_FRONTEND_PORT", str(DEFAULT_FRONTEND_PORT))),
         tdx_config_path=os.getenv("STRATEGY_STUDIO_TDX_CONFIG_PATH", DEFAULT_TDX_CONFIG_PATH),
         tdx_vipdoc=os.getenv("STRATEGY_STUDIO_TDX_VIPDOC", DEFAULT_TDX_VIPDOC),
+        tushare_config_path=os.getenv("STRATEGY_STUDIO_TUSHARE_CONFIG_PATH", DEFAULT_TUSHARE_CONFIG_PATH),
+        tushare_token=os.getenv("STRATEGY_STUDIO_TUSHARE_TOKEN", DEFAULT_TUSHARE_TOKEN),
+        tushare_rate_limit_per_minute=max(
+            1,
+            int(os.getenv("STRATEGY_STUDIO_TUSHARE_RATE_LIMIT_PER_MINUTE", str(DEFAULT_TUSHARE_RATE_LIMIT_PER_MINUTE))),
+        ),
+        tushare_timeout_seconds=max(
+            1.0,
+            float(os.getenv("STRATEGY_STUDIO_TUSHARE_TIMEOUT_SECONDS", str(DEFAULT_TUSHARE_TIMEOUT_SECONDS))),
+        ),
+        tushare_retries=max(
+            1,
+            int(os.getenv("STRATEGY_STUDIO_TUSHARE_RETRIES", str(DEFAULT_TUSHARE_RETRIES))),
+        ),
         worker_max_concurrent_jobs=max(
             1,
             int(os.getenv("STRATEGY_STUDIO_WORKER_MAX_CONCURRENT_JOBS", str(DEFAULT_WORKER_MAX_CONCURRENT_JOBS))),

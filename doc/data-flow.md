@@ -4,10 +4,11 @@
 
 ## 行情进入系统
 
-当前自动同步主链路有两类正式来源：
+当前自动同步主链路有三类正式来源：
 
 - Yahoo 同步：通过 `sync-now`、Scheduler 或前端同步按钮触发。
 - 通达信原始导入：通过 `sync-now --provider tdx` 或后续统一任务面板触发。
+- Tushare 公司行动抓取：通过 `sync-now --provider tushare` 或后续统一任务面板触发。
 
 标准流程：
 
@@ -43,6 +44,23 @@ market_data_bars + source_file_manifests + data_ingestion_jobs
 
 同一文件再次导入时，会先比较 `source_size / source_mtime / record_count / tail_hash`；未变化则跳过，严格尾部增长时走安全增量窗口。
 
+Tushare 当前已接通的链路为：
+
+```text
+Tushare dividend API
+    |
+    v
+ts_code -> instrument/alias 映射
+    |
+    v
+只保留已有 ex_date 的实施事件
+    |
+    v
+corporate_action_events + data_ingestion_jobs
+```
+
+当前抓取按单个 `ts_code` 全量覆盖写入。这样即使源端修订了某次分红送转的日期或数值，也不会在库里留下陈旧事件。
+
 为后续接入通达信和 Tushare，数据库已预留多数据源基础结构：
 
 - `data_providers`：渠道注册。
@@ -53,7 +71,7 @@ market_data_bars + source_file_manifests + data_ingestion_jobs
 - `source_file_manifests`：文件型来源的增量状态。
 - `data_ingestion_jobs` / `data_ingestion_job_items`：统一后台任务状态。
 
-这些表当前主要承担结构准备职责；正式导入链路仍会在后续子任务中逐步接入。
+这些表当前已接通 Yahoo 原始 K 线、通达信原始日线与 Tushare 公司行动三条子链路；前复权区间和统一前端任务面板仍会在后续子任务中继续接入。
 
 ## 同步记录
 

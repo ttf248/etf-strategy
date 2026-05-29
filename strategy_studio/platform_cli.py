@@ -196,14 +196,14 @@ def add_platform_subcommands(subparsers: argparse._SubParsersAction[argparse.Arg
     check_db_parser.add_argument("--json", action="store_true", help="以 JSON 输出完整诊断结果")
 
     sync_parser = subparsers.add_parser("sync-now", help="立即同步指定渠道行情到数据库")
-    sync_parser.add_argument("--provider", choices=["yahoo", "tdx"], default="yahoo", help="数据渠道：yahoo 或 tdx")
-    sync_parser.add_argument("--symbol", default=None, help="指定单个标的；Yahoo 使用 1810.HK 这类代码，TDX 使用 sh600000 这类代码")
+    sync_parser.add_argument("--provider", choices=["yahoo", "tdx", "tushare"], default="yahoo", help="数据渠道：yahoo、tdx 或 tushare")
+    sync_parser.add_argument("--symbol", default=None, help="指定单个标的；Yahoo 使用 1810.HK，TDX 使用 sh600000，Tushare 使用 sh600000 或 600000.SH")
     sync_parser.add_argument("--interval", default="1d", help="行情周期，例如 1d、15m、1m")
     sync_parser.add_argument("--proxy", default=None, help="Yahoo 代理地址")
     sync_parser.add_argument("--period", default=None, help="分钟线下载窗口，例如 7d、60d")
     sync_parser.add_argument("--vipdoc", default=None, help="通达信 vipdoc 根目录；仅 provider=tdx 时生效")
     sync_parser.add_argument("--force", action="store_true", help="忽略文件 manifest，强制重建当前导入范围；仅 provider=tdx 时生效")
-    sync_parser.add_argument("--limit", type=int, default=None, help="限制导入文件数；仅 provider=tdx 时生效")
+    sync_parser.add_argument("--limit", type=int, default=None, help="限制导入范围；provider=tdx 时限制文件数，provider=tushare 时限制股票数")
 
     api_parser = subparsers.add_parser("api", help="启动 FastAPI 服务")
     api_parser.add_argument("--host", default=None, help="监听地址")
