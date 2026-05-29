@@ -69,6 +69,7 @@ from strategy_studio.symbols import SymbolSpec, get_symbol_set, resolve_symbol_s
 
 TDX_IMPORT_INTERVALS = ("1d", "1m", "5m")
 TDX_PIPELINE_INTERVALS = ("1d", "all")
+YAHOO_PIPELINE_INTERVALS = ("all",)
 TDX_QFQ_COMMIT_EVERY = 20
 API_REQUESTED_VIA = "api"
 WORKER_CHILD_REQUESTED_VIA = "worker_child"
@@ -84,6 +85,13 @@ _QUEUE_PROVIDER_DEFINITIONS: dict[str, dict[str, object]] = {
         "transport": "api",
         "timezone": "UTC",
         "config_json": {"supports_intervals": ["1d", "15m", "1m"]},
+    },
+    "yahoo_pipeline": {
+        "provider_name": "Yahoo 默认样本全周期链路",
+        "provider_type": "workflow",
+        "transport": "orchestration",
+        "timezone": "UTC",
+        "config_json": {"supports_intervals": ["all"], "pipeline_steps": ["yahoo:1d", "yahoo:15m", "yahoo:1m"]},
     },
     "tdx": {
         "provider_name": "通达信本地行情",
@@ -146,6 +154,15 @@ def sync_market_data(
             period=period,
             limit=limit,
             symbol_set=symbol_set,
+            requested_via=requested_via,
+        )
+    if normalized_provider == "yahoo_pipeline":
+        return _run_yahoo_pipeline_workflow(
+            symbol=symbol,
+            symbol_set=symbol_set,
+            interval=interval,
+            proxy=proxy,
+            limit=limit,
             requested_via=requested_via,
         )
     if normalized_provider == "tdx":
@@ -745,6 +762,278 @@ def _run_tdx_pipeline_workflow(
         }
 
 
+def _run_yahoo_pipeline_workflow(
+    *,
+    symbol: str | None,
+    symbol_set: str | None,
+    interval: str,
+    proxy: str | None,
+    limit: int | None,
+    requested_via: str | None = None,
+) -> dict[str, object]:
+    normalized_interval = interval.strip().lower()
+    if normalized_interval not in YAHOO_PIPELINE_INTERVALS:
+        raise ValueError("当前 Yahoo 多周期链路只支持 all。")
+    normalized_symbol = (symbol or "").strip().upper()
+    normalized_symbol_set = (symbol_set or "").strip()
+    effective_symbol_set = normalized_symbol_set or ("yahoo_global_active_100" if not normalized_symbol else "")
+    requested_target = normalized_symbol or effective_symbol_set or "yahoo_global_active_100"
+    steps = [
+        {
+            "key": "yahoo_daily",
+            "label": "Yahoo 日线同步",
+            "provider": "yahoo",
+            "interval": "1d",
+            "period": None,
+        },
+        {
+            "key": "yahoo_15m",
+            "label": "Yahoo 15 分钟同步",
+            "provider": "yahoo",
+            "interval": "15m",
+            "period": "60d",
+        },
+        {
+            "key": "yahoo_1m",
+            "label": "Yahoo 1 分钟同步",
+            "provider": "yahoo",
+            "interval": "1m",
+            "period": "7d",
+        },
+    ]
+
+    with open_session() as session:
+        provider = ensure_data_provider(
+            session,
+            provider_key="yahoo_pipeline",
+            provider_name="Yahoo 默认样本全周期链路",
+            provider_type="workflow",
+            transport="orchestration",
+            timezone="UTC",
+            config_json={
+                "depends_on": ["yahoo"],
+                "supports_intervals": list(YAHOO_PIPELINE_INTERVALS),
+                "pipeline_steps": [f"{step['provider']}:{step['interval']}" for step in steps],
+                "default_symbol_set": "yahoo_global_active_100",
+            },
+            status="active",
+        )
+        ingestion_job = create_data_ingestion_job(
+            session,
+            provider=provider,
+            job_type="yahoo_pipeline_workflow",
+            requested_via=requested_via or "manual",
+            target_scope_json={
+                "symbol": normalized_symbol,
+                "symbol_set": effective_symbol_set,
+                "interval": "all",
+                "limit": limit or 0,
+            },
+            options_json={"proxy": (proxy or "").strip()},
+        )
+        ingestion_job.targets_total = len(steps)
+
+        step_items: dict[str, object] = {}
+        for step in steps:
+            item = create_data_ingestion_job_item(
+                session,
+                ingestion_job,
+                item_key=f"{step['key']}:{requested_target}",
+                source_symbol=requested_target,
+                interval=step["interval"],
+                provider=provider,
+            )
+            item.details_json = {
+                "provider_key": provider.provider_key,
+                "step": step["key"],
+                "step_label": step["label"],
+                "child_provider": step["provider"],
+                "symbol_set": effective_symbol_set,
+            }
+            step_items[step["key"]] = item
+        session.commit()
+
+        bars_inserted_total = 0
+        bars_updated_total = 0
+        child_ingestion_job_ids: list[int] = []
+        workflow_results: list[dict[str, object]] = []
+        step_statuses: list[str] = []
+        first_error_message = ""
+        cancelled = False
+
+        for step in steps:
+            item = step_items[step["key"]]
+            if _is_current_enqueued_market_data_job_cancel_requested():
+                cancelled = True
+                item.status = "cancelled"
+                item.stage = "completed"
+                item.error_message = _current_enqueued_market_data_job_cancel_message()
+                item.details_json = {
+                    **dict(item.details_json or {}),
+                    "status": "cancelled",
+                    "reason": "cancel_requested",
+                }
+                ingestion_job.targets_completed += 1
+                workflow_results.append(
+                    {
+                        "step": step["key"],
+                        "step_label": step["label"],
+                        "provider": step["provider"],
+                        "interval": step["interval"],
+                        "status": "cancelled",
+                        "error_message": item.error_message,
+                        "blocked_by": "cancel_requested",
+                    }
+                )
+                step_statuses.append("cancelled")
+                session.commit()
+                continue
+            try:
+                result = _sync_yahoo_market_data(
+                    symbol=normalized_symbol or None,
+                    interval=step["interval"],
+                    proxy=proxy,
+                    period=step["period"],
+                    limit=limit,
+                    symbol_set=effective_symbol_set or None,
+                    requested_via=requested_via,
+                )
+                child_ids = _collect_child_ingestion_job_ids(result)
+                for child_id in child_ids:
+                    if child_id not in child_ingestion_job_ids:
+                        child_ingestion_job_ids.append(child_id)
+
+                status = str(result.get("status") or "completed")
+                error_message = str(result.get("error_message") or "")
+                bars_inserted = int(result.get("series_bars_inserted") or result.get("bars_inserted") or 0)
+                bars_updated = int(result.get("series_bars_updated") or result.get("bars_updated") or 0)
+                bars_inserted_total += bars_inserted
+                bars_updated_total += bars_updated
+
+                item.status = status
+                item.stage = "failed" if status == "failed" else "completed"
+                item.rows_inserted = bars_inserted
+                item.rows_updated = bars_updated
+                item.error_message = error_message if status in {"failed", "partially_failed"} else ""
+                item.details_json = {
+                    **dict(item.details_json or {}),
+                    "status": status,
+                    "requested_interval": step["interval"],
+                    "period": step["period"] or "",
+                    "symbols_count": int(result.get("symbols_count") or 0),
+                    "child_ingestion_job_ids": child_ids,
+                }
+                ingestion_job.targets_completed += 1
+                workflow_results.append(
+                    {
+                        "step": step["key"],
+                        "step_label": step["label"],
+                        "provider": step["provider"],
+                        "interval": step["interval"],
+                        "period": step["period"] or "",
+                        "symbols_count": int(result.get("symbols_count") or 0),
+                        "bars_inserted": bars_inserted,
+                        "bars_updated": bars_updated,
+                        "status": status,
+                        "error_message": error_message,
+                        "child_ingestion_job_ids": child_ids,
+                    }
+                )
+                step_statuses.append(status)
+                if status in {"failed", "partially_failed"} and error_message and not first_error_message:
+                    first_error_message = error_message
+                session.commit()
+            except Exception as exc:
+                session.rollback()
+                error_message = str(exc)
+                item = session.get(type(item), item.id)
+                ingestion_job = session.get(type(ingestion_job), ingestion_job.id)
+                if item is not None:
+                    item.status = "failed"
+                    item.stage = "failed"
+                    item.error_message = error_message
+                    item.details_json = {
+                        **dict(item.details_json or {}),
+                        "status": "failed",
+                        "requested_interval": step["interval"],
+                        "period": step["period"] or "",
+                    }
+                if ingestion_job is not None:
+                    ingestion_job.targets_completed += 1
+                workflow_results.append(
+                    {
+                        "step": step["key"],
+                        "step_label": step["label"],
+                        "provider": step["provider"],
+                        "interval": step["interval"],
+                        "period": step["period"] or "",
+                        "status": "failed",
+                        "error_message": error_message,
+                        "child_ingestion_job_ids": [],
+                    }
+                )
+                step_statuses.append("failed")
+                if not first_error_message:
+                    first_error_message = error_message
+                session.commit()
+
+        ingestion_job = session.get(type(ingestion_job), ingestion_job.id)
+        if ingestion_job is None:
+            raise RuntimeError("Yahoo 多周期 workflow 任务记录丢失。")
+
+        ingestion_job.rows_inserted = bars_inserted_total
+        ingestion_job.rows_updated = bars_updated_total
+        ingestion_job.completed_at = datetime.now(UTC)
+        ingestion_job.error_count = sum(1 for status in step_statuses if status in {"failed", "partially_failed"})
+        ingestion_job.summary_json = {
+            "provider_key": provider.provider_key,
+            "requested_symbol": normalized_symbol,
+            "requested_symbol_set": effective_symbol_set,
+            "requested_interval": "all",
+            "child_ingestion_job_ids": child_ingestion_job_ids,
+            "workflow_results": workflow_results,
+            "bars_inserted": bars_inserted_total,
+            "bars_updated": bars_updated_total,
+        }
+        if any(status == "cancelled" for status in step_statuses):
+            ingestion_job.status = "cancelled"
+            ingestion_job.error_message = _current_enqueued_market_data_job_cancel_message()
+        elif any(status == "failed" for status in step_statuses):
+            ingestion_job.status = "failed"
+            ingestion_job.error_message = (
+                f"Yahoo 多周期链路执行失败。首个错误：{first_error_message}"
+                if first_error_message
+                else "Yahoo 多周期链路执行失败。"
+            )
+        elif any(status == "partially_failed" for status in step_statuses):
+            ingestion_job.status = "partially_failed"
+            ingestion_job.error_message = (
+                f"Yahoo 多周期链路部分失败。首个错误：{first_error_message}"
+                if first_error_message
+                else "Yahoo 多周期链路部分失败。"
+            )
+        else:
+            ingestion_job.status = "succeeded"
+        session.commit()
+
+        return {
+            "provider": provider.provider_key,
+            "ingestion_job_id": ingestion_job.id,
+            "ingestion_job_ids": child_ingestion_job_ids,
+            "child_ingestion_job_ids": child_ingestion_job_ids,
+            "interval": "all",
+            "symbols_count": _select_yahoo_pipeline_symbols_count(workflow_results),
+            "bars_inserted": bars_inserted_total,
+            "bars_updated": bars_updated_total,
+            "series_bars_inserted": bars_inserted_total,
+            "series_bars_updated": bars_updated_total,
+            "symbol_set": effective_symbol_set,
+            "workflow_results": workflow_results,
+            "error_message": ingestion_job.error_message,
+            "status": ingestion_job.status,
+        }
+
+
 def _collect_child_ingestion_job_ids(result: dict[str, object]) -> list[int]:
     collected: list[int] = []
     direct_job_id = result.get("ingestion_job_id")
@@ -761,6 +1050,18 @@ def _select_tdx_pipeline_symbols_count(workflow_results: list[dict[str, object]]
     for provider_key in ("tdx_qfq", "tushare", "tdx"):
         for item in workflow_results:
             if str(item.get("provider") or "") != provider_key:
+                continue
+            if int(item.get("symbols_count") or 0) > 0:
+                return int(item.get("symbols_count") or 0)
+    return 0
+
+
+def _select_yahoo_pipeline_symbols_count(workflow_results: list[dict[str, object]]) -> int:
+    for interval in ("1m", "15m", "1d"):
+        for item in workflow_results:
+            if str(item.get("provider") or "") != "yahoo":
+                continue
+            if str(item.get("interval") or "") != interval:
                 continue
             if int(item.get("symbols_count") or 0) > 0:
                 return int(item.get("symbols_count") or 0)

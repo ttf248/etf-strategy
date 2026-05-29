@@ -198,16 +198,16 @@ def add_platform_subcommands(subparsers: argparse._SubParsersAction[argparse.Arg
     sync_parser = subparsers.add_parser("sync-now", help="立即同步指定渠道行情到数据库")
     sync_parser.add_argument(
         "--provider",
-        choices=["yahoo", "tdx", "tushare", "tdx_qfq", "tdx_pipeline"],
+        choices=["yahoo", "yahoo_pipeline", "tdx", "tushare", "tdx_qfq", "tdx_pipeline"],
         default="yahoo",
-        help="数据渠道：yahoo、tdx、tushare、tdx_qfq 或 tdx_pipeline",
+        help="数据渠道：yahoo、yahoo_pipeline、tdx、tushare、tdx_qfq 或 tdx_pipeline",
     )
     sync_parser.add_argument("--symbol", default=None, help="指定单个标的；Yahoo 使用 1810.HK，TDX/QFQ 使用 sh600000，Tushare 使用 sh600000 或 600000.SH")
     sync_parser.add_argument("--symbol-set", default=None, help="Yahoo 内置样本池，例如 yahoo_global_active_100")
     sync_parser.add_argument(
         "--interval",
         default="1d",
-        help="行情周期，例如 1d、15m、1m；provider=tdx 支持 all 顺序导入 1d/1m/5m，provider=tdx_pipeline 支持 1d 或 all",
+        help="行情周期，例如 1d、15m、1m；provider=yahoo_pipeline 固定使用 all 串行同步 1d/15m/1m，provider=tdx 支持 all 顺序导入 1d/1m/5m，provider=tdx_pipeline 支持 1d 或 all",
     )
     sync_parser.add_argument("--proxy", default=None, help="Yahoo 代理地址")
     sync_parser.add_argument("--period", default=None, help="分钟线下载窗口，例如 7d、60d")
@@ -217,7 +217,7 @@ def add_platform_subcommands(subparsers: argparse._SubParsersAction[argparse.Arg
         "--limit",
         type=int,
         default=None,
-        help="限制导入范围；provider=yahoo 时限制 symbol_set 或已知标的数量，provider=tdx 时限制文件数（interval=all 时对每个 TDX 周期分别生效），provider=tushare、provider=tdx_qfq 或 provider=tdx_pipeline 时限制股票数",
+        help="限制导入范围；provider=yahoo 或 provider=yahoo_pipeline 时限制 symbol_set 或已知标的数量，provider=tdx 时限制文件数（interval=all 时对每个 TDX 周期分别生效），provider=tushare、provider=tdx_qfq 或 provider=tdx_pipeline 时限制股票数",
     )
 
     api_parser = subparsers.add_parser("api", help="启动 FastAPI 服务")

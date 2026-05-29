@@ -36,7 +36,7 @@ http://127.0.0.1:3000/platform
 http://127.0.0.1:3000/market-data
 ```
 
-该页现在会先设定“当前目标标的”，然后在同一页直接展示 Yahoo、A 股统一补数链路、通达信原始行情、Tushare 公司行动和通达信前复权五类 provider 的摘要卡片、最近统一导入任务，以及“统一序列检查”“通达信原始文件 Manifest 检查”和“前复权输入与公式检查”面板；如果需要围绕单个标的集中排查，还可以直接打开“全链路诊断”抽屉，把最近相关任务、统一序列、manifest、公司行动和复权区间放在同一个视图里。若只是补当前回测样本，优先使用页内 Yahoo 覆盖检查与推荐周期；若要一键完成 A 股原始导入、公司行动和前复权，优先使用统一补数链路；若只想单独处理 A 股原始 `1d / 1m / 5m`、公司行动或前复权，则使用对应 provider 卡片上的当前标的或批量按钮。页面触发同步后会先创建 `data_ingestion_jobs` 队列任务，并由 `main.py worker` 在后台领取执行；最近任务区会自动轮询最新状态，支持直接展开统一补数链路的子步骤明细，也支持打开任务详情抽屉查看 `data_ingestion_job_items` 文件级/标的级明细，若当前是 API 队列父任务，还可以继续跳转查看其下游子任务。现在最近任务区和任务详情还支持直接取消排队/执行中的统一导入任务，或把失败、部分失败、已取消的任务按原条件重新入队；任务详情和全链路诊断还能直接把目标标的带到“统一序列检查”“Manifest 检查”“前复权输入与公式检查”三个面板，避免人工重复输入筛选条件。若任务显示成功但仍怀疑落库结果异常，再用这些定位动作核对 `market_data_series`、`source_file_manifests`、`corporate_action_events` 和 `price_adjustment_segments`。
+该页现在会先设定“当前目标标的”，然后在同一页直接展示 Yahoo 单周期、Yahoo 三周期链路、A 股统一补数链路、通达信原始行情、Tushare 公司行动和通达信前复权六类 provider 的摘要卡片、最近统一导入任务，以及“统一序列检查”“通达信原始文件 Manifest 检查”和“前复权输入与公式检查”面板；如果需要围绕单个标的集中排查，还可以直接打开“全链路诊断”抽屉，把最近相关任务、统一序列、manifest、公司行动和复权区间放在同一个视图里。若只是补当前回测样本，优先使用页内 Yahoo 覆盖检查与推荐周期；若想把当前 Yahoo 标的或默认 100 个全球高活跃样本一次性补齐 `1d / 15m / 1m`，优先使用 Yahoo 三周期链路；若要一键完成 A 股原始导入、公司行动和前复权，优先使用统一补数链路；若只想单独处理 A 股原始 `1d / 1m / 5m`、公司行动或前复权，则使用对应 provider 卡片上的当前标的或批量按钮。页面触发同步后会先创建 `data_ingestion_jobs` 队列任务，并由 `main.py worker` 在后台领取执行；最近任务区会自动轮询最新状态，支持直接展开 Yahoo 三周期链路和 A 股统一补数链路的子步骤明细，也支持打开任务详情抽屉查看 `data_ingestion_job_items` 文件级/标的级明细，若当前是 API 队列父任务，还可以继续跳转查看其下游子任务。现在最近任务区和任务详情还支持直接取消排队/执行中的统一导入任务，或把失败、部分失败、已取消的任务按原条件重新入队；任务详情和全链路诊断还能直接把目标标的带到“统一序列检查”“Manifest 检查”“前复权输入与公式检查”三个面板，避免人工重复输入筛选条件。若任务显示成功但仍怀疑落库结果异常，再用这些定位动作核对 `market_data_series`、`source_file_manifests`、`corporate_action_events` 和 `price_adjustment_segments`。
 
 ## 行情同步
 
@@ -44,6 +44,8 @@ http://127.0.0.1:3000/market-data
 
 ```powershell
 py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
+py -3.13 main.py sync-now --provider yahoo_pipeline --symbol-set yahoo_global_active_100 --interval all --limit 100
+py -3.13 main.py sync-now --provider yahoo_pipeline --symbol SPY --interval all
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1d --limit 100
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 15m --period 60d --limit 100
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1m --period 7d --limit 100
@@ -93,6 +95,13 @@ Yahoo 默认样本池注意事项：
 - `symbol_set=yahoo_global_active_100` 会按内置 100 个全球高活跃样本创建或更新 Yahoo 标的，并按 `limit` 控制本次实际执行数量。
 - `1d` 会下载可获得的完整日线历史；`15m` 默认应配 `--period 60d`；`1m` 默认应配 `--period 7d`。
 - 当前网络环境若无法直连 Yahoo，命令会明确返回失败状态与首个错误原因；常见情况是必须通过 `--proxy` 或 `STRATEGY_STUDIO_PROXY` 配置代理。
+
+Yahoo 三周期链路注意事项：
+
+- `provider=yahoo_pipeline` 固定要求 `--interval all`，后台会顺序执行 `yahoo 1d -> yahoo 15m -> yahoo 1m` 三个子步骤。
+- 未显式传 `--symbol` 或 `--symbol-set` 时，workflow 会默认回退到 `yahoo_global_active_100`，适合直接补默认样本池。
+- 分钟线子步骤会自动套用 `15m=60d`、`1m=7d` 的 Yahoo 免费窗口，不需要再手动传 `--period`。
+- 返回结果和统一任务详情会同时记录 workflow 自身 `ingestion_job_id`、三个子任务 `child_ingestion_job_ids` 与 `workflow_results`，便于直接在 `/market-data` 或数据库里追踪三步是否都成功落库。
 
 Tushare 公司行动抓取注意事项：
 

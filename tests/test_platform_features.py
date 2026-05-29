@@ -32,6 +32,7 @@ class PlatformFeatureTests(unittest.TestCase):
         sync_minute_args = parser.parse_args(["sync-now", "--provider", "tdx", "--symbol", "sh600000", "--interval", "1m", "--limit", "1"])
         sync_all_args = parser.parse_args(["sync-now", "--provider", "tdx", "--interval", "all", "--limit", "2"])
         yahoo_set_args = parser.parse_args(["sync-now", "--provider", "yahoo", "--symbol-set", "yahoo_global_active_100", "--interval", "15m", "--limit", "100"])
+        yahoo_pipeline_args = parser.parse_args(["sync-now", "--provider", "yahoo_pipeline", "--symbol-set", "yahoo_global_active_100", "--interval", "all", "--limit", "100"])
         tushare_args = parser.parse_args(["sync-now", "--provider", "tushare", "--symbol", "600000.SH", "--limit", "2"])
         qfq_args = parser.parse_args(["sync-now", "--provider", "tdx_qfq", "--symbol", "sh600000", "--interval", "1d", "--limit", "2"])
         pipeline_args = parser.parse_args(["sync-now", "--provider", "tdx_pipeline", "--symbol", "sh600000", "--interval", "all", "--force", "--limit", "2"])
@@ -56,6 +57,9 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(yahoo_set_args.provider, "yahoo")
         self.assertEqual(yahoo_set_args.symbol_set, "yahoo_global_active_100")
         self.assertEqual(yahoo_set_args.limit, 100)
+        self.assertEqual(yahoo_pipeline_args.provider, "yahoo_pipeline")
+        self.assertEqual(yahoo_pipeline_args.symbol_set, "yahoo_global_active_100")
+        self.assertEqual(yahoo_pipeline_args.interval, "all")
         self.assertEqual(tushare_args.provider, "tushare")
         self.assertEqual(tushare_args.symbol, "600000.SH")
         self.assertEqual(tushare_args.limit, 2)
@@ -512,6 +516,42 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=True,
             limit=1,
+        )
+
+    def test_web_api_market_data_sync_route_supports_yahoo_pipeline_provider(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.enqueue_market_data_sync",
+            return_value={
+                "provider": "yahoo_pipeline",
+                "ingestion_job_id": 16,
+                "status": "queued",
+            },
+        ) as mock_sync:
+            response = client.post(
+                "/api/market-data/sync",
+                json={
+                    "provider": "yahoo_pipeline",
+                    "symbol_set": "yahoo_global_active_100",
+                    "interval": "all",
+                    "limit": 100,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["provider"], "yahoo_pipeline")
+        mock_sync.assert_called_once_with(
+            symbol=None,
+            symbol_set="yahoo_global_active_100",
+            interval="all",
+            proxy=None,
+            period=None,
+            provider="yahoo_pipeline",
+            vipdoc_path=None,
+            force=False,
+            limit=100,
         )
 
     def test_web_api_market_data_retry_and_cancel_routes(self) -> None:
@@ -1255,6 +1295,38 @@ class PlatformFeatureTests(unittest.TestCase):
             requested_via=None,
         )
 
+    def test_sync_market_data_dispatches_yahoo_pipeline_provider(self) -> None:
+        with patch(
+            "strategy_studio.services.sync._run_yahoo_pipeline_workflow",
+            return_value={
+                "provider": "yahoo_pipeline",
+                "ingestion_job_id": 20,
+                "child_ingestion_job_ids": [51, 52, 53],
+                "symbols_count": 100,
+                "bars_inserted": 9000,
+                "bars_updated": 0,
+                "status": "succeeded",
+            },
+        ) as mock_pipeline:
+            result = sync_market_data(
+                symbol=None,
+                interval="all",
+                proxy="http://127.0.0.1:7897",
+                provider="yahoo_pipeline",
+                limit=100,
+                symbol_set="yahoo_global_active_100",
+            )
+
+        self.assertEqual(result["provider"], "yahoo_pipeline")
+        mock_pipeline.assert_called_once_with(
+            symbol=None,
+            symbol_set="yahoo_global_active_100",
+            interval="all",
+            proxy="http://127.0.0.1:7897",
+            limit=100,
+            requested_via=None,
+        )
+
     def test_tdx_pipeline_workflow_aggregates_child_provider_results(self) -> None:
         session = SimpleNamespace()
         session.commit = lambda: None
@@ -1484,6 +1556,148 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(result["provider"], "tdx_pipeline")
         self.assertEqual(result["symbols_count"], 2)
         self.assertEqual(result["child_ingestion_job_ids"], [111, 112, 113, 114, 115])
+
+    def test_yahoo_pipeline_workflow_aggregates_three_intervals(self) -> None:
+        session = SimpleNamespace()
+        session.commit = lambda: None
+        session.rollback = lambda: None
+        registry: dict[int, object] = {}
+        session.get = lambda _model, identity: registry.get(identity)
+
+        class _SessionContext:
+            def __enter__(self):
+                return session
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        provider = SimpleNamespace(id=341, provider_key="yahoo_pipeline")
+        ingestion_job = SimpleNamespace(
+            id=441,
+            targets_total=0,
+            targets_completed=0,
+            rows_inserted=0,
+            rows_updated=0,
+            error_count=0,
+            summary_json={},
+            completed_at=None,
+            status="running",
+            error_message="",
+        )
+        registry[441] = ingestion_job
+
+        item_ids = [541, 542, 543]
+
+        def fake_create_item(*_args, **_kwargs):
+            current_id = item_ids.pop(0)
+            item = SimpleNamespace(
+                id=current_id,
+                status="running",
+                stage="download",
+                rows_inserted=0,
+                rows_updated=0,
+                details_json={},
+                error_message="",
+            )
+            registry[current_id] = item
+            return item
+
+        with (
+            patch("strategy_studio.services.sync.open_session", return_value=_SessionContext()),
+            patch("strategy_studio.services.sync.ensure_data_provider", return_value=provider),
+            patch("strategy_studio.services.sync.create_data_ingestion_job", return_value=ingestion_job),
+            patch("strategy_studio.services.sync.create_data_ingestion_job_item", side_effect=fake_create_item),
+            patch(
+                "strategy_studio.services.sync._sync_yahoo_market_data",
+                side_effect=[
+                    {
+                        "provider": "yahoo",
+                        "interval": "1d",
+                        "symbols_count": 100,
+                        "bars_inserted": 1000,
+                        "bars_updated": 0,
+                        "series_bars_inserted": 1000,
+                        "series_bars_updated": 0,
+                        "ingestion_job_id": 81,
+                        "status": "succeeded",
+                    },
+                    {
+                        "provider": "yahoo",
+                        "interval": "15m",
+                        "symbols_count": 100,
+                        "bars_inserted": 2000,
+                        "bars_updated": 5,
+                        "series_bars_inserted": 2000,
+                        "series_bars_updated": 5,
+                        "ingestion_job_id": 82,
+                        "status": "succeeded",
+                    },
+                    {
+                        "provider": "yahoo",
+                        "interval": "1m",
+                        "symbols_count": 100,
+                        "bars_inserted": 3000,
+                        "bars_updated": 7,
+                        "series_bars_inserted": 3000,
+                        "series_bars_updated": 7,
+                        "ingestion_job_id": 83,
+                        "status": "succeeded",
+                    },
+                ],
+            ) as mock_yahoo,
+        ):
+            result = sync_service._run_yahoo_pipeline_workflow(
+                symbol=None,
+                symbol_set="yahoo_global_active_100",
+                interval="all",
+                proxy="http://127.0.0.1:7897",
+                limit=100,
+            )
+
+        self.assertEqual(mock_yahoo.call_count, 3)
+        mock_yahoo.assert_any_call(
+            symbol=None,
+            interval="1d",
+            proxy="http://127.0.0.1:7897",
+            period=None,
+            limit=100,
+            symbol_set="yahoo_global_active_100",
+            requested_via=None,
+        )
+        mock_yahoo.assert_any_call(
+            symbol=None,
+            interval="15m",
+            proxy="http://127.0.0.1:7897",
+            period="60d",
+            limit=100,
+            symbol_set="yahoo_global_active_100",
+            requested_via=None,
+        )
+        mock_yahoo.assert_any_call(
+            symbol=None,
+            interval="1m",
+            proxy="http://127.0.0.1:7897",
+            period="7d",
+            limit=100,
+            symbol_set="yahoo_global_active_100",
+            requested_via=None,
+        )
+        self.assertEqual(result["provider"], "yahoo_pipeline")
+        self.assertEqual(result["ingestion_job_id"], 441)
+        self.assertEqual(result["child_ingestion_job_ids"], [81, 82, 83])
+        self.assertEqual(result["bars_inserted"], 6000)
+        self.assertEqual(result["bars_updated"], 12)
+        self.assertEqual(result["symbols_count"], 100)
+        self.assertEqual(result["status"], "succeeded")
+        self.assertEqual(result["symbol_set"], "yahoo_global_active_100")
+        self.assertEqual(ingestion_job.targets_total, 3)
+        self.assertEqual(ingestion_job.targets_completed, 3)
+        self.assertEqual(ingestion_job.rows_inserted, 6000)
+        self.assertEqual(ingestion_job.rows_updated, 12)
+        self.assertEqual(ingestion_job.error_count, 0)
+        self.assertEqual(ingestion_job.status, "succeeded")
+        self.assertEqual(ingestion_job.summary_json["requested_symbol_set"], "yahoo_global_active_100")
+        self.assertEqual(len(result["workflow_results"]), 3)
 
     def test_preload_tdx_qfq_input_frames_groups_raw_bars_and_actions(self) -> None:
         class _ExecuteResult:

@@ -6,11 +6,11 @@ Strategy Studio 是一个中文优先的开源策略研究平台，用于从 Yah
 
 ## 功能概览
 
-- 行情数据：Yahoo 在线同步、通达信原始 `1d / 1m / 5m` 导入、Tushare 公司行动抓取、通达信前复权日线重算、PostgreSQL 长期存储。
+- 行情数据：Yahoo 单周期同步、Yahoo 默认样本三周期链路、通达信原始 `1d / 1m / 5m` 导入、Tushare 公司行动抓取、通达信前复权日线重算、PostgreSQL 长期存储。
 - 回测执行：API 入队，Worker 异步执行，报告结构化落库。
 - 参数模板：在数据库中管理策略、周期、执行口径和寻参空间。
 - 多策略研究：网格、定投、双均线趋势、MACD 趋势、唐奇安突破、放量突破、布林带均值回归、日线反弹、分钟反抽和指数回落网格共用同一套工作流。
-- Web 前端：研究总览、创建回测、查看报告、数据覆盖、策略模板和系统状态；左侧导航只保留主路径与维护入口，顶部收敛成“页头 + 单一决策横幅”，把研究状态、下一步动作和关键判断统一放进同一个信息层级；数据准备页现在会先设定当前标的，再在同一页直接管理 Yahoo、通达信原始 `1d / 1m / 5m`、Tushare 公司行动和通达信前复权任务，同时保留面向当前回测链路的覆盖检查、推荐周期和 TDX 多周期任务入口；研究总览与回测任务页都会实时展示阶段、预计剩余时间和资源收口结果，结果库会先按标的归纳哪一组最值得继续研究，再下钻到单份报告；报告详情会先给出收益/回撤/期末权益/对照结论，并直接标明同标的同周期中的横向位置，再按需展开细节。
+- Web 前端：研究总览、创建回测、查看报告、数据覆盖、策略模板和系统状态；左侧导航只保留主路径与维护入口，顶部收敛成“页头 + 单一决策横幅”，把研究状态、下一步动作和关键判断统一放进同一个信息层级；数据准备页现在会先设定当前标的，再在同一页直接管理 Yahoo 单周期、Yahoo 三周期链路、通达信原始 `1d / 1m / 5m`、Tushare 公司行动和通达信前复权任务，同时保留面向当前回测链路的覆盖检查、推荐周期和 TDX 多周期任务入口；研究总览与回测任务页都会实时展示阶段、预计剩余时间和资源收口结果，结果库会先按标的归纳哪一组最值得继续研究，再下钻到单份报告；报告详情会先给出收益/回撤/期末权益/对照结论，并直接标明同标的同周期中的横向位置，再按需展开细节。
 - CLI 研究：保留数据库同步、数据库回测和批量任务入口。
 - 仓库边界：历史行情、历史 Markdown 报告和平台回测结果不再随仓库提交，数据库是唯一长期事实来源。
 
@@ -70,6 +70,7 @@ py -3.13 main.py init-db
 
 ```powershell
 py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
+py -3.13 main.py sync-now --provider yahoo_pipeline --symbol-set yahoo_global_active_100 --interval all --limit 100
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1d --limit 100
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 15m --period 60d --limit 100
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1m --period 7d --limit 100
@@ -122,6 +123,8 @@ VS Code 用户可以直接使用 `启动平台前后端全套`。
 
 ```powershell
 py -3.13 main.py sync-now --symbol 1810.HK --interval 15m --period 60d
+py -3.13 main.py sync-now --provider yahoo_pipeline --symbol-set yahoo_global_active_100 --interval all --limit 100
+py -3.13 main.py sync-now --provider yahoo_pipeline --symbol SPY --interval all
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1d --limit 100
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 15m --period 60d --limit 100
 py -3.13 main.py sync-now --provider yahoo --symbol-set yahoo_global_active_100 --interval 1m --period 7d --limit 100
@@ -137,7 +140,7 @@ py -3.13 main.py sync-now --provider tushare --limit 10
 py -3.13 main.py sync-now --provider tdx_qfq --symbol sh600000 --interval 1d
 ```
 
-提交平台回测建议优先通过前端或 API 入队，Worker 会异步执行并把结果写回数据库；行情同步现在也已跟随这一模式：前端 `/market-data` 和 `POST /api/market-data/sync` 会先创建 `data_ingestion_jobs` 队列任务，由 `main.py worker` 在后台领取并执行，页面会按任务状态自动轮询刷新；如需立刻同步并等待结果，仍可直接使用 `main.py sync-now`。当前 `provider=yahoo` 已支持通过 `--symbol-set yahoo_global_active_100` 导入内置 100 个全球高活跃样本，并分别同步 `1d / 15m / 1m`；前端 `/market-data` 的 Yahoo 批量按钮也会走同一套默认样本池。`provider=tdx` 当前已支持通达信原始 `1d / 1m / 5m` 文件导入，其中 `1m` 对应 `.lc1/.1`、`5m` 对应 `.lc5/.5`，并支持 `--interval all` 顺序导入配置路径下可见的全部 TDX 周期；`provider=tdx_pipeline` 则会把 `tdx raw -> tushare actions -> tdx_qfq rebuild` 串成一条统一 A 股补数链路，支持 `--interval 1d` 或 `--interval all`，并在批量模式下自动跟随数据库里已有的通达信原始 `1d` 标的集继续抓取公司行动和重算前复权；`provider=tushare` 和 `provider=tdx_qfq` 仍可单独执行公司行动抓取与前复权日线重算。最近任务区现在还支持打开任务详情，直接查看 `data_ingestion_job_items` 文件级/标的级明细；若 API 队列任务下挂了内部子任务，还可以在详情抽屉里继续跳转查看，同时也支持直接取消排队/执行中的统一导入任务，或把失败、部分失败、已取消的任务按原条件重新入队；同页新增“统一序列检查”卡片，可直接按 provider 和 symbol 查看 `market_data_series + market_data_bars` 中真实落库的标的、周期、复权口径、K 线条数与最近时间；新增“前复权输入与公式检查”卡片后，还可以继续按标的核对 `corporate_action_events` 里的实施事件和 `price_adjustment_segments` 里的 A/B 公式区间；新增“通达信原始文件 Manifest 检查”卡片后，则可以继续核对 `source_file_manifests` 中每个 `vipdoc` 文件最近是跳过、追加还是重建；新增“全链路诊断”抽屉后，可以围绕单个标的一次性查看最近相关任务、统一序列、manifest、公司行动和复权区间，并直接把目标标的定位到对应排查表。
+提交平台回测建议优先通过前端或 API 入队，Worker 会异步执行并把结果写回数据库；行情同步现在也已跟随这一模式：前端 `/market-data` 和 `POST /api/market-data/sync` 会先创建 `data_ingestion_jobs` 队列任务，由 `main.py worker` 在后台领取并执行，页面会按任务状态自动轮询刷新；如需立刻同步并等待结果，仍可直接使用 `main.py sync-now`。当前 `provider=yahoo` 已支持通过 `--symbol-set yahoo_global_active_100` 导入内置 100 个全球高活跃样本；`provider=yahoo_pipeline` 会把这套默认样本，或当前单个 Yahoo 标的，串行补齐 `1d / 15m / 1m` 三个周期，并把 workflow 本身与三个子任务一起记入统一任务域。`provider=tdx` 当前已支持通达信原始 `1d / 1m / 5m` 文件导入，其中 `1m` 对应 `.lc1/.1`、`5m` 对应 `.lc5/.5`，并支持 `--interval all` 顺序导入配置路径下可见的全部 TDX 周期；`provider=tdx_pipeline` 则会把 `tdx raw -> tushare actions -> tdx_qfq rebuild` 串成一条统一 A 股补数链路，支持 `--interval 1d` 或 `--interval all`，并在批量模式下自动跟随数据库里已有的通达信原始 `1d` 标的集继续抓取公司行动和重算前复权；`provider=tushare` 和 `provider=tdx_qfq` 仍可单独执行公司行动抓取与前复权日线重算。最近任务区现在还支持打开任务详情，直接查看 `data_ingestion_job_items` 文件级/标的级明细；若 API 队列任务下挂了内部子任务，还可以在详情抽屉里继续跳转查看，同时也支持直接取消排队/执行中的统一导入任务，或把失败、部分失败、已取消的任务按原条件重新入队；同页新增“统一序列检查”卡片，可直接按 provider 和 symbol 查看 `market_data_series + market_data_bars` 中真实落库的标的、周期、复权口径、K 线条数与最近时间；新增“前复权输入与公式检查”卡片后，还可以继续按标的核对 `corporate_action_events` 里的实施事件和 `price_adjustment_segments` 里的 A/B 公式区间；新增“通达信原始文件 Manifest 检查”卡片后，则可以继续核对 `source_file_manifests` 中每个 `vipdoc` 文件最近是跳过、追加还是重建；新增“全链路诊断”抽屉后，可以围绕单个标的一次性查看最近相关任务、统一序列、manifest、公司行动和复权区间，并直接把目标标的定位到对应排查表。
 
 批量研究：
 

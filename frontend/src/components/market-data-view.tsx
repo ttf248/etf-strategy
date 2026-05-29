@@ -144,6 +144,16 @@ const providerPanelConfigs: ProviderPanelConfig[] = [
     currentIntervalLabel: "当前周期",
   },
   {
+    providerKey: "yahoo_pipeline",
+    fallbackName: "Yahoo 默认样本全周期链路",
+    title: "Yahoo 三周期链路",
+    description: "串行执行 Yahoo `1d / 15m / 1m` 三套同步。适合把默认 100 个全球高活跃样本，或当前单个标的，一次性补到日线和分钟线都可直接复用的状态。",
+    currentActionLabel: "同步当前标的三周期",
+    batchActionLabel: "同步默认样本池三周期",
+    symbolHint: "示例：1810.HK、SPY",
+    currentIntervalLabel: "固定 all = 1d + 15m + 1m",
+  },
+  {
     providerKey: "tdx",
     fallbackName: "通达信本地行情",
     title: "通达信原始行情",
@@ -890,6 +900,9 @@ export function MarketDataView() {
   }
 
   function providerIntervalValue(providerKey: string) {
+    if (providerKey === "yahoo_pipeline") {
+      return "all";
+    }
     if (providerKey === "tdx") {
       return tdxSyncInterval;
     }
@@ -900,6 +913,9 @@ export function MarketDataView() {
   }
 
   function providerIntervalDisplay(providerKey: string) {
+    if (providerKey === "yahoo_pipeline") {
+      return "all";
+    }
     if (providerKey === "tdx") {
       return tdxSyncInterval;
     }
@@ -1437,8 +1453,8 @@ export function MarketDataView() {
       <Card size="small" title="多渠道任务面板" className="section-card">
         <div className="provider-overview-banner">
           <div>
-            <strong>同一页直接管理 Yahoo、A 股统一补数链路、通达信原始 all/1d/1m/5m、Tushare 公司行动和通达信前复权</strong>
-            <p>当前目标标的：{checkedSymbol || "未设置"}。Yahoo 使用上方当前周期；TDX 与统一补数链路在卡片内单独选择周期；其余批量任务使用这里的批量上限。</p>
+            <strong>同一页直接管理 Yahoo 单周期、Yahoo 三周期链路、A 股统一补数链路、通达信原始 all/1d/1m/5m、Tushare 公司行动和通达信前复权</strong>
+            <p>当前目标标的：{checkedSymbol || "未设置"}。Yahoo 单周期使用上方当前周期；Yahoo 三周期链路固定补 1d/15m/1m；TDX 与 A 股统一补数链路在卡片内单独选择周期；其余批量任务使用这里的批量上限。</p>
           </div>
           <Space wrap>
             <Select value={syncInterval} options={intervalOptions} onChange={setSyncInterval} style={{ width: 120 }} />
@@ -1526,7 +1542,7 @@ export function MarketDataView() {
                 >
                   {provider.providerKey === "yahoo"
                     ? `${provider.currentActionLabel} ${syncInterval}`
-                    : provider.providerKey === "tdx" || provider.providerKey === "tdx_pipeline"
+                    : provider.providerKey === "tdx" || provider.providerKey === "tdx_pipeline" || provider.providerKey === "yahoo_pipeline"
                       ? `${provider.currentActionLabel} ${providerIntervalDisplay(provider.providerKey)}`
                       : provider.currentActionLabel}
                 </Button>
@@ -1537,7 +1553,7 @@ export function MarketDataView() {
                 >
                   {provider.providerKey === "yahoo"
                     ? `${provider.batchActionLabel} ${batchLimit} 个`
-                    : provider.providerKey === "tdx" || provider.providerKey === "tdx_pipeline"
+                    : provider.providerKey === "tdx" || provider.providerKey === "tdx_pipeline" || provider.providerKey === "yahoo_pipeline"
                       ? `${provider.batchActionLabel} ${providerIntervalDisplay(provider.providerKey)} ${batchLimit} 项`
                       : `${provider.batchActionLabel} ${batchLimit} 项`}
                 </Button>

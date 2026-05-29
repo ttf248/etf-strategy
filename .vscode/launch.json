@@ -88,6 +88,30 @@
                 "all",
                 "--force"
             ]
+        },
+        {
+            "name": "执行 Yahoo 三周期样本链路",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONUTF8": "1",
+                "PYTHONIOENCODING": "utf-8",
+                "STRATEGY_STUDIO_DATABASE_URL": "postgresql+psycopg://postgres:tian@localhost:5432/etf_strategy"
+            },
+            "args": [
+                "sync-now",
+                "--provider",
+                "yahoo_pipeline",
+                "--symbol-set",
+                "yahoo_global_active_100",
+                "--interval",
+                "all",
+                "--limit",
+                "100"
+            ]
         }
     ],
     "compounds": [
