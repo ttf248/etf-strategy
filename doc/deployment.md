@@ -62,6 +62,7 @@ postgresql+psycopg://postgres:tian@localhost:5432/etf_strategy
 
 ```powershell
 py -3.13 main.py check-db
+py -3.13 main.py check-runtime
 py -3.13 main.py init-db
 py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
 py -3.13 main.py sync-now --provider tdx --interval 1d --limit 1
@@ -69,7 +70,7 @@ py -3.13 main.py sync-now --provider tushare --symbol sh600000
 py -3.13 main.py sync-now --provider tdx_qfq --symbol sh600000 --interval 1d
 ```
 
-`check-db` 会先验证 PostgreSQL 是否可达、目标业务库是否存在，以及 Alembic 是否已经迁移到代码头版本。`init-db` 会创建项目数据库并执行 Alembic 迁移。当前标准流程建议直接使用 `sync-now` 从 Yahoo 同步首批行情到 PostgreSQL；如需为沪深标的准备原始 `1d / 1m / 5m`、前复权基础事件与复权日线，可依次执行 `provider=tdx`、`provider=tushare`、`provider=tdx_qfq`。CLI 与平台默认都以数据库作为唯一正式数据入口。
+`check-db` 会先验证 PostgreSQL 是否可达、目标业务库是否存在，以及 Alembic 是否已经迁移到代码头版本。`check-runtime` 会进一步检查平台当前运行态，包括数据库、`worker / scheduler` 心跳，以及 Yahoo / 通达信 / Tushare 三条数据链路的配置前提。`init-db` 会创建项目数据库并执行 Alembic 迁移。当前标准流程建议直接使用 `sync-now` 从 Yahoo 同步首批行情到 PostgreSQL；如需为沪深标的准备原始 `1d / 1m / 5m`、前复权基础事件与复权日线，可依次执行 `provider=tdx`、`provider=tushare`、`provider=tdx_qfq`。CLI 与平台默认都以数据库作为唯一正式数据入口。
 
 ## 启动后端
 

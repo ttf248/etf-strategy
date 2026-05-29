@@ -63,6 +63,7 @@ postgresql+psycopg://postgres:tian@localhost:5432/etf_strategy
 
 ```powershell
 py -3.13 main.py check-db
+py -3.13 main.py check-runtime
 py -3.13 main.py init-db
 ```
 
@@ -117,6 +118,14 @@ npx next dev --hostname 127.0.0.1 --port 3000
 - 系统状态：`http://127.0.0.1:3000/platform`
 
 VS Code 用户可以直接使用 `启动平台前后端全套`。
+
+如需在命令行快速确认“数据库是否连通、Worker/Scheduler 是否在线，以及 Yahoo / 通达信 / Tushare 的运行前提是否已经就绪”，可以执行：
+
+```powershell
+py -3.13 main.py check-runtime
+```
+
+该命令会汇总数据库迁移状态、后台心跳、任务队列以及多数据源运行态；若数据库异常、关键 provider 配置不完整，或 `worker / scheduler` 心跳缺失，会返回非零退出码，便于脚本或排障流程直接判断。
 
 ## 常用命令
 

@@ -194,6 +194,8 @@ def add_platform_subcommands(subparsers: argparse._SubParsersAction[argparse.Arg
     init_db_parser = subparsers.add_parser("init-db", help="创建项目数据库并执行迁移")
     check_db_parser = subparsers.add_parser("check-db", help="检查 PostgreSQL 连通性、建库状态和迁移版本")
     check_db_parser.add_argument("--json", action="store_true", help="以 JSON 输出完整诊断结果")
+    check_runtime_parser = subparsers.add_parser("check-runtime", help="检查平台运行态、多数据源配置和后台心跳")
+    check_runtime_parser.add_argument("--json", action="store_true", help="以 JSON 输出完整运行态结果")
 
     sync_parser = subparsers.add_parser("sync-now", help="立即同步指定渠道行情到数据库")
     sync_parser.add_argument(
@@ -274,6 +276,138 @@ def handle_check_db(args: argparse.Namespace) -> int:
     migration_state = str(payload.get("migration_state", "unknown"))
     database_exists = payload.get("database_exists")
     return 0 if status == "ok" and database_exists is True and migration_state == "head" else 1
+
+
+def _running_heartbeat_services(payload: dict[str, object]) -> set[str]:
+    running_services: set[str] = set()
+    heartbeats = payload.get("heartbeats")
+    if not isinstance(heartbeats, list):
+        return running_services
+    for row in heartbeats:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("status") or "") != "running":
+            continue
+        service_name = str(row.get("service_name") or "").strip().lower()
+        if service_name:
+            running_services.add(service_name)
+    return running_services
+
+
+def _runtime_exit_code(payload: dict[str, object]) -> int:
+    database = payload.get("database")
+    database_ok = isinstance(database, dict) and str(database.get("status") or "") == "ok"
+    market_data_runtime = payload.get("market_data_runtime")
+    runtime_ok = True
+    if isinstance(market_data_runtime, dict):
+        runtime_ok = all(str(item.get("status") or "") == "ok" for item in market_data_runtime.values() if isinstance(item, dict))
+    running_services = _running_heartbeat_services(payload)
+    required_services = {"worker", "scheduler"}
+    heartbeats_ok = required_services.issubset(running_services)
+    return 0 if database_ok and runtime_ok and heartbeats_ok else 1
+
+
+def handle_check_runtime(args: argparse.Namespace) -> int:
+    fetch_platform_status = _import_platform_module("strategy_studio.services.platform", "check-runtime").fetch_platform_status
+    payload = fetch_platform_status()
+    if getattr(args, "json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return _runtime_exit_code(payload)
+
+    api = payload.get("api") if isinstance(payload.get("api"), dict) else {}
+    frontend = payload.get("frontend") if isinstance(payload.get("frontend"), dict) else {}
+    database = payload.get("database") if isinstance(payload.get("database"), dict) else {}
+    queue = payload.get("queue") if isinstance(payload.get("queue"), dict) else {}
+    market_data_runtime = payload.get("market_data_runtime") if isinstance(payload.get("market_data_runtime"), dict) else {}
+
+    print("平台运行态检查：")
+    print(f"API：{api.get('status', 'unknown')} {api.get('base_url', '')}".strip())
+    print(f"Frontend：{frontend.get('status', 'unknown')} {frontend.get('base_url', '')}".strip())
+    print(
+        "数据库："
+        f"{database.get('status', 'unknown')} "
+        f"db={database.get('configured_database', '-')}"
+        f" migration={database.get('migration_state', 'unknown')}"
+    )
+    if database.get("url"):
+        print(f"数据库连接：{database.get('url')}")
+
+    running_services = _running_heartbeat_services(payload)
+    print("后台心跳：")
+    heartbeats = payload.get("heartbeats")
+    if isinstance(heartbeats, list) and heartbeats:
+        for row in heartbeats:
+            if not isinstance(row, dict):
+                continue
+            print(
+                "- "
+                f"{row.get('service_name', '-')}: status={row.get('status', '-')}"
+                f" age={row.get('age_seconds', '-') }s"
+                f" pid={row.get('pid', '-')}"
+                f" last_seen={row.get('last_seen_at', '-')}"
+            )
+    else:
+        print("- 当前没有可见心跳记录。")
+    missing_services = [service for service in ("worker", "scheduler") if service not in running_services]
+    if missing_services:
+        print(f"缺失后台服务：{', '.join(missing_services)}")
+
+    print("任务队列：")
+    print(
+        f"queued={queue.get('queued', 0)} running={queue.get('running', 0)} "
+        f"cancel_requested={queue.get('cancel_requested', 0)} cancelled={queue.get('cancelled', 0)} "
+        f"succeeded={queue.get('succeeded', 0)} failed={queue.get('failed', 0)}"
+    )
+
+    print("多数据源运行态：")
+    yahoo = market_data_runtime.get("yahoo") if isinstance(market_data_runtime.get("yahoo"), dict) else {}
+    tdx = market_data_runtime.get("tdx") if isinstance(market_data_runtime.get("tdx"), dict) else {}
+    tushare = market_data_runtime.get("tushare") if isinstance(market_data_runtime.get("tushare"), dict) else {}
+    print(
+        "Yahoo："
+        f"{yahoo.get('status', 'unknown')} "
+        f"default_symbol_set={yahoo.get('default_symbol_set', '-')}"
+        f" proxy_configured={yahoo.get('proxy_configured', False)}"
+    )
+    print(
+        "TDX："
+        f"{tdx.get('status', 'unknown')} "
+        f"vipdoc_exists={tdx.get('vipdoc_exists', False)} "
+        f"path_source={tdx.get('path_source', '-')}"
+    )
+    if tdx.get("vipdoc_path"):
+        print(f"TDX 路径：{tdx.get('vipdoc_path')}")
+    market_inventory = tdx.get("market_inventory") if isinstance(tdx.get("market_inventory"), dict) else {}
+    by_interval = market_inventory.get("by_interval") if isinstance(market_inventory.get("by_interval"), dict) else {}
+    by_market = market_inventory.get("by_market") if isinstance(market_inventory.get("by_market"), dict) else {}
+    if by_interval:
+        print(
+            "TDX 文件库存："
+            f"total={market_inventory.get('total_files', 0)} "
+            f"1d={by_interval.get('1d', 0)} 1m={by_interval.get('1m', 0)} 5m={by_interval.get('5m', 0)}"
+        )
+    if by_market:
+        summary = ", ".join(
+            f"{market}={details.get('total_files', 0)}"
+            for market, details in by_market.items()
+            if isinstance(details, dict)
+        )
+        if summary:
+            print(f"TDX 分市场文件数：{summary}")
+    print(
+        "Tushare："
+        f"{tushare.get('status', 'unknown')} "
+        f"token_present={tushare.get('token_present', False)} "
+        f"rate_limit_per_minute={tushare.get('rate_limit_per_minute', '-')}"
+    )
+    if tushare.get("config_path"):
+        print(f"Tushare 配置：{tushare.get('config_path')}")
+    if tdx.get("error_message"):
+        print(f"TDX 错误：{tdx.get('error_message')}")
+    if tushare.get("error_message"):
+        print(f"Tushare 错误：{tushare.get('error_message')}")
+
+    return _runtime_exit_code(payload)
 
 
 def handle_sync_now(args: argparse.Namespace) -> int:

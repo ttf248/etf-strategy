@@ -16,6 +16,14 @@ curl http://127.0.0.1:8000/health
 {"status":"ok"}
 ```
 
+平台运行态体检：
+
+```powershell
+py -3.13 main.py check-runtime
+```
+
+该命令会直接输出数据库迁移状态、后台心跳、任务队列，以及 Yahoo / 通达信 / Tushare 的运行时配置摘要。若数据库异常、`worker / scheduler` 没有可见心跳，或某条数据链路处于 `misconfigured`，命令会返回非零退出码，适合在日常排障或自动化脚本里先做前置检查。
+
 前端默认地址：
 
 ```text

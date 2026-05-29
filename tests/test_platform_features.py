@@ -11,7 +11,7 @@ import pandas as pd
 from fastapi.testclient import TestClient
 
 from strategy_studio.cli import build_parser
-from strategy_studio.platform_cli import handle_api, handle_check_db, handle_sync_now
+from strategy_studio.platform_cli import handle_api, handle_check_db, handle_check_runtime, handle_sync_now
 from strategy_studio.services.backtests import _estimate_eta_seconds, _normalize_artifacts, _resolve_effective_parallelism
 from strategy_studio.services.platform import record_platform_heartbeat
 from strategy_studio.services.sync import sync_market_data
@@ -31,6 +31,7 @@ class PlatformFeatureTests(unittest.TestCase):
 
         init_args = parser.parse_args(["init-db"])
         check_db_args = parser.parse_args(["check-db", "--json"])
+        check_runtime_args = parser.parse_args(["check-runtime", "--json"])
         sync_args = parser.parse_args(["sync-now", "--provider", "tdx", "--symbol", "sh600000", "--interval", "1d", "--force", "--limit", "3"])
         sync_minute_args = parser.parse_args(["sync-now", "--provider", "tdx", "--symbol", "sh600000", "--interval", "1m", "--limit", "1"])
         sync_all_args = parser.parse_args(["sync-now", "--provider", "tdx", "--interval", "all", "--limit", "2"])
@@ -46,6 +47,8 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(init_args.command, "init-db")
         self.assertEqual(check_db_args.command, "check-db")
         self.assertTrue(check_db_args.json)
+        self.assertEqual(check_runtime_args.command, "check-runtime")
+        self.assertTrue(check_runtime_args.json)
         self.assertEqual(sync_args.command, "sync-now")
         self.assertEqual(sync_args.provider, "tdx")
         self.assertEqual(sync_args.symbol, "sh600000")
@@ -137,6 +140,75 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(stats_response.status_code, 200)
         self.assertEqual(stats_response.json()["instrument_count"], 2)
         self.assertEqual(stats_response.json()["provider_summaries"][0]["provider_key"], "yahoo")
+
+    def test_handle_check_runtime_prints_summary_and_returns_zero(self) -> None:
+        payload = {
+            "api": {"status": "down", "base_url": "http://127.0.0.1:8000"},
+            "frontend": {"status": "down", "base_url": "http://127.0.0.1:3000"},
+            "database": {
+                "status": "ok",
+                "configured_database": "etf_strategy",
+                "migration_state": "head",
+                "url": "postgresql+psycopg://postgres:***@localhost:5432/etf_strategy",
+            },
+            "heartbeats": [
+                {"service_name": "worker", "status": "running", "age_seconds": 2, "pid": 1001, "last_seen_at": "2026-05-30 02:30:00+08:00"},
+                {"service_name": "scheduler", "status": "running", "age_seconds": 3, "pid": 1002, "last_seen_at": "2026-05-30 02:29:59+08:00"},
+            ],
+            "queue": {"queued": 1, "running": 2, "cancel_requested": 0, "cancelled": 0, "succeeded": 5, "failed": 1},
+            "market_data_runtime": {
+                "yahoo": {"status": "ok", "default_symbol_set": "yahoo_global_active_100", "proxy_configured": False},
+                "tdx": {
+                    "status": "ok",
+                    "vipdoc_exists": True,
+                    "path_source": "config_file",
+                    "vipdoc_path": "G:\\new_tdx64\\vipdoc",
+                    "market_inventory": {
+                        "total_files": 12,
+                        "by_interval": {"1d": 4, "1m": 4, "5m": 4},
+                        "by_market": {"sh": {"total_files": 6}, "sz": {"total_files": 6}},
+                    },
+                },
+                "tushare": {"status": "ok", "token_present": True, "rate_limit_per_minute": 450, "config_path": "F:\\trade\\tdx\\config.local.yaml"},
+            },
+        }
+        args = SimpleNamespace(json=False)
+
+        with (
+            patch("strategy_studio.platform_cli._import_platform_module", return_value=SimpleNamespace(fetch_platform_status=lambda: payload)),
+            patch("builtins.print") as mock_print,
+        ):
+            exit_code = handle_check_runtime(args)
+
+        self.assertEqual(exit_code, 0)
+        rendered = "\n".join(" ".join(str(part) for part in call.args) for call in mock_print.call_args_list)
+        self.assertIn("平台运行态检查：", rendered)
+        self.assertIn("数据库：ok", rendered)
+        self.assertIn("TDX 路径：G:\\new_tdx64\\vipdoc", rendered)
+        self.assertIn("Tushare 配置：F:\\trade\\tdx\\config.local.yaml", rendered)
+
+    def test_handle_check_runtime_returns_nonzero_when_worker_missing(self) -> None:
+        payload = {
+            "api": {"status": "down", "base_url": "http://127.0.0.1:8000"},
+            "frontend": {"status": "down", "base_url": "http://127.0.0.1:3000"},
+            "database": {"status": "ok", "configured_database": "etf_strategy", "migration_state": "head"},
+            "heartbeats": [{"service_name": "scheduler", "status": "running", "age_seconds": 3, "pid": 1002, "last_seen_at": "2026-05-30 02:29:59+08:00"}],
+            "queue": {},
+            "market_data_runtime": {
+                "yahoo": {"status": "ok"},
+                "tdx": {"status": "ok"},
+                "tushare": {"status": "ok"},
+            },
+        }
+        args = SimpleNamespace(json=True)
+
+        with (
+            patch("strategy_studio.platform_cli._import_platform_module", return_value=SimpleNamespace(fetch_platform_status=lambda: payload)),
+            patch("builtins.print"),
+        ):
+            exit_code = handle_check_runtime(args)
+
+        self.assertEqual(exit_code, 1)
 
     def test_web_api_backtest_route_supports_unified_market_data_fields(self) -> None:
         app = create_app()
