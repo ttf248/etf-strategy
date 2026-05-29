@@ -122,6 +122,10 @@ http://127.0.0.1:8000/docs
 - 公式区间：`start_date / end_date / adjust_a / adjust_b / status`
 - 来源与审计字段：`action_provider_name / payload_json / generated_at / updated_at`
 
+其中 `payload_json` 当前除了 `source / reason / event_count` 外，还会额外记录：
+
+- `source_hash`：该区间会应用的后续公司行动摘要 hash，便于判断“这段公式到底来自哪批事件”。
+
 `GET /api/market-data/source-file-manifests` 用于直接检查 `source_file_manifests` 中的文件增量状态，默认按最近更新时间倒序返回最近 100 条，也支持：
 
 - `provider`：可选；当前主要是 `tdx`，传 `all` 或留空表示不过滤。
@@ -141,6 +145,11 @@ http://127.0.0.1:8000/docs
 
 - 任务级字段：`provider_key / job_type / status / target_scope_json / options_json / summary_json / error_message`
 - 子项明细：`items[]`，逐条返回 `item_key / source_symbol / instrument_symbol / interval / stage / status / rows_inserted / rows_updated / error_message / details_json`
+
+当任务来自 `provider=tdx_qfq` 时，当前还会额外暴露两组排查字段：
+
+- `summary_json.timing_json`：批量前复权重算的阶段耗时，例如 `preload_input_ms / segment_build_ms / segment_replace_ms / segment_apply_ms / bar_upsert_ms / total_elapsed_ms`。
+- `items[].details_json`：单标的前复权子项的 `reason / normal_skip_reasons / force_skip_reasons / *_digest / segment_source_hashes / timing_json`，用于直接判断该标的是“因为已最新而跳过”“因为 `--force` 命中缓存而跳过写回”，还是确实发生了区间重建与 K 线写回。
 
 `POST /api/market-data/sync` 支持字段：
 

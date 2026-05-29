@@ -104,6 +104,16 @@ type IngestionItemTiming = {
   bar_upsert_ms: number;
 };
 
+type IngestionItemQfqDiagnostics = {
+  reason: string;
+  normalSkipReasons: string[];
+  forceSkipReasons: string[];
+  rawFrameDigest: string;
+  segmentFrameDigest: string;
+  adjustedFrameDigest: string;
+  segmentSourceHashes: string[];
+};
+
 type ProviderPanelConfig = {
   providerKey: string;
   fallbackName: string;
@@ -293,6 +303,15 @@ function toNumberArray(value: unknown): number[] {
     .map((item) => Math.trunc(item));
 }
 
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => String(item ?? "").trim())
+    .filter((item) => item.length > 0);
+}
+
 function toFiniteNumber(value: unknown): number | null {
   const normalized = Number(value);
   return Number.isFinite(normalized) ? normalized : null;
@@ -402,6 +421,33 @@ function extractItemTiming(item: MarketDataIngestionJobItem): IngestionItemTimin
     output_prepare_ms: toFiniteNumber(timing.output_prepare_ms) ?? 0,
     bar_upsert_ms: toFiniteNumber(timing.bar_upsert_ms) ?? 0,
   };
+}
+
+function extractItemQfqDiagnostics(item: MarketDataIngestionJobItem): IngestionItemQfqDiagnostics | null {
+  const details = isRecord(item.details_json) ? item.details_json : {};
+  const reason = typeof details.reason === "string" ? details.reason : "";
+  const normalSkipReasons = toStringArray(details.normal_skip_reasons);
+  const forceSkipReasons = toStringArray(details.force_skip_reasons);
+  const rawFrameDigest = typeof details.raw_frame_digest === "string" ? details.raw_frame_digest : "";
+  const segmentFrameDigest = typeof details.segment_frame_digest === "string" ? details.segment_frame_digest : "";
+  const adjustedFrameDigest = typeof details.adjusted_frame_digest === "string" ? details.adjusted_frame_digest : "";
+  const segmentSourceHashes = toStringArray(details.segment_source_hashes);
+  if (!reason && normalSkipReasons.length === 0 && forceSkipReasons.length === 0 && !rawFrameDigest && !segmentFrameDigest && !adjustedFrameDigest && segmentSourceHashes.length === 0) {
+    return null;
+  }
+  return {
+    reason,
+    normalSkipReasons,
+    forceSkipReasons,
+    rawFrameDigest,
+    segmentFrameDigest,
+    adjustedFrameDigest,
+    segmentSourceHashes,
+  };
+}
+
+function extractSegmentSourceHash(payloadJson: Record<string, unknown>): string {
+  return typeof payloadJson.source_hash === "string" ? payloadJson.source_hash : "";
 }
 
 function ingestionJobIsPending(status: string): boolean {
@@ -2133,7 +2179,9 @@ export function MarketDataView() {
                         <span>A {row.adjust_a.toFixed(6)}</span>
                         <span>B {row.adjust_b.toFixed(6)}</span>
                       </div>
-                      <small>事件数：{String(row.payload_json.event_count ?? "-")}</small>
+                      <small>
+                        事件数：{String(row.payload_json.event_count ?? "-")} / 来源摘要：{formatDigestShort(extractSegmentSourceHash(row.payload_json))}
+                      </small>
                     </article>
                   ))}
                 </div>
@@ -2165,6 +2213,11 @@ export function MarketDataView() {
                       title: "事件数",
                       width: 90,
                       render: (_, row) => String(row.payload_json.event_count ?? "-"),
+                    },
+                    {
+                      title: "来源摘要",
+                      width: 150,
+                      render: (_, row) => formatDigestShort(extractSegmentSourceHash(row.payload_json)),
                     },
                     { title: "状态", dataIndex: "status", width: 100 },
                     { title: "生成时间", dataIndex: "generated_at", width: 180 },
@@ -2259,6 +2312,14 @@ export function MarketDataView() {
                     <span>写 K 线</span>
                     <strong>{formatDurationMs(selectedJobTimingSummary.bar_upsert_ms)}</strong>
                   </div>
+                  <div className="provider-panel-metric">
+                    <span>成功平均</span>
+                    <strong>{formatDurationMs(selectedJobTimingSummary.succeeded_symbol_avg_ms)}</strong>
+                  </div>
+                  <div className="provider-panel-metric">
+                    <span>失败平均</span>
+                    <strong>{formatDurationMs(selectedJobTimingSummary.failed_symbol_avg_ms)}</strong>
+                  </div>
                 </div>
               ) : null}
               {selectedJobTimingSummary ? (
@@ -2306,6 +2367,7 @@ export function MarketDataView() {
                       const itemSymbol = inferJobItemSymbol(item);
                       const itemProviderKey = inferJobItemProviderKey(item, selectedJobDetail.provider_key);
                       const itemTiming = extractItemTiming(item);
+                      const itemQfqDiagnostics = extractItemQfqDiagnostics(item);
                       return (
                         <article key={item.id} className="ingestion-mobile-card">
                           <div className="ingestion-mobile-card-head">
@@ -2325,6 +2387,21 @@ export function MarketDataView() {
                             <small>
                               耗时 {formatDurationMs(itemTiming.total_elapsed_ms)} / 构建 {formatDurationMs(itemTiming.segment_build_ms)} /
                               写区间 {formatDurationMs(itemTiming.segment_replace_ms)} / 写 K 线 {formatDurationMs(itemTiming.bar_upsert_ms)}
+                            </small>
+                          ) : null}
+                          {itemQfqDiagnostics ? (
+                            <small>
+                              {itemQfqDiagnostics.reason ? `原因 ${itemQfqDiagnostics.reason} / ` : ""}
+                              raw {formatDigestShort(itemQfqDiagnostics.rawFrameDigest)} / segment {formatDigestShort(itemQfqDiagnostics.segmentFrameDigest)} /
+                              adjusted {formatDigestShort(itemQfqDiagnostics.adjustedFrameDigest)}
+                              {itemQfqDiagnostics.segmentSourceHashes.length > 0
+                                ? ` / 来源 ${itemQfqDiagnostics.segmentSourceHashes.map((value) => formatDigestShort(value)).join(" / ")}`
+                                : ""}
+                            </small>
+                          ) : null}
+                          {itemQfqDiagnostics && (itemQfqDiagnostics.normalSkipReasons.length > 0 || itemQfqDiagnostics.forceSkipReasons.length > 0) ? (
+                            <small>
+                              常规跳过：{itemQfqDiagnostics.normalSkipReasons.join("；") || "无"} / force 缓存：{itemQfqDiagnostics.forceSkipReasons.join("；") || "无"}
                             </small>
                           ) : null}
                           {itemSymbol ? (
@@ -2376,8 +2453,20 @@ export function MarketDataView() {
                         width: 240,
                         render: (_, row) => {
                           const itemTiming = extractItemTiming(row);
+                          const itemQfqDiagnostics = extractItemQfqDiagnostics(row);
                           if (!itemTiming) {
-                            return <Typography.Text type="secondary">-</Typography.Text>;
+                            if (!itemQfqDiagnostics) {
+                              return <Typography.Text type="secondary">-</Typography.Text>;
+                            }
+                            return (
+                              <div className="ingestion-provider-cell">
+                                <strong>{itemQfqDiagnostics.reason || "-"}</strong>
+                                <span>
+                                  raw {formatDigestShort(itemQfqDiagnostics.rawFrameDigest)} / segment {formatDigestShort(itemQfqDiagnostics.segmentFrameDigest)} /
+                                  adjusted {formatDigestShort(itemQfqDiagnostics.adjustedFrameDigest)}
+                                </span>
+                              </div>
+                            );
                           }
                           return (
                             <div className="ingestion-provider-cell">
@@ -2385,6 +2474,13 @@ export function MarketDataView() {
                               <span>
                                 构建 {formatDurationMs(itemTiming.segment_build_ms)} / 写区间 {formatDurationMs(itemTiming.segment_replace_ms)} / 写 K 线 {formatDurationMs(itemTiming.bar_upsert_ms)}
                               </span>
+                              {itemQfqDiagnostics ? (
+                                <span>
+                                  {itemQfqDiagnostics.reason ? `${itemQfqDiagnostics.reason} / ` : ""}
+                                  raw {formatDigestShort(itemQfqDiagnostics.rawFrameDigest)} / segment {formatDigestShort(itemQfqDiagnostics.segmentFrameDigest)} /
+                                  adjusted {formatDigestShort(itemQfqDiagnostics.adjustedFrameDigest)}
+                                </span>
+                              ) : null}
                             </div>
                           );
                         },
@@ -2705,6 +2801,7 @@ export function MarketDataView() {
                         { title: "A", dataIndex: "adjust_a", width: 120, render: (value: number) => value.toFixed(8) },
                         { title: "B", dataIndex: "adjust_b", width: 120, render: (value: number) => value.toFixed(8) },
                         { title: "事件数", width: 90, render: (_, row) => String(row.payload_json.event_count ?? "-") },
+                        { title: "来源摘要", width: 150, render: (_, row) => formatDigestShort(extractSegmentSourceHash(row.payload_json)) },
                         { title: "最近更新", dataIndex: "updated_at", width: 180 },
                       ]}
                     />

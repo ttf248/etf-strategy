@@ -2057,21 +2057,17 @@ def _rebuild_tdx_qfq_market_data(
             target["qfq_source_symbol"] = qfq_source_symbol
             target["qfq_alias"] = qfq_alias
             target["qfq_series"] = qfq_series
-            target["skip_ready"] = _can_skip_tdx_qfq_rebuild(
-                force=force,
+            skip_state = _build_tdx_qfq_skip_state(
                 raw_provider=raw_provider,
                 action_provider=action_provider,
                 raw_series=raw_series,
                 qfq_series=qfq_series,
                 action_last_updated_at=action_updated_at_by_instrument.get(instrument.id),
             )
-            target["force_cache_skip_ready"] = force and _can_force_skip_tdx_qfq_rebuild(
-                raw_provider=raw_provider,
-                action_provider=action_provider,
-                raw_series=raw_series,
-                qfq_series=qfq_series,
-                action_last_updated_at=action_updated_at_by_instrument.get(instrument.id),
-            )
+            target["normal_skip_reasons"] = list(skip_state["normal_skip_reasons"])
+            target["force_skip_reasons"] = list(skip_state["force_skip_reasons"])
+            target["skip_ready"] = not bool(target["normal_skip_reasons"]) and not force
+            target["force_cache_skip_ready"] = force and not bool(target["force_skip_reasons"])
             if not target["skip_ready"] and not target["force_cache_skip_ready"]:
                 pending_targets.append(target)
 
@@ -2136,6 +2132,7 @@ def _rebuild_tdx_qfq_market_data(
                     qfq_source_symbol = str(target.get("qfq_source_symbol") or str(raw_alias.source_symbol or "").strip().upper())
                     qfq_alias = target.get("qfq_alias")
                     qfq_series = target.get("qfq_series")
+                    existing_qfq_metadata = dict(getattr(qfq_series, "metadata_json", {}) or {}) if qfq_series is not None else {}
                     item_timing_json["output_prepare_ms"] = _elapsed_ms(stage_started_at)
                     if bool(target.get("skip_ready")):
                         item_timing_json["total_elapsed_ms"] = _elapsed_ms(item_started_at)
@@ -2147,6 +2144,11 @@ def _rebuild_tdx_qfq_market_data(
                             "provider_key": provider.provider_key,
                             "raw_series_id": raw_series.id,
                             "reason": "qfq_series_up_to_date",
+                            "normal_skip_reasons": list(target.get("normal_skip_reasons") or []),
+                            "force_skip_reasons": list(target.get("force_skip_reasons") or []),
+                            "raw_frame_digest": str(existing_qfq_metadata.get("raw_frame_digest") or ""),
+                            "segment_frame_digest": str(existing_qfq_metadata.get("segment_frame_digest") or ""),
+                            "adjusted_frame_digest": str(existing_qfq_metadata.get("adjusted_frame_digest") or ""),
                             "timing_json": dict(item_timing_json),
                         }
                         skipped_symbols += 1
@@ -2169,6 +2171,8 @@ def _rebuild_tdx_qfq_market_data(
                             "provider_key": provider.provider_key,
                             "raw_series_id": raw_series.id,
                             "reason": "qfq_force_cache_hit",
+                            "normal_skip_reasons": list(target.get("normal_skip_reasons") or []),
+                            "force_skip_reasons": list(target.get("force_skip_reasons") or []),
                             "segment_rows": 0,
                             "segment_rows_inserted": 0,
                             "segment_rows_updated": 0,
@@ -2176,6 +2180,9 @@ def _rebuild_tdx_qfq_market_data(
                             "action_rows_used": 0,
                             "segment_replace_skipped": True,
                             "bar_upsert_skipped": True,
+                            "raw_frame_digest": str(existing_qfq_metadata.get("raw_frame_digest") or ""),
+                            "segment_frame_digest": str(existing_qfq_metadata.get("segment_frame_digest") or ""),
+                            "adjusted_frame_digest": str(existing_qfq_metadata.get("adjusted_frame_digest") or ""),
                             "timing_json": dict(item_timing_json),
                         }
                         succeeded_symbols += 1
@@ -2316,6 +2323,10 @@ def _rebuild_tdx_qfq_market_data(
                             and existing_segment_frame_digest == segment_frame_digest
                         ),
                         "bar_upsert_skipped": bars_inserted == 0 and bars_updated == 0 and existing_frame_digest == adjusted_frame_digest,
+                        "raw_frame_digest": raw_frame_digest,
+                        "segment_frame_digest": segment_frame_digest,
+                        "adjusted_frame_digest": adjusted_frame_digest,
+                        "segment_source_hashes": _extract_segment_source_hashes(segment_rows),
                         "timing_json": dict(item_timing_json),
                     }
                 succeeded_symbols += 1
@@ -2862,6 +2873,64 @@ def _build_segment_frame_digest(frame: pd.DataFrame) -> str:
     return sha1(hashed_rows.to_numpy().tobytes()).hexdigest()
 
 
+def _build_tdx_qfq_skip_state(
+    *,
+    raw_provider,
+    action_provider,
+    raw_series,
+    qfq_series,
+    action_last_updated_at: datetime | None,
+) -> dict[str, list[str]]:
+    normal_skip_reasons: list[str] = []
+    force_skip_reasons: list[str] = []
+    if qfq_series is None or raw_series is None:
+        normal_skip_reasons.append("前复权序列尚未建好")
+        force_skip_reasons.append("前复权序列尚未建好")
+        return {
+            "normal_skip_reasons": normal_skip_reasons,
+            "force_skip_reasons": force_skip_reasons,
+        }
+
+    qfq_last_ingested_at = getattr(qfq_series, "last_ingested_at", None)
+    raw_last_ingested_at = getattr(raw_series, "last_ingested_at", None)
+    metadata_json = dict(getattr(qfq_series, "metadata_json", {}) or {})
+    if str(metadata_json.get("raw_provider_key") or "") != str(raw_provider.provider_key):
+        normal_skip_reasons.append("原始 provider 元数据不匹配")
+    if int(metadata_json.get("raw_series_id") or 0) != int(raw_series.id):
+        normal_skip_reasons.append("原始序列引用不匹配")
+    if str(metadata_json.get("action_provider_key") or "") != str(action_provider.provider_key):
+        normal_skip_reasons.append("公司行动 provider 元数据不匹配")
+    if qfq_last_ingested_at is None:
+        normal_skip_reasons.append("前复权序列还没有入库时间")
+    if raw_last_ingested_at is None:
+        normal_skip_reasons.append("原始序列还没有入库时间")
+    if (
+        qfq_last_ingested_at is not None
+        and raw_last_ingested_at is not None
+        and raw_last_ingested_at > qfq_last_ingested_at
+    ):
+        normal_skip_reasons.append("原始序列比前复权序列更新")
+    if (
+        qfq_last_ingested_at is not None
+        and action_last_updated_at is not None
+        and action_last_updated_at > qfq_last_ingested_at
+    ):
+        normal_skip_reasons.append("公司行动事件比前复权序列更新")
+    if normal_skip_reasons:
+        force_skip_reasons.extend(normal_skip_reasons)
+    else:
+        if not str(metadata_json.get("raw_frame_digest") or ""):
+            force_skip_reasons.append("缺少原始摘要")
+        if not str(metadata_json.get("segment_frame_digest") or ""):
+            force_skip_reasons.append("缺少区间摘要")
+        if not str(metadata_json.get("adjusted_frame_digest") or ""):
+            force_skip_reasons.append("缺少前复权摘要")
+    return {
+        "normal_skip_reasons": normal_skip_reasons,
+        "force_skip_reasons": force_skip_reasons,
+    }
+
+
 def _can_skip_tdx_qfq_rebuild(
     *,
     force: bool,
@@ -2914,6 +2983,18 @@ def _can_force_skip_tdx_qfq_rebuild(
         str(metadata_json.get(key) or "")
         for key in ("raw_frame_digest", "segment_frame_digest", "adjusted_frame_digest")
     )
+
+
+def _extract_segment_source_hashes(rows: list[dict[str, object]]) -> list[str]:
+    hashes: list[str] = []
+    for row in rows:
+        payload_json = row.get("payload_json")
+        if not isinstance(payload_json, dict):
+            continue
+        source_hash = str(payload_json.get("source_hash") or "").strip()
+        if source_hash:
+            hashes.append(source_hash)
+    return sorted(set(hashes))
 
 
 def _load_raw_market_data_frame(session, series: MarketDataSeries) -> pd.DataFrame:

@@ -2377,7 +2377,7 @@ class PlatformFeatureTests(unittest.TestCase):
                             "adjust_a": 1.0,
                             "adjust_b": 0.0,
                             "status": "ready",
-                            "payload_json": {"source": "test"},
+                            "payload_json": {"source": "test", "source_hash": "segmenthash600000"},
                         }
                     ]
                 ),
@@ -2428,6 +2428,10 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertIn("timing_json", registry[602].details_json)
         self.assertIn("segment_build_ms", registry[601].details_json["timing_json"])
         self.assertIn("total_elapsed_ms", registry[602].details_json["timing_json"])
+        self.assertTrue(registry[601].details_json["raw_frame_digest"])
+        self.assertTrue(registry[601].details_json["segment_frame_digest"])
+        self.assertTrue(registry[601].details_json["adjusted_frame_digest"])
+        self.assertEqual(registry[601].details_json["segment_source_hashes"], ["segmenthash600000"])
         self.assertEqual(session.commit_calls, 3)
 
     def test_rebuild_tdx_qfq_market_data_commits_failed_item_without_rolling_back_batch_progress(self) -> None:
@@ -2775,6 +2779,8 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(skipped_item.stage, "completed")
         self.assertEqual(skipped_item.series_id, 932)
         self.assertEqual(skipped_item.details_json["reason"], "qfq_series_up_to_date")
+        self.assertEqual(skipped_item.details_json["normal_skip_reasons"], [])
+        self.assertIn("缺少原始摘要", skipped_item.details_json["force_skip_reasons"])
         self.assertIn("timing_json", skipped_item.details_json)
         mock_preload_input.assert_not_called()
 
@@ -3088,6 +3094,10 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(succeeded_item.status, "succeeded")
         self.assertEqual(succeeded_item.series_id, 1042)
         self.assertEqual(succeeded_item.details_json["reason"], "qfq_force_cache_hit")
+        self.assertEqual(succeeded_item.details_json["force_skip_reasons"], [])
+        self.assertEqual(succeeded_item.details_json["raw_frame_digest"], "rawdigest")
+        self.assertEqual(succeeded_item.details_json["segment_frame_digest"], "segmentdigest")
+        self.assertEqual(succeeded_item.details_json["adjusted_frame_digest"], "adjusteddigest")
         self.assertTrue(succeeded_item.details_json["segment_replace_skipped"])
         self.assertTrue(succeeded_item.details_json["bar_upsert_skipped"])
         self.assertEqual(succeeded_item.details_json["timing_json"]["segment_build_ms"], 0)
