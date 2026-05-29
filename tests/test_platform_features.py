@@ -1822,6 +1822,10 @@ class PlatformFeatureTests(unittest.TestCase):
             patch("strategy_studio.services.sync.create_data_ingestion_job", return_value=ingestion_job),
             patch("strategy_studio.services.sync.create_data_ingestion_job_item", side_effect=fake_create_item),
             patch(
+                "strategy_studio.services.sync._preload_tdx_qfq_action_updated_at",
+                return_value={801: datetime(2026, 5, 29, 0, 0), 802: None},
+            ) as mock_preload_action_updated,
+            patch(
                 "strategy_studio.services.sync._preload_tdx_qfq_input_frames",
                 return_value=(raw_frames, action_frames, {801: datetime(2026, 5, 29, 0, 0), 802: None}),
             ) as mock_preload,
@@ -1862,6 +1866,7 @@ class PlatformFeatureTests(unittest.TestCase):
                 limit=2,
             )
 
+        mock_preload_action_updated.assert_called_once_with(session, targets, action_provider)
         mock_preload.assert_called_once_with(session, targets, action_provider)
         mock_preload_output.assert_called_once_with(session, targets, qfq_provider, interval="1d")
         mock_load_raw.assert_not_called()
@@ -2007,6 +2012,10 @@ class PlatformFeatureTests(unittest.TestCase):
             patch("strategy_studio.services.sync._resolve_tdx_qfq_targets", return_value=targets),
             patch("strategy_studio.services.sync.create_data_ingestion_job", return_value=ingestion_job),
             patch("strategy_studio.services.sync.create_data_ingestion_job_item", side_effect=fake_create_item),
+            patch(
+                "strategy_studio.services.sync._preload_tdx_qfq_action_updated_at",
+                return_value={811: None, 812: None},
+            ),
             patch(
                 "strategy_studio.services.sync._preload_tdx_qfq_input_frames",
                 return_value=(raw_frames, action_frames, {811: None, 812: None}),
@@ -2194,9 +2203,13 @@ class PlatformFeatureTests(unittest.TestCase):
             patch("strategy_studio.services.sync.create_data_ingestion_job", return_value=ingestion_job),
             patch("strategy_studio.services.sync.create_data_ingestion_job_item", side_effect=fake_create_item),
             patch(
+                "strategy_studio.services.sync._preload_tdx_qfq_action_updated_at",
+                return_value={821: qfq_last_ingested_at},
+            ),
+            patch(
                 "strategy_studio.services.sync._preload_tdx_qfq_input_frames",
                 return_value=(raw_frames, action_frames, {821: qfq_last_ingested_at}),
-            ),
+            ) as mock_preload_input,
             patch(
                 "strategy_studio.services.sync._preload_tdx_qfq_output_entities",
                 return_value=(preloaded_qfq_aliases, preloaded_qfq_series),
@@ -2226,6 +2239,7 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(skipped_item.series_id, 932)
         self.assertEqual(skipped_item.details_json["reason"], "qfq_series_up_to_date")
         self.assertIn("timing_json", skipped_item.details_json)
+        mock_preload_input.assert_not_called()
 
 
 class StrategyTemplateServiceTests(unittest.TestCase):

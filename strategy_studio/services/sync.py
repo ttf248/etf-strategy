@@ -10,7 +10,7 @@ import re
 from time import perf_counter
 
 import pandas as pd
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from strategy_studio.data.qfq import apply_qfq_segment_frame, build_qfq_segment_frame
 from strategy_studio.data.tdx import (
@@ -1728,13 +1728,6 @@ def _rebuild_tdx_qfq_market_data(
         first_error_message = ""
         cancelled = False
         cancel_message = ""
-        preload_input_started_at = perf_counter()
-        raw_frames_by_series, action_frames_by_instrument, action_updated_at_by_instrument = _preload_tdx_qfq_input_frames(
-            session,
-            targets,
-            action_provider,
-        )
-        preload_input_ms = _elapsed_ms(preload_input_started_at)
         preload_output_started_at = perf_counter()
         qfq_aliases_by_symbol, qfq_series_by_scope = _preload_tdx_qfq_output_entities(
             session,
@@ -1743,6 +1736,46 @@ def _rebuild_tdx_qfq_market_data(
             interval=interval,
         )
         preload_output_ms = _elapsed_ms(preload_output_started_at)
+        action_updated_at_by_instrument = _preload_tdx_qfq_action_updated_at(
+            session,
+            targets,
+            action_provider,
+        )
+        pending_targets: list[dict[str, object]] = []
+        for target in targets:
+            raw_series = target["series"]
+            raw_alias = target["alias"]
+            instrument = target["instrument"]
+            qfq_source_symbol = str(raw_alias.source_symbol or "").strip().upper()
+            qfq_alias = qfq_aliases_by_symbol.get(qfq_source_symbol)
+            qfq_series = None
+            if qfq_alias is not None:
+                qfq_series = qfq_series_by_scope.get(_tdx_qfq_series_scope_key(qfq_alias.id, interval=interval))
+            target["qfq_source_symbol"] = qfq_source_symbol
+            target["qfq_alias"] = qfq_alias
+            target["qfq_series"] = qfq_series
+            target["skip_ready"] = _can_skip_tdx_qfq_rebuild(
+                force=force,
+                raw_provider=raw_provider,
+                action_provider=action_provider,
+                raw_series=raw_series,
+                qfq_series=qfq_series,
+                action_last_updated_at=action_updated_at_by_instrument.get(instrument.id),
+            )
+            if not target["skip_ready"]:
+                pending_targets.append(target)
+
+        preload_input_ms = 0
+        raw_frames_by_series: dict[int, pd.DataFrame] = {}
+        action_frames_by_instrument: dict[int, pd.DataFrame] = {}
+        if pending_targets:
+            preload_input_started_at = perf_counter()
+            raw_frames_by_series, action_frames_by_instrument, _ = _preload_tdx_qfq_input_frames(
+                session,
+                pending_targets,
+                action_provider,
+            )
+            preload_input_ms = _elapsed_ms(preload_input_started_at)
         timing_totals_ms = {
             "segment_build_ms": 0,
             "segment_replace_ms": 0,
@@ -1788,26 +1821,13 @@ def _rebuild_tdx_qfq_market_data(
             try:
                 # 单标的失败只回滚当前 savepoint，已处理的批次仍可继续累计并分批提交。
                 with session.begin_nested():
-                    raw_frame = raw_frames_by_series.get(raw_series.id)
-                    if raw_frame is None or raw_frame.empty:
-                        raise ValueError(f"原始序列没有可用于前复权重算的日线数据：series_id={raw_series.id}")
-                    action_frame = action_frames_by_instrument.get(instrument.id, _empty_action_frame())
                     action_last_updated_at = action_updated_at_by_instrument.get(instrument.id)
                     stage_started_at = perf_counter()
-                    qfq_source_symbol = str(raw_alias.source_symbol or "").strip().upper()
-                    qfq_alias = qfq_aliases_by_symbol.get(qfq_source_symbol)
-                    qfq_series = None
-                    if qfq_alias is not None:
-                        qfq_series = qfq_series_by_scope.get(_tdx_qfq_series_scope_key(qfq_alias.id, interval=interval))
+                    qfq_source_symbol = str(target.get("qfq_source_symbol") or str(raw_alias.source_symbol or "").strip().upper())
+                    qfq_alias = target.get("qfq_alias")
+                    qfq_series = target.get("qfq_series")
                     item_timing_json["output_prepare_ms"] = _elapsed_ms(stage_started_at)
-                    if _can_skip_tdx_qfq_rebuild(
-                        force=force,
-                        raw_provider=raw_provider,
-                        action_provider=action_provider,
-                        raw_series=raw_series,
-                        qfq_series=qfq_series,
-                        action_last_updated_at=action_last_updated_at,
-                    ):
+                    if bool(target.get("skip_ready")):
                         item_timing_json["total_elapsed_ms"] = _elapsed_ms(item_started_at)
                         item.status = "skipped"
                         item.stage = "completed"
@@ -1825,6 +1845,10 @@ def _rebuild_tdx_qfq_market_data(
                         ingestion_job.error_count = failed_symbols
                         pending_targets_since_commit += 1
                         continue
+                    raw_frame = raw_frames_by_series.get(raw_series.id)
+                    if raw_frame is None or raw_frame.empty:
+                        raise ValueError(f"原始序列没有可用于前复权重算的日线数据：series_id={raw_series.id}")
+                    action_frame = action_frames_by_instrument.get(instrument.id, _empty_action_frame())
                     stage_started_at = perf_counter()
                     segment_frame = build_qfq_segment_frame(raw_frame, action_frame)
                     item_timing_json["segment_build_ms"] = _elapsed_ms(stage_started_at)
@@ -2381,6 +2405,38 @@ def _preload_tdx_qfq_output_entities(
         for series in series_rows
     }
     return alias_by_symbol, series_by_scope
+
+
+def _preload_tdx_qfq_action_updated_at(
+    session,
+    targets: list[dict[str, object]],
+    action_provider,
+) -> dict[int, datetime | None]:
+    """只预取公司行动最近更新时间，用于在重算前快速判断是否可以跳过。"""
+    if not targets:
+        return {}
+
+    ordered_instrument_ids: list[int] = []
+    for item in targets:
+        instrument = item["instrument"]
+        if instrument.id not in ordered_instrument_ids:
+            ordered_instrument_ids.append(instrument.id)
+
+    updated_at_by_instrument: dict[int, datetime | None] = {instrument_id: None for instrument_id in ordered_instrument_ids}
+    rows = session.execute(
+        select(
+            CorporateActionEvent.instrument_id,
+            func.max(CorporateActionEvent.updated_at).label("updated_at"),
+        )
+        .where(
+            CorporateActionEvent.provider_id == action_provider.id,
+            CorporateActionEvent.instrument_id.in_(ordered_instrument_ids),
+        )
+        .group_by(CorporateActionEvent.instrument_id)
+    ).all()
+    for row in rows:
+        updated_at_by_instrument[int(row.instrument_id)] = row.updated_at
+    return updated_at_by_instrument
 
 
 def _elapsed_ms(started_at: float) -> int:
