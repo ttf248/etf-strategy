@@ -1565,11 +1565,32 @@ class PlatformFeatureTests(unittest.TestCase):
         )
 
     def test_rebuild_tdx_qfq_market_data_uses_preloaded_frames_for_batch_targets(self) -> None:
-        session = SimpleNamespace()
-        session.commit = lambda: None
-        session.rollback = lambda: None
         registry: dict[int, object] = {}
-        session.get = lambda _model, identity: registry.get(identity)
+
+        class _NestedContext:
+            def __enter__(self):
+                return None
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        class _SessionDouble:
+            def __init__(self) -> None:
+                self.commit_calls = 0
+
+            def commit(self) -> None:
+                self.commit_calls += 1
+
+            def rollback(self) -> None:
+                return None
+
+            def get(self, _model, identity):
+                return registry.get(identity)
+
+            def begin_nested(self):
+                return _NestedContext()
+
+        session = _SessionDouble()
 
         class _SessionContext:
             def __enter__(self):
@@ -1718,6 +1739,177 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(ingestion_job.rows_inserted, 4)
         self.assertEqual(ingestion_job.error_count, 0)
         self.assertEqual(ingestion_job.status, "succeeded")
+        self.assertEqual(session.commit_calls, 3)
+
+    def test_rebuild_tdx_qfq_market_data_commits_failed_item_without_rolling_back_batch_progress(self) -> None:
+        registry: dict[int, object] = {}
+
+        class _NestedContext:
+            def __enter__(self):
+                return None
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        class _SessionDouble:
+            def __init__(self) -> None:
+                self.commit_calls = 0
+
+            def commit(self) -> None:
+                self.commit_calls += 1
+
+            def rollback(self) -> None:
+                return None
+
+            def get(self, _model, identity):
+                return registry.get(identity)
+
+            def begin_nested(self):
+                return _NestedContext()
+
+        session = _SessionDouble()
+
+        class _SessionContext:
+            def __enter__(self):
+                return session
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        raw_provider = SimpleNamespace(id=411, provider_key="tdx")
+        action_provider = SimpleNamespace(id=412, provider_key="tushare")
+        qfq_provider = SimpleNamespace(id=413, provider_key="tdx_qfq")
+        ingestion_job = SimpleNamespace(
+            id=511,
+            targets_total=0,
+            targets_completed=0,
+            rows_inserted=0,
+            rows_updated=0,
+            error_count=0,
+            summary_json={},
+            completed_at=None,
+            status="running",
+            error_message="",
+        )
+        registry[511] = ingestion_job
+
+        item_ids = [611, 612]
+
+        def fake_create_item(*_args, **_kwargs):
+            current_id = item_ids.pop(0)
+            item = SimpleNamespace(
+                id=current_id,
+                status="running",
+                stage="download",
+                rows_inserted=0,
+                rows_updated=0,
+                details_json={},
+                error_message="",
+                instrument_id=None,
+                series_id=None,
+            )
+            registry[current_id] = item
+            return item
+
+        targets = [
+            {
+                "series": SimpleNamespace(id=711),
+                "instrument": SimpleNamespace(id=811, symbol="SH600000", name="浦发银行", exchange="SH", timezone="Asia/Shanghai"),
+                "alias": SimpleNamespace(source_symbol="SH600000", source_name="浦发银行", market="SH", exchange="SH", security_type="stock", timezone="Asia/Shanghai"),
+            },
+            {
+                "series": SimpleNamespace(id=712),
+                "instrument": SimpleNamespace(id=812, symbol="SZ000001", name="平安银行", exchange="SZ", timezone="Asia/Shanghai"),
+                "alias": SimpleNamespace(source_symbol="SZ000001", source_name="平安银行", market="SZ", exchange="SZ", security_type="stock", timezone="Asia/Shanghai"),
+            },
+        ]
+        raw_frames = {
+            711: pd.DataFrame(
+                [
+                    {"Date": "2026-05-28", "Open": 10.0, "High": 11.0, "Low": 9.0, "Close": 10.5, "Volume": 100, "Amount": 1000.0},
+                    {"Date": "2026-05-29", "Open": 10.6, "High": 11.2, "Low": 10.1, "Close": 11.0, "Volume": 110, "Amount": 1100.0},
+                ]
+            ),
+            712: pd.DataFrame(
+                [
+                    {"Date": "2026-05-28", "Open": 20.0, "High": 21.0, "Low": 19.5, "Close": 20.2, "Volume": 200, "Amount": 2000.0},
+                    {"Date": "2026-05-29", "Open": 20.3, "High": 21.1, "Low": 20.0, "Close": 20.8, "Volume": 210, "Amount": 2100.0},
+                ]
+            ),
+        }
+        action_frames = {
+            811: pd.DataFrame(columns=["ex_date", "cash_dividend", "stock_bonus_ratio", "stock_conversion_ratio", "rights_ratio", "rights_price", "status"]),
+            812: pd.DataFrame(columns=["ex_date", "cash_dividend", "stock_bonus_ratio", "stock_conversion_ratio", "rights_ratio", "rights_price", "status"]),
+        }
+
+        replace_results = [RuntimeError("segment rebuild failed"), (1, 0, 0)]
+        qfq_series_ids = [911]
+
+        def fake_replace_segments(*_args, **_kwargs):
+            result = replace_results.pop(0)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        def fake_get_or_create_market_data_series(*_args, **_kwargs):
+            return SimpleNamespace(id=qfq_series_ids.pop(0), metadata_json={})
+
+        with (
+            patch("strategy_studio.services.sync.open_session", return_value=_SessionContext()),
+            patch("strategy_studio.services.sync.ensure_data_provider", side_effect=[raw_provider, action_provider, qfq_provider]),
+            patch("strategy_studio.services.sync._resolve_tdx_qfq_targets", return_value=targets),
+            patch("strategy_studio.services.sync.create_data_ingestion_job", return_value=ingestion_job),
+            patch("strategy_studio.services.sync.create_data_ingestion_job_item", side_effect=fake_create_item),
+            patch(
+                "strategy_studio.services.sync._preload_tdx_qfq_input_frames",
+                return_value=(raw_frames, action_frames),
+            ),
+            patch(
+                "strategy_studio.services.sync.build_qfq_segment_frame",
+                return_value=pd.DataFrame(
+                    [
+                        {
+                            "start_date": "2026-05-28",
+                            "end_date": "2026-05-29",
+                            "adjust_a": 1.0,
+                            "adjust_b": 0.0,
+                            "status": "ready",
+                            "payload_json": {"source": "test"},
+                        }
+                    ]
+                ),
+            ),
+            patch(
+                "strategy_studio.services.sync.apply_qfq_segment_frame",
+                side_effect=lambda raw_frame, _segment_frame: raw_frame.assign(AdjustA=1.0, AdjustB=0.0),
+            ),
+            patch("strategy_studio.services.sync.replace_price_adjustment_segments", side_effect=fake_replace_segments),
+            patch("strategy_studio.services.sync.get_or_create_instrument_alias", side_effect=lambda *_args, **kwargs: kwargs["instrument"]),
+            patch("strategy_studio.services.sync.get_or_create_market_data_series", side_effect=fake_get_or_create_market_data_series),
+            patch("strategy_studio.services.sync.upsert_market_data_frame", side_effect=lambda _session, _series, frame: (len(frame), 0)),
+        ):
+            result = sync_service._rebuild_tdx_qfq_market_data(
+                symbol=None,
+                interval="1d",
+                force=True,
+                limit=2,
+            )
+
+        failed_item = registry[611]
+        succeeded_item = registry[612]
+        self.assertEqual(result["status"], "partially_failed")
+        self.assertEqual(result["bars_inserted"], 2)
+        self.assertEqual(result["segment_rows_inserted"], 1)
+        self.assertEqual(ingestion_job.targets_total, 2)
+        self.assertEqual(ingestion_job.targets_completed, 1)
+        self.assertEqual(ingestion_job.error_count, 1)
+        self.assertEqual(ingestion_job.status, "partially_failed")
+        self.assertIn("segment rebuild failed", ingestion_job.error_message)
+        self.assertEqual(failed_item.status, "failed")
+        self.assertEqual(failed_item.stage, "failed")
+        self.assertEqual(succeeded_item.status, "succeeded")
+        self.assertEqual(succeeded_item.stage, "completed")
+        self.assertEqual(session.commit_calls, 4)
 
 
 class StrategyTemplateServiceTests(unittest.TestCase):

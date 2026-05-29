@@ -508,8 +508,11 @@ def replace_price_adjustment_segments(
     rows: list[dict[str, object]],
 ) -> tuple[int, int, int]:
     """按单个标的全量替换前复权公式区间。"""
-    existing_rows = session.scalars(
-        select(PriceAdjustmentSegment).where(
+    existing_rows = session.execute(
+        select(
+            PriceAdjustmentSegment.start_date,
+            PriceAdjustmentSegment.end_date,
+        ).where(
             PriceAdjustmentSegment.instrument_id == instrument.id,
             PriceAdjustmentSegment.provider_id == provider.id,
             PriceAdjustmentSegment.adjustment_kind == adjustment_kind,
@@ -540,20 +543,25 @@ def replace_price_adjustment_segments(
             PriceAdjustmentSegment.adjustment_kind == adjustment_kind,
         )
     )
-    for item in rows:
-        session.add(
-            PriceAdjustmentSegment(
-                instrument_id=instrument.id,
-                provider_id=provider.id,
-                action_provider_id=action_provider.id if action_provider is not None else None,
-                adjustment_kind=adjustment_kind,
-                start_date=item["start_date"],
-                end_date=item["end_date"],
-                adjust_a=item["adjust_a"],
-                adjust_b=item["adjust_b"],
-                status=str(item.get("status") or "ready"),
-                payload_json=dict(item.get("payload_json") or {}),
-            )
+    if rows:
+        # 区间重建天然是整段覆盖，直接走批量 SQL 插入比逐条 ORM add 更轻。
+        session.execute(
+            insert(PriceAdjustmentSegment),
+            [
+                {
+                    "instrument_id": instrument.id,
+                    "provider_id": provider.id,
+                    "action_provider_id": action_provider.id if action_provider is not None else None,
+                    "adjustment_kind": adjustment_kind,
+                    "start_date": item["start_date"],
+                    "end_date": item["end_date"],
+                    "adjust_a": item["adjust_a"],
+                    "adjust_b": item["adjust_b"],
+                    "status": str(item.get("status") or "ready"),
+                    "payload_json": dict(item.get("payload_json") or {}),
+                }
+                for item in rows
+            ],
         )
     session.flush()
     return inserted_count, updated_count, deleted_count

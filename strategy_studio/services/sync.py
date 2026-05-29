@@ -66,6 +66,7 @@ from strategy_studio.symbols import SymbolSpec, get_symbol_set, resolve_symbol_s
 
 TDX_IMPORT_INTERVALS = ("1d", "1m", "5m")
 TDX_PIPELINE_INTERVALS = ("1d", "all")
+TDX_QFQ_COMMIT_EVERY = 20
 API_REQUESTED_VIA = "api"
 WORKER_CHILD_REQUESTED_VIA = "worker_child"
 _ACTIVE_ENQUEUED_MARKET_DATA_JOB_ID: ContextVar[int | None] = ContextVar(
@@ -1728,6 +1729,19 @@ def _rebuild_tdx_qfq_market_data(
             targets,
             action_provider,
         )
+        pending_targets_since_commit = 0
+
+        def commit_batch_progress() -> None:
+            # 前复权重算是批量写入链路，统一按批次落库，避免每个标的都切一次事务。
+            nonlocal pending_targets_since_commit, ingestion_job
+            if pending_targets_since_commit <= 0:
+                return
+            session.commit()
+            pending_targets_since_commit = 0
+            refreshed_job = session.get(type(ingestion_job), ingestion_job.id)
+            if refreshed_job is None:
+                raise RuntimeError("统一导入任务记录丢失。")
+            ingestion_job = refreshed_job
 
         for target in targets:
             if _is_current_enqueued_market_data_job_cancel_requested():
@@ -1745,71 +1759,71 @@ def _rebuild_tdx_qfq_market_data(
                 interval=interval,
                 provider=provider,
             )
-            session.commit()
             try:
-                raw_frame = raw_frames_by_series.get(raw_series.id)
-                if raw_frame is None or raw_frame.empty:
-                    raise ValueError(f"原始序列没有可用于前复权重算的日线数据：series_id={raw_series.id}")
-                action_frame = action_frames_by_instrument.get(instrument.id, _empty_action_frame())
-                segment_frame = build_qfq_segment_frame(raw_frame, action_frame)
-                segment_rows = segment_frame.to_dict(orient="records")
-                seg_inserted, seg_updated, seg_deleted = replace_price_adjustment_segments(
-                    session,
-                    instrument,
-                    provider,
-                    action_provider=action_provider,
-                    adjustment_kind="qfq",
-                    rows=segment_rows,
-                )
-                adjusted_frame = apply_qfq_segment_frame(raw_frame, segment_frame)
-                qfq_alias = get_or_create_instrument_alias(
-                    session,
-                    instrument=instrument,
-                    provider=provider,
-                    source_symbol=raw_alias.source_symbol,
-                    source_name=raw_alias.source_name or instrument.name,
-                    market=raw_alias.market or instrument.exchange,
-                    exchange=raw_alias.exchange or instrument.exchange,
-                    security_type=raw_alias.security_type,
-                    timezone=raw_alias.timezone,
-                )
-                qfq_series = get_or_create_market_data_series(
-                    session,
-                    instrument=instrument,
-                    provider=provider,
-                    alias=qfq_alias,
-                    interval=interval,
-                    market=raw_alias.market or instrument.exchange,
-                    exchange=raw_alias.exchange or instrument.exchange,
-                    adjustment_kind="qfq",
-                    session_type="regular",
-                    price_type="trade",
-                    bar_type="time",
-                    timezone=raw_alias.timezone or instrument.timezone,
-                )
-                bars_inserted, bars_updated = upsert_market_data_frame(session, qfq_series, adjusted_frame)
-                qfq_series.metadata_json = {
-                    **qfq_series.metadata_json,
-                    "raw_provider_key": raw_provider.provider_key,
-                    "raw_series_id": raw_series.id,
-                    "action_provider_key": action_provider.provider_key,
-                }
-                item.status = "succeeded"
-                item.stage = "completed"
-                item.instrument_id = instrument.id
-                item.series_id = qfq_series.id
-                item.rows_inserted = bars_inserted
-                item.rows_updated = bars_updated
-                item.details_json = {
-                    "provider_key": provider.provider_key,
-                    "raw_series_id": raw_series.id,
-                    "segment_rows": len(segment_rows),
-                    "segment_rows_inserted": seg_inserted,
-                    "segment_rows_updated": seg_updated,
-                    "segment_rows_deleted": seg_deleted,
-                    "action_rows_used": len(action_frame),
-                }
-                ingestion_job.targets_completed += 1
+                # 单标的失败只回滚当前 savepoint，已处理的批次仍可继续累计并分批提交。
+                with session.begin_nested():
+                    raw_frame = raw_frames_by_series.get(raw_series.id)
+                    if raw_frame is None or raw_frame.empty:
+                        raise ValueError(f"原始序列没有可用于前复权重算的日线数据：series_id={raw_series.id}")
+                    action_frame = action_frames_by_instrument.get(instrument.id, _empty_action_frame())
+                    segment_frame = build_qfq_segment_frame(raw_frame, action_frame)
+                    segment_rows = segment_frame.to_dict(orient="records")
+                    seg_inserted, seg_updated, seg_deleted = replace_price_adjustment_segments(
+                        session,
+                        instrument,
+                        provider,
+                        action_provider=action_provider,
+                        adjustment_kind="qfq",
+                        rows=segment_rows,
+                    )
+                    adjusted_frame = apply_qfq_segment_frame(raw_frame, segment_frame)
+                    qfq_alias = get_or_create_instrument_alias(
+                        session,
+                        instrument=instrument,
+                        provider=provider,
+                        source_symbol=raw_alias.source_symbol,
+                        source_name=raw_alias.source_name or instrument.name,
+                        market=raw_alias.market or instrument.exchange,
+                        exchange=raw_alias.exchange or instrument.exchange,
+                        security_type=raw_alias.security_type,
+                        timezone=raw_alias.timezone,
+                    )
+                    qfq_series = get_or_create_market_data_series(
+                        session,
+                        instrument=instrument,
+                        provider=provider,
+                        alias=qfq_alias,
+                        interval=interval,
+                        market=raw_alias.market or instrument.exchange,
+                        exchange=raw_alias.exchange or instrument.exchange,
+                        adjustment_kind="qfq",
+                        session_type="regular",
+                        price_type="trade",
+                        bar_type="time",
+                        timezone=raw_alias.timezone or instrument.timezone,
+                    )
+                    bars_inserted, bars_updated = upsert_market_data_frame(session, qfq_series, adjusted_frame)
+                    qfq_series.metadata_json = {
+                        **qfq_series.metadata_json,
+                        "raw_provider_key": raw_provider.provider_key,
+                        "raw_series_id": raw_series.id,
+                        "action_provider_key": action_provider.provider_key,
+                    }
+                    item.status = "succeeded"
+                    item.stage = "completed"
+                    item.instrument_id = instrument.id
+                    item.series_id = qfq_series.id
+                    item.rows_inserted = bars_inserted
+                    item.rows_updated = bars_updated
+                    item.details_json = {
+                        "provider_key": provider.provider_key,
+                        "raw_series_id": raw_series.id,
+                        "segment_rows": len(segment_rows),
+                        "segment_rows_inserted": seg_inserted,
+                        "segment_rows_updated": seg_updated,
+                        "segment_rows_deleted": seg_deleted,
+                        "action_rows_used": len(action_frame),
+                    }
                 succeeded_symbols += 1
                 segment_rows_inserted += seg_inserted
                 segment_rows_updated += seg_updated
@@ -1817,26 +1831,27 @@ def _rebuild_tdx_qfq_market_data(
                 bar_rows_inserted += bars_inserted
                 bar_rows_updated += bars_updated
                 action_rows_used += len(action_frame)
-                session.commit()
+                ingestion_job.targets_completed = succeeded_symbols
+                ingestion_job.error_count = failed_symbols
+                pending_targets_since_commit += 1
             except Exception as exc:
-                session.rollback()
-                item = session.get(type(item), item.id)
-                ingestion_job = session.get(type(ingestion_job), ingestion_job.id)
-                if item is not None:
-                    item.status = "failed"
-                    item.stage = "failed"
-                    item.error_message = str(exc)
-                    item.details_json = {"provider_key": provider.provider_key, "raw_series_id": raw_series.id}
-                if ingestion_job is not None:
-                    ingestion_job.error_count += 1
                 if not first_error_message:
                     first_error_message = str(exc)
                 failed_symbols += 1
-                session.commit()
+                item.status = "failed"
+                item.stage = "failed"
+                item.error_message = str(exc)
+                item.details_json = {"provider_key": provider.provider_key, "raw_series_id": raw_series.id}
+                ingestion_job.targets_completed = succeeded_symbols
+                ingestion_job.error_count = failed_symbols
+                pending_targets_since_commit += 1
+                commit_batch_progress()
+                continue
 
-        ingestion_job = session.get(type(ingestion_job), ingestion_job.id)
-        if ingestion_job is None:
-            raise RuntimeError("统一导入任务记录丢失。")
+            if pending_targets_since_commit >= TDX_QFQ_COMMIT_EVERY:
+                commit_batch_progress()
+
+        commit_batch_progress()
         ingestion_job.rows_inserted = bar_rows_inserted
         ingestion_job.rows_updated = bar_rows_updated
         ingestion_job.completed_at = datetime.now(UTC)
