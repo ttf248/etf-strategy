@@ -298,6 +298,14 @@ function formatDurationMs(value: number | null | undefined): string {
   return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
+function formatDigestShort(value: string | null | undefined): string {
+  const normalized = (value ?? "").trim();
+  if (!normalized) {
+    return "-";
+  }
+  return normalized.length > 12 ? `${normalized.slice(0, 12)}...` : normalized;
+}
+
 function extractWorkflowResults(job: MarketDataIngestionJob): WorkflowStepResult[] {
   const summary = isRecord(job.summary_json) ? job.summary_json : {};
   const rawResults = summary.workflow_results;
@@ -2333,6 +2341,18 @@ export function MarketDataView() {
                   <span>相关任务</span>
                   <strong>{symbolDiagnostics.summary.recent_job_count}</strong>
                 </div>
+                <div className="provider-panel-metric">
+                  <span>前复权派生链路</span>
+                  <strong>{symbolDiagnostics.summary.qfq_series_count}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>常规跳过就绪</span>
+                  <strong>{symbolDiagnostics.summary.qfq_normal_skip_ready_count}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>force 缓存就绪</span>
+                  <strong>{symbolDiagnostics.summary.qfq_force_cache_ready_count}</strong>
+                </div>
               </div>
               <Space wrap>
                 <Button size="small" onClick={() => void focusProviderSeriesData("all", symbolDiagnostics.symbol)}>
@@ -2411,6 +2431,75 @@ export function MarketDataView() {
                     { title: "源代码", dataIndex: "source_symbol", width: 140 },
                     { title: "最新时间", dataIndex: "last_bar_time", width: 180 },
                     { title: "最近入库", dataIndex: "last_ingested_at", width: 180 },
+                  ]}
+                />
+              )}
+            </Card>
+
+            <Card size="small" title="前复权派生链路">
+              {symbolDiagnostics.qfq_series_diagnostics.length === 0 ? (
+                <Typography.Text type="secondary">当前标的还没有通达信前复权派生序列。</Typography.Text>
+              ) : (
+                <Table<MarketDataSymbolDiagnostics["qfq_series_diagnostics"][number]>
+                  size="small"
+                  rowKey="series_id"
+                  dataSource={symbolDiagnostics.qfq_series_diagnostics}
+                  pagination={{ pageSize: 6, showSizeChanger: false }}
+                  scroll={{ x: 1380 }}
+                  columns={[
+                    { title: "序列", dataIndex: "series_id", width: 90 },
+                    { title: "周期", dataIndex: "interval", width: 90 },
+                    {
+                      title: "原始依赖",
+                      width: 220,
+                      render: (_, row) => (
+                        <div className="ingestion-provider-cell">
+                          <strong>{row.raw_provider_key ? `${row.raw_provider_key} #${row.raw_series_id ?? "-"}` : "-"}</strong>
+                          <span>{row.raw_last_ingested_at || "原始序列未就绪"}</span>
+                        </div>
+                      ),
+                    },
+                    {
+                      title: "公司行动",
+                      width: 180,
+                      render: (_, row) => (
+                        <div className="ingestion-provider-cell">
+                          <strong>{row.action_provider_key || "-"}</strong>
+                          <span>{row.latest_action_updated_at || "暂无最近更新时间"}</span>
+                        </div>
+                      ),
+                    },
+                    {
+                      title: "常规跳过",
+                      width: 120,
+                      render: (_, row) => <StatusTag value={row.normal_skip_ready ? "succeeded" : "queued"} label={row.normal_skip_ready ? "已最新" : "需重算"} />,
+                    },
+                    {
+                      title: "force 缓存",
+                      width: 120,
+                      render: (_, row) => (
+                        <StatusTag value={row.force_skip_cache_ready ? "succeeded" : "running"} label={row.force_skip_cache_ready ? "可跳过写回" : "待热身"} />
+                      ),
+                    },
+                    {
+                      title: "摘要",
+                      width: 280,
+                      render: (_, row) => (
+                        <div className="ingestion-provider-cell">
+                          <span>raw {formatDigestShort(row.raw_frame_digest)}</span>
+                          <span>segment {formatDigestShort(row.segment_frame_digest)}</span>
+                          <span>adjusted {formatDigestShort(row.adjusted_frame_digest)}</span>
+                        </div>
+                      ),
+                    },
+                    {
+                      title: "说明",
+                      width: 320,
+                      render: (_, row) => {
+                        const reasons = row.normal_skip_ready ? row.force_skip_reasons : row.normal_skip_reasons;
+                        return reasons.length > 0 ? reasons.join("；") : "当前没有额外阻塞项。";
+                      },
+                    },
                   ]}
                 />
               )}

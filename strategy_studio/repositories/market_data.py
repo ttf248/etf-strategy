@@ -34,6 +34,20 @@ def _format_timestamp(value: datetime | None) -> str:
     return value.isoformat(sep=" ") if value else ""
 
 
+def _parse_timestamp(value: object) -> datetime | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    parsed = pd.to_datetime(text, errors="coerce")
+    if pd.isna(parsed):
+        return None
+    if isinstance(parsed, pd.Timestamp):
+        return parsed.to_pydatetime()
+    return None
+
+
 def _normalize_string_list(values: object) -> list[str]:
     if not values:
         return []
@@ -42,6 +56,126 @@ def _normalize_string_list(values: object) -> list[str]:
 
 def _safe_int(value: object) -> int:
     return int(value or 0)
+
+
+def _safe_text(value: object) -> str:
+    return str(value or "").strip()
+
+
+def _build_series_metadata_summary(metadata_json: dict[str, object] | None) -> dict[str, object]:
+    metadata = dict(metadata_json or {})
+    return {
+        "source_period": _safe_text(metadata.get("period")),
+        "source_file": _safe_text(metadata.get("source_file")),
+        "raw_provider_key": _safe_text(metadata.get("raw_provider_key")),
+        "raw_series_id": _safe_int(metadata.get("raw_series_id")) or None,
+        "action_provider_key": _safe_text(metadata.get("action_provider_key")),
+        "raw_frame_digest": _safe_text(metadata.get("raw_frame_digest")),
+        "segment_frame_digest": _safe_text(metadata.get("segment_frame_digest")),
+        "adjusted_frame_digest": _safe_text(metadata.get("adjusted_frame_digest")),
+    }
+
+
+def _build_qfq_series_diagnostics(
+    *,
+    series_rows: list[dict[str, object]],
+    action_rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    raw_series_by_id = {
+        _safe_int(row.get("series_id")): row
+        for row in series_rows
+        if _safe_text(row.get("provider_key")) == "tdx"
+    }
+    latest_action_updated_at_by_provider: dict[str, datetime | None] = {}
+    latest_action_updated_text_by_provider: dict[str, str] = {}
+    for row in action_rows:
+        provider_key = _safe_text(row.get("provider_key"))
+        if not provider_key:
+            continue
+        updated_at_text = _safe_text(row.get("updated_at"))
+        updated_at = _parse_timestamp(updated_at_text)
+        current_latest = latest_action_updated_at_by_provider.get(provider_key)
+        if updated_at is None and provider_key in latest_action_updated_at_by_provider:
+            continue
+        if current_latest is None or (updated_at is not None and updated_at > current_latest):
+            latest_action_updated_at_by_provider[provider_key] = updated_at
+            latest_action_updated_text_by_provider[provider_key] = updated_at_text
+
+    diagnostics: list[dict[str, object]] = []
+    for row in series_rows:
+        if _safe_text(row.get("provider_key")) != "tdx_qfq":
+            continue
+        metadata_summary = dict(row.get("metadata_summary") or {})
+        raw_provider_key = _safe_text(metadata_summary.get("raw_provider_key"))
+        raw_series_id = _safe_int(metadata_summary.get("raw_series_id")) or None
+        action_provider_key = _safe_text(metadata_summary.get("action_provider_key"))
+        raw_series = raw_series_by_id.get(raw_series_id or 0)
+        qfq_last_ingested_at = _safe_text(row.get("last_ingested_at"))
+        raw_last_ingested_at = _safe_text(raw_series.get("last_ingested_at")) if raw_series else ""
+        qfq_last_ingested_dt = _parse_timestamp(qfq_last_ingested_at)
+        raw_last_ingested_dt = _parse_timestamp(raw_last_ingested_at)
+        latest_action_updated_at = latest_action_updated_at_by_provider.get(action_provider_key)
+        latest_action_updated_text = latest_action_updated_text_by_provider.get(action_provider_key, "")
+        force_skip_cache_ready = all(
+            _safe_text(metadata_summary.get(key))
+            for key in ("raw_frame_digest", "segment_frame_digest", "adjusted_frame_digest")
+        )
+        normal_skip_reasons: list[str] = []
+        if not raw_provider_key:
+            normal_skip_reasons.append("缺少原始 provider 元数据")
+        if raw_series_id is None:
+            normal_skip_reasons.append("缺少原始序列引用")
+        if raw_series is None:
+            normal_skip_reasons.append("当前诊断窗口未找到对应原始序列")
+        if not action_provider_key:
+            normal_skip_reasons.append("缺少公司行动 provider 元数据")
+        if qfq_last_ingested_dt is None:
+            normal_skip_reasons.append("前复权序列还没有入库时间")
+        if raw_last_ingested_dt is None:
+            normal_skip_reasons.append("原始序列还没有入库时间")
+        if (
+            qfq_last_ingested_dt is not None
+            and raw_last_ingested_dt is not None
+            and raw_last_ingested_dt > qfq_last_ingested_dt
+        ):
+            normal_skip_reasons.append("原始序列比前复权序列更新")
+        if (
+            qfq_last_ingested_dt is not None
+            and latest_action_updated_at is not None
+            and latest_action_updated_at > qfq_last_ingested_dt
+        ):
+            normal_skip_reasons.append("公司行动事件比前复权序列更新")
+        normal_skip_ready = not normal_skip_reasons
+        force_skip_reasons: list[str] = []
+        if not _safe_text(metadata_summary.get("raw_frame_digest")):
+            force_skip_reasons.append("缺少原始摘要")
+        if not _safe_text(metadata_summary.get("segment_frame_digest")):
+            force_skip_reasons.append("缺少区间摘要")
+        if not _safe_text(metadata_summary.get("adjusted_frame_digest")):
+            force_skip_reasons.append("缺少前复权摘要")
+        diagnostics.append(
+            {
+                "series_id": _safe_int(row.get("series_id")),
+                "instrument_symbol": _safe_text(row.get("instrument_symbol")),
+                "interval": _safe_text(row.get("interval")),
+                "adjustment_kind": _safe_text(row.get("adjustment_kind")),
+                "qfq_last_ingested_at": qfq_last_ingested_at,
+                "raw_provider_key": raw_provider_key,
+                "raw_series_id": raw_series_id,
+                "raw_series_found": raw_series is not None,
+                "raw_last_ingested_at": raw_last_ingested_at,
+                "action_provider_key": action_provider_key,
+                "latest_action_updated_at": latest_action_updated_text,
+                "normal_skip_ready": normal_skip_ready,
+                "normal_skip_reasons": normal_skip_reasons,
+                "force_skip_cache_ready": force_skip_cache_ready,
+                "force_skip_reasons": force_skip_reasons,
+                "raw_frame_digest": _safe_text(metadata_summary.get("raw_frame_digest")),
+                "segment_frame_digest": _safe_text(metadata_summary.get("segment_frame_digest")),
+                "adjusted_frame_digest": _safe_text(metadata_summary.get("adjusted_frame_digest")),
+            }
+        )
+    return diagnostics
 
 
 def _infer_exchange(symbol: str) -> str:
@@ -837,6 +971,7 @@ def list_provider_series(
             MarketDataSeries.last_bar_time,
             MarketDataSeries.last_ingested_at,
             MarketDataSeries.is_active,
+            MarketDataSeries.metadata_json,
             provider_bar_stats.c.bar_count,
         )
         .join(DataProvider, DataProvider.id == MarketDataSeries.provider_id)
@@ -883,6 +1018,7 @@ def list_provider_series(
             "last_bar_time": _format_timestamp(row.last_bar_time),
             "last_ingested_at": _format_timestamp(row.last_ingested_at),
             "is_active": bool(row.is_active),
+            "metadata_summary": _build_series_metadata_summary(row.metadata_json),
         }
         for row in rows
     ]
@@ -964,6 +1100,9 @@ def get_symbol_diagnostics(
     segment_rows = list_adjustment_segments(session, symbol=normalized_symbol, limit=limit)
     manifest_rows = list_source_file_manifests(session, symbol=normalized_symbol, limit=limit)
     recent_jobs = _list_recent_ingestion_jobs_for_symbol(session, symbol=normalized_symbol, limit=min(limit, 12))
+    qfq_series_diagnostics = _build_qfq_series_diagnostics(series_rows=series_rows, action_rows=action_rows)
+    qfq_force_cache_ready_count = sum(1 for row in qfq_series_diagnostics if bool(row.get("force_skip_cache_ready")))
+    qfq_normal_skip_ready_count = sum(1 for row in qfq_series_diagnostics if bool(row.get("normal_skip_ready")))
 
     return {
         "symbol": normalized_symbol,
@@ -974,12 +1113,16 @@ def get_symbol_diagnostics(
         "adjustment_segment_rows": segment_rows,
         "source_file_manifest_rows": manifest_rows,
         "recent_ingestion_jobs": recent_jobs,
+        "qfq_series_diagnostics": qfq_series_diagnostics,
         "summary": {
             "series_count": len(series_rows),
             "corporate_action_count": len(action_rows),
             "adjustment_segment_count": len(segment_rows),
             "manifest_count": len(manifest_rows),
             "recent_job_count": len(recent_jobs),
+            "qfq_series_count": len(qfq_series_diagnostics),
+            "qfq_force_cache_ready_count": qfq_force_cache_ready_count,
+            "qfq_normal_skip_ready_count": qfq_normal_skip_ready_count,
         },
     }
 

@@ -62,6 +62,7 @@ http://127.0.0.1:8000/docs
 - 标的与映射信息：`instrument_symbol / instrument_name / source_symbol / market / exchange`
 - 序列口径：`interval / adjustment_kind / session_type / price_type / bar_type / currency / timezone`
 - 序列状态：`bar_count / first_bar_time / last_bar_time / last_ingested_at / is_active`
+- 元数据摘要：`metadata_summary`，其中会收敛 `source_period / source_file / raw_provider_key / raw_series_id / action_provider_key / raw_frame_digest / segment_frame_digest / adjusted_frame_digest`，便于前端直接诊断通达信原始链路与前复权派生链路的依赖关系。
 
 `GET /api/market-data/symbol-diagnostics` 用于围绕单个标的一次性聚合全链路排查结果，当前会把统一序列、最近公司行动、最近复权区间、最近通达信文件 manifest 和最近相关导入任务一起返回。支持：
 
@@ -71,12 +72,13 @@ http://127.0.0.1:8000/docs
 返回体当前包含：
 
 - 标的概览：`symbol / instrument_name / exchange`
-- 汇总计数：`summary.series_count / summary.corporate_action_count / summary.adjustment_segment_count / summary.manifest_count / summary.recent_job_count`
+- 汇总计数：`summary.series_count / summary.corporate_action_count / summary.adjustment_segment_count / summary.manifest_count / summary.recent_job_count / summary.qfq_series_count / summary.qfq_normal_skip_ready_count / summary.qfq_force_cache_ready_count`
 - 序列列表：`series_rows[]`
 - 公司行动列表：`corporate_action_rows[]`
 - 复权区间列表：`adjustment_segment_rows[]`
 - Manifest 列表：`source_file_manifest_rows[]`
 - 最近相关任务：`recent_ingestion_jobs[]`
+- 前复权派生链路诊断：`qfq_series_diagnostics[]`，逐条返回 `raw_provider_key / raw_series_id / raw_last_ingested_at / action_provider_key / latest_action_updated_at / normal_skip_ready / force_skip_cache_ready / *_digest / *_reasons`，用于直接判断该标的的 `tdx_qfq` 是否已经最新、以及重复 `--force` 时是否具备跳过区间/K 线写回的缓存条件。
 
 `GET /api/market-data/corporate-actions` 用于直接检查 `corporate_action_events` 中的实施事件，默认按 `ex_date` 倒序返回最近 100 条，也支持：
 

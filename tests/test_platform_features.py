@@ -219,12 +219,18 @@ class PlatformFeatureTests(unittest.TestCase):
             "strategy_studio.web.app.fetch_symbol_diagnostics",
             return_value={
                 "symbol": "SH600000",
-                "summary": {"series_count": 2},
+                "summary": {
+                    "series_count": 2,
+                    "qfq_series_count": 1,
+                    "qfq_normal_skip_ready_count": 1,
+                    "qfq_force_cache_ready_count": 1,
+                },
                 "series_rows": [{"series_id": 11}],
                 "corporate_action_rows": [{"event_id": 21}],
                 "adjustment_segment_rows": [{"segment_id": 31}],
                 "source_file_manifest_rows": [{"manifest_id": 41}],
                 "recent_ingestion_jobs": [{"id": 51}],
+                "qfq_series_diagnostics": [{"series_id": 61, "normal_skip_ready": True}],
             },
         ) as mock_diagnostics:
             response = client.get("/api/market-data/symbol-diagnostics?symbol=sh600000&limit=12")
@@ -232,7 +238,9 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["symbol"], "SH600000")
         self.assertEqual(response.json()["summary"]["series_count"], 2)
+        self.assertEqual(response.json()["summary"]["qfq_force_cache_ready_count"], 1)
         self.assertEqual(response.json()["source_file_manifest_rows"][0]["manifest_id"], 41)
+        self.assertEqual(response.json()["qfq_series_diagnostics"][0]["series_id"], 61)
         mock_diagnostics.assert_called_once_with(symbol="sh600000", limit=12)
 
     def test_web_api_market_data_corporate_actions_route(self) -> None:

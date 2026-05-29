@@ -109,6 +109,16 @@ export type MarketDataSeriesRow = {
   last_bar_time: string;
   last_ingested_at: string;
   is_active: boolean;
+  metadata_summary: {
+    source_period: string;
+    source_file: string;
+    raw_provider_key: string;
+    raw_series_id: number | null;
+    action_provider_key: string;
+    raw_frame_digest: string;
+    segment_frame_digest: string;
+    adjusted_frame_digest: string;
+  };
 };
 
 export type MarketDataCorporateActionRow = {
@@ -183,12 +193,35 @@ export type MarketDataSymbolDiagnostics = {
     adjustment_segment_count: number;
     manifest_count: number;
     recent_job_count: number;
+    qfq_series_count: number;
+    qfq_force_cache_ready_count: number;
+    qfq_normal_skip_ready_count: number;
   };
   series_rows: MarketDataSeriesRow[];
   corporate_action_rows: MarketDataCorporateActionRow[];
   adjustment_segment_rows: MarketDataAdjustmentSegmentRow[];
   source_file_manifest_rows: MarketDataSourceFileManifestRow[];
   recent_ingestion_jobs: MarketDataIngestionJob[];
+  qfq_series_diagnostics: Array<{
+    series_id: number;
+    instrument_symbol: string;
+    interval: string;
+    adjustment_kind: string;
+    qfq_last_ingested_at: string;
+    raw_provider_key: string;
+    raw_series_id: number | null;
+    raw_series_found: boolean;
+    raw_last_ingested_at: string;
+    action_provider_key: string;
+    latest_action_updated_at: string;
+    normal_skip_ready: boolean;
+    normal_skip_reasons: string[];
+    force_skip_cache_ready: boolean;
+    force_skip_reasons: string[];
+    raw_frame_digest: string;
+    segment_frame_digest: string;
+    adjusted_frame_digest: string;
+  }>;
 };
 
 export type MarketDataStats = {

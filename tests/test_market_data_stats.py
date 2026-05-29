@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from strategy_studio.repositories.market_data import get_ingestion_job_detail, get_market_data_stats
+from strategy_studio.repositories.market_data import get_ingestion_job_detail, get_market_data_stats, get_symbol_diagnostics
 
 
 class _ScalarListResult:
@@ -326,6 +326,79 @@ class MarketDataStatsTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["instrument_symbol"], "SH600000")
         self.assertEqual(payload["items"][1]["status"], "failed")
         self.assertEqual(payload["items"][1]["error_message"], "读取失败")
+
+    def test_get_symbol_diagnostics_exposes_qfq_series_health(self) -> None:
+        now = datetime(2026, 5, 29, 15, 0, tzinfo=UTC)
+        session = _FakeSession(
+            scalar_results=[
+                SimpleNamespace(symbol="SH600000", name="浦发银行", exchange="SH"),
+            ],
+            execute_results=[],
+            scalars_results=[],
+        )
+        series_rows = [
+            {
+                "series_id": 101,
+                "provider_key": "tdx",
+                "instrument_symbol": "SH600000",
+                "interval": "1d",
+                "adjustment_kind": "raw",
+                "last_ingested_at": "2026-05-29 15:00:00+00:00",
+                "metadata_summary": {
+                    "source_period": "day",
+                    "source_file": "vipdoc/sh/lday/sh600000.day",
+                    "raw_provider_key": "",
+                    "raw_series_id": None,
+                    "action_provider_key": "",
+                    "raw_frame_digest": "",
+                    "segment_frame_digest": "",
+                    "adjusted_frame_digest": "",
+                },
+            },
+            {
+                "series_id": 102,
+                "provider_key": "tdx_qfq",
+                "instrument_symbol": "SH600000",
+                "interval": "1d",
+                "adjustment_kind": "qfq",
+                "last_ingested_at": "2026-05-29 15:00:00+00:00",
+                "metadata_summary": {
+                    "source_period": "",
+                    "source_file": "",
+                    "raw_provider_key": "tdx",
+                    "raw_series_id": 101,
+                    "action_provider_key": "tushare",
+                    "raw_frame_digest": "rawdigest1234567890",
+                    "segment_frame_digest": "segmentdigest1234567890",
+                    "adjusted_frame_digest": "adjusteddigest1234567890",
+                },
+            },
+        ]
+        action_rows = [
+            {
+                "event_id": 201,
+                "provider_key": "tushare",
+                "updated_at": "2026-05-29 14:30:00+00:00",
+            }
+        ]
+
+        with (
+            patch("strategy_studio.repositories.market_data.list_provider_series", return_value=series_rows),
+            patch("strategy_studio.repositories.market_data.list_corporate_actions", return_value=action_rows),
+            patch("strategy_studio.repositories.market_data.list_adjustment_segments", return_value=[{"segment_id": 301}]),
+            patch("strategy_studio.repositories.market_data.list_source_file_manifests", return_value=[{"manifest_id": 401}]),
+            patch("strategy_studio.repositories.market_data._list_recent_ingestion_jobs_for_symbol", return_value=[{"id": 501}]),
+        ):
+            payload = get_symbol_diagnostics(session, symbol="SH600000", limit=12)
+
+        self.assertEqual(payload["summary"]["series_count"], 2)
+        self.assertEqual(payload["summary"]["qfq_series_count"], 1)
+        self.assertEqual(payload["summary"]["qfq_normal_skip_ready_count"], 1)
+        self.assertEqual(payload["summary"]["qfq_force_cache_ready_count"], 1)
+        self.assertEqual(payload["qfq_series_diagnostics"][0]["raw_series_id"], 101)
+        self.assertTrue(payload["qfq_series_diagnostics"][0]["normal_skip_ready"])
+        self.assertTrue(payload["qfq_series_diagnostics"][0]["force_skip_cache_ready"])
+        self.assertEqual(payload["qfq_series_diagnostics"][0]["action_provider_key"], "tushare")
 
 
 if __name__ == "__main__":
