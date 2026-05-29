@@ -296,6 +296,14 @@ export type PlatformStatus = {
         by_interval: Record<string, number>;
         by_market: Record<string, { total_files: number } & Record<string, number>>;
       };
+      manifest_coverage: {
+        provider_key: string;
+        imported_files: number;
+        pending_files: number;
+        coverage_pct: number;
+        by_interval: Record<string, { inventory_files: number; imported_files: number; pending_files: number; coverage_pct: number }>;
+        by_market: Record<string, { inventory_files: number; imported_files: number; pending_files: number; coverage_pct: number }>;
+      };
       supports_intervals: string[];
       error_message: string;
     };

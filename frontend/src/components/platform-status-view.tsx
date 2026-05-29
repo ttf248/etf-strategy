@@ -199,6 +199,12 @@ function formatTdxInventorySummary(tdx: PlatformStatus["market_data_runtime"]["t
   return `文件总数 ${tdx.market_inventory.total_files}；1d=${intervalCounts["1d"] ?? 0} / 1m=${intervalCounts["1m"] ?? 0} / 5m=${intervalCounts["5m"] ?? 0}`;
 }
 
+function formatTdxCoverageSummary(tdx: PlatformStatus["market_data_runtime"]["tdx"]): string {
+  const coverage = tdx.manifest_coverage;
+  const intervalCoverage = coverage.by_interval;
+  return `已导 ${coverage.imported_files} / 待导 ${coverage.pending_files} / 覆盖率 ${coverage.coverage_pct}%（1d=${intervalCoverage["1d"]?.coverage_pct ?? 0}% / 1m=${intervalCoverage["1m"]?.coverage_pct ?? 0}% / 5m=${intervalCoverage["5m"]?.coverage_pct ?? 0}%）`;
+}
+
 function formatTdxMarketSummary(tdx: PlatformStatus["market_data_runtime"]["tdx"]): string {
   const markets = Object.entries(tdx.market_inventory.by_market);
   if (markets.length === 0) {
@@ -232,7 +238,7 @@ function buildMarketDataRuntimeGuides(status: PlatformStatus): MarketDataRuntime
         ? `vipdoc：${tdx.vipdoc_path}；${tdx.vipdoc_exists ? formatTdxInventorySummary(tdx) : "等待目录配置生效。"}`
         : "当前还没有可用于原始导入的 vipdoc 根目录。",
       detail: tdx.vipdoc_exists
-        ? `来源：${formatRuntimeSource(tdx.path_source)}；市场目录：${tdx.market_roots.length > 0 ? tdx.market_roots.join(" / ") : "未识别"}；市场文件摘要：${formatTdxMarketSummary(tdx)}；支持 ${tdx.supports_intervals.join(" / ")}。`
+        ? `来源：${formatRuntimeSource(tdx.path_source)}；${formatTdxCoverageSummary(tdx)}；市场目录：${tdx.market_roots.length > 0 ? tdx.market_roots.join(" / ") : "未识别"}；市场文件摘要：${formatTdxMarketSummary(tdx)}；支持 ${tdx.supports_intervals.join(" / ")}。`
         : `来源：${formatRuntimeSource(tdx.path_source)}；配置文件：${tdx.config_path}；${tdx.error_message || "需要补齐 TDX 路径配置。"} `,
     },
     {

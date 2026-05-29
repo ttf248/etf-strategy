@@ -178,6 +178,18 @@ class PlatformFeatureTests(unittest.TestCase):
                         "by_interval": {"1d": 4, "1m": 4, "5m": 4},
                         "by_market": {"sh": {"total_files": 6}, "sz": {"total_files": 6}},
                     },
+                    "manifest_coverage": {
+                        "provider_key": "tdx",
+                        "imported_files": 9,
+                        "pending_files": 3,
+                        "coverage_pct": 75.0,
+                        "by_interval": {
+                            "1d": {"inventory_files": 4, "imported_files": 3, "pending_files": 1, "coverage_pct": 75.0},
+                            "1m": {"inventory_files": 4, "imported_files": 3, "pending_files": 1, "coverage_pct": 75.0},
+                            "5m": {"inventory_files": 4, "imported_files": 3, "pending_files": 1, "coverage_pct": 75.0},
+                        },
+                        "by_market": {},
+                    },
                 },
                 "tushare": {"status": "ok", "token_present": True, "rate_limit_per_minute": 450, "config_path": "F:\\trade\\tdx\\config.local.yaml"},
             },
@@ -196,6 +208,7 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertIn("数据库：ok", rendered)
         self.assertIn("Yahoo 代理候选：http://127.0.0.1:7897", rendered)
         self.assertIn("Yahoo 提示：检测到系统代理候选", rendered)
+        self.assertIn("TDX 导入覆盖：imported=9 pending=3 coverage=75.0%", rendered)
         self.assertIn("TDX 路径：G:\\new_tdx64\\vipdoc", rendered)
         self.assertIn("Tushare 配置：F:\\trade\\tdx\\config.local.yaml", rendered)
 
@@ -958,6 +971,18 @@ class PlatformFeatureTests(unittest.TestCase):
                         "by_interval": {"1d": 3200, "1m": 3069, "5m": 3069},
                         "by_market": {"sh": {"1d": 1600, "1m": 1534, "5m": 1534, "total_files": 4668}},
                     },
+                    "manifest_coverage": {
+                        "provider_key": "tdx",
+                        "imported_files": 1200,
+                        "pending_files": 8138,
+                        "coverage_pct": 12.85,
+                        "by_interval": {
+                            "1d": {"inventory_files": 3200, "imported_files": 500, "pending_files": 2700, "coverage_pct": 15.63},
+                            "1m": {"inventory_files": 3069, "imported_files": 350, "pending_files": 2719, "coverage_pct": 11.4},
+                            "5m": {"inventory_files": 3069, "imported_files": 350, "pending_files": 2719, "coverage_pct": 11.4},
+                        },
+                        "by_market": {"sh": {"inventory_files": 4668, "imported_files": 600, "pending_files": 4068, "coverage_pct": 12.85}},
+                    },
                     "supports_intervals": ["1d", "1m", "5m", "all"],
                     "error_message": "",
                 },
@@ -1022,6 +1047,18 @@ class PlatformFeatureTests(unittest.TestCase):
                     "by_interval": {"1d": 3200, "1m": 3069, "5m": 3069},
                     "by_market": {"sh": {"1d": 1600, "1m": 1534, "5m": 1534, "total_files": 4668}},
                 },
+                "manifest_coverage": {
+                    "provider_key": "tdx",
+                    "imported_files": 1200,
+                    "pending_files": 8138,
+                    "coverage_pct": 12.85,
+                    "by_interval": {
+                        "1d": {"inventory_files": 3200, "imported_files": 500, "pending_files": 2700, "coverage_pct": 15.63},
+                        "1m": {"inventory_files": 3069, "imported_files": 350, "pending_files": 2719, "coverage_pct": 11.4},
+                        "5m": {"inventory_files": 3069, "imported_files": 350, "pending_files": 2719, "coverage_pct": 11.4},
+                    },
+                    "by_market": {"sh": {"inventory_files": 4668, "imported_files": 600, "pending_files": 4068, "coverage_pct": 12.85}},
+                },
                 "supports_intervals": ["1d", "1m", "5m", "all"],
                 "error_message": "",
             },
@@ -1052,6 +1089,7 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(payload["frontend"]["status"], "down")
         self.assertEqual(payload["market_data_runtime"]["tdx"]["vipdoc_path"], "G:/new_tdx64/vipdoc")
         self.assertEqual(payload["market_data_runtime"]["tdx"]["market_inventory"]["total_files"], 9338)
+        self.assertEqual(payload["market_data_runtime"]["tdx"]["manifest_coverage"]["coverage_pct"], 12.85)
         self.assertTrue(payload["market_data_runtime"]["tushare"]["token_present"])
 
     def test_build_tdx_runtime_payload_includes_market_inventory(self) -> None:
@@ -1082,6 +1120,52 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(payload["market_inventory"]["by_interval"], {"1d": 2, "1m": 2, "5m": 1})
         self.assertEqual(payload["market_inventory"]["by_market"]["sh"]["total_files"], 3)
         self.assertEqual(payload["market_inventory"]["by_market"]["ds"]["1d"], 1)
+        self.assertEqual(payload["manifest_coverage"]["provider_key"], "tdx")
+
+    def test_build_tdx_manifest_coverage_uses_inventory_and_manifest_rows(self) -> None:
+        inventory = {
+            "total_files": 10,
+            "by_interval": {"1d": 4, "1m": 3, "5m": 3},
+            "by_market": {
+                "sh": {"total_files": 6, "1d": 2, "1m": 2, "5m": 2},
+                "sz": {"total_files": 4, "1d": 2, "1m": 1, "5m": 1},
+            },
+        }
+
+        class _SessionDouble:
+            def scalar(self, _statement):
+                return 7
+
+            def execute(self, _statement):
+                class _Result:
+                    @staticmethod
+                    def all():
+                        return [
+                            SimpleNamespace(market="sh", interval="1d"),
+                            SimpleNamespace(market="sh", interval="1d"),
+                            SimpleNamespace(market="sh", interval="1m"),
+                            SimpleNamespace(market="sh", interval="5m"),
+                            SimpleNamespace(market="sz", interval="1d"),
+                        ]
+
+                return _Result()
+
+        class _SessionContext:
+            def __enter__(self):
+                return _SessionDouble()
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with patch("strategy_studio.services.platform.open_session", return_value=_SessionContext()):
+            payload = platform_service._build_tdx_manifest_coverage("tdx", inventory)
+
+        self.assertEqual(payload["imported_files"], 5)
+        self.assertEqual(payload["pending_files"], 5)
+        self.assertEqual(payload["coverage_pct"], 50.0)
+        self.assertEqual(payload["by_interval"]["1d"]["imported_files"], 3)
+        self.assertEqual(payload["by_interval"]["1m"]["pending_files"], 2)
+        self.assertEqual(payload["by_market"]["sh"]["coverage_pct"], 66.67)
 
     def test_build_yahoo_runtime_payload_prefers_env_proxy(self) -> None:
         with (

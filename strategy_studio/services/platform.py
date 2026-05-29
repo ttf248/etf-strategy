@@ -11,10 +11,11 @@ from pathlib import Path
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import make_url
 
 from strategy_studio.data.tushare import load_tushare_client_settings
+from strategy_studio.db.models import DataProvider, SourceFileManifest
 from strategy_studio.db.session import open_session
 from strategy_studio.db.settings import load_platform_settings
 from strategy_studio.repositories.backtests import count_backtest_jobs_by_status
@@ -236,6 +237,77 @@ def _build_tdx_market_inventory(vipdoc_path: Path) -> dict[str, object]:
     return inventory
 
 
+def _build_tdx_manifest_coverage(provider_key: str, inventory: dict[str, object]) -> dict[str, object]:
+    """对比数据库 manifest 和 vipdoc 实时库存，估算当前导入推进进度。"""
+    coverage = {
+        "provider_key": provider_key,
+        "imported_files": 0,
+        "pending_files": int(inventory.get("total_files") or 0),
+        "coverage_pct": 0.0,
+        "by_interval": {
+            interval: {
+                "inventory_files": int((inventory.get("by_interval") or {}).get(interval) or 0),
+                "imported_files": 0,
+                "pending_files": int((inventory.get("by_interval") or {}).get(interval) or 0),
+                "coverage_pct": 0.0,
+            }
+            for interval in ("1d", "1m", "5m")
+        },
+        "by_market": {},
+    }
+    market_inventory = inventory.get("by_market") if isinstance(inventory.get("by_market"), dict) else {}
+    for market, counts in market_inventory.items():
+        if not isinstance(counts, dict):
+            continue
+        inventory_files = int(counts.get("total_files") or 0)
+        coverage["by_market"][market] = {
+            "inventory_files": inventory_files,
+            "imported_files": 0,
+            "pending_files": inventory_files,
+            "coverage_pct": 0.0,
+        }
+
+    try:
+        with open_session() as session:
+            provider_id = session.scalar(select(DataProvider.id).where(DataProvider.provider_key == provider_key))
+            if provider_id is None:
+                return coverage
+            manifest_rows = session.execute(
+                select(SourceFileManifest.market, SourceFileManifest.interval).where(SourceFileManifest.provider_id == provider_id)
+            ).all()
+    except Exception:
+        return coverage
+
+    imported_total = len(manifest_rows)
+    coverage["imported_files"] = imported_total
+    total_inventory = int(inventory.get("total_files") or 0)
+    coverage["pending_files"] = max(0, total_inventory - imported_total)
+    coverage["coverage_pct"] = round((imported_total / total_inventory) * 100, 2) if total_inventory > 0 else 0.0
+
+    for row in manifest_rows:
+        market = str(row.market or "").strip().lower()
+        interval = str(row.interval or "").strip().lower()
+        if interval in coverage["by_interval"]:
+            interval_payload = coverage["by_interval"][interval]
+            interval_payload["imported_files"] += 1
+        if market in coverage["by_market"]:
+            coverage["by_market"][market]["imported_files"] += 1
+
+    for interval_payload in coverage["by_interval"].values():
+        inventory_files = int(interval_payload["inventory_files"] or 0)
+        imported_files = int(interval_payload["imported_files"] or 0)
+        interval_payload["pending_files"] = max(0, inventory_files - imported_files)
+        interval_payload["coverage_pct"] = round((imported_files / inventory_files) * 100, 2) if inventory_files > 0 else 0.0
+
+    for market_payload in coverage["by_market"].values():
+        inventory_files = int(market_payload["inventory_files"] or 0)
+        imported_files = int(market_payload["imported_files"] or 0)
+        market_payload["pending_files"] = max(0, inventory_files - imported_files)
+        market_payload["coverage_pct"] = round((imported_files / inventory_files) * 100, 2) if inventory_files > 0 else 0.0
+
+    return coverage
+
+
 def _normalize_proxy_candidate(raw_proxy: str) -> str:
     """把系统代理文本归一化成可直接复制给 --proxy 的地址。"""
     normalized = raw_proxy.strip()
@@ -327,6 +399,18 @@ def _build_tdx_runtime_payload() -> dict[str, object]:
         "by_interval": {"1d": 0, "1m": 0, "5m": 0},
         "by_market": {},
     }
+    manifest_coverage = _build_tdx_manifest_coverage("tdx", inventory) if resolved_path and vipdoc_exists else {
+        "provider_key": "tdx",
+        "imported_files": 0,
+        "pending_files": 0,
+        "coverage_pct": 0.0,
+        "by_interval": {
+            "1d": {"inventory_files": 0, "imported_files": 0, "pending_files": 0, "coverage_pct": 0.0},
+            "1m": {"inventory_files": 0, "imported_files": 0, "pending_files": 0, "coverage_pct": 0.0},
+            "5m": {"inventory_files": 0, "imported_files": 0, "pending_files": 0, "coverage_pct": 0.0},
+        },
+        "by_market": {},
+    }
     return {
         "status": "ok" if vipdoc_exists else "misconfigured",
         "config_path": str(config_path),
@@ -336,6 +420,7 @@ def _build_tdx_runtime_payload() -> dict[str, object]:
         "path_source": path_source,
         "market_roots": _resolve_market_roots(resolved_path) if resolved_path and vipdoc_exists else [],
         "market_inventory": inventory,
+        "manifest_coverage": manifest_coverage,
         "supports_intervals": ["1d", "1m", "5m", "all"],
         "error_message": "" if vipdoc_exists else "未解析到可访问的通达信 vipdoc 目录。",
     }

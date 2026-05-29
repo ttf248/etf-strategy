@@ -402,6 +402,22 @@ def handle_check_runtime(args: argparse.Namespace) -> int:
             f"total={market_inventory.get('total_files', 0)} "
             f"1d={by_interval.get('1d', 0)} 1m={by_interval.get('1m', 0)} 5m={by_interval.get('5m', 0)}"
         )
+    manifest_coverage = tdx.get("manifest_coverage") if isinstance(tdx.get("manifest_coverage"), dict) else {}
+    coverage_by_interval = manifest_coverage.get("by_interval") if isinstance(manifest_coverage.get("by_interval"), dict) else {}
+    if manifest_coverage:
+        print(
+            "TDX 导入覆盖："
+            f"imported={manifest_coverage.get('imported_files', 0)} "
+            f"pending={manifest_coverage.get('pending_files', 0)} "
+            f"coverage={manifest_coverage.get('coverage_pct', 0.0)}%"
+        )
+    if coverage_by_interval:
+        print(
+            "TDX 周期覆盖："
+            f"1d={coverage_by_interval.get('1d', {}).get('coverage_pct', 0.0)}% "
+            f"1m={coverage_by_interval.get('1m', {}).get('coverage_pct', 0.0)}% "
+            f"5m={coverage_by_interval.get('5m', {}).get('coverage_pct', 0.0)}%"
+        )
     if by_market:
         summary = ", ".join(
             f"{market}={details.get('total_files', 0)}"
