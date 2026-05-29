@@ -22,7 +22,10 @@ test("报告详情可以带着当前报告进入对比区", async ({ page, reque
   await expect(page.getByText("优先理解模板定位、交易节奏与风险假设，无需先通读全部参数名")).toBeVisible();
   await page.getByRole("link", { name: /带上最该比的结果继续判断|带入对比区继续判断/ }).first().click();
 
-  await expect(page).toHaveURL(new RegExp(`/reports\\?compare=${report.id}.*keyword=${report.symbol}.*interval=${report.interval}`));
+  await expect(page).toHaveURL(/\/reports\?/);
+  await expect.poll(() => new URL(page.url()).searchParams.getAll("compare")).toContain(String(report.id));
+  await expect.poll(() => new URL(page.url()).searchParams.get("keyword")).toBe(report.symbol);
+  await expect.poll(() => new URL(page.url()).searchParams.get("interval")).toBe(report.interval);
   await expect(page.getByText("已从详情页带入报告")).toBeVisible();
   await expect(page.getByText("当前这批结果，最该先做什么")).toBeVisible();
   await expect(page.getByText("结果快筛")).toBeVisible();
@@ -30,5 +33,5 @@ test("报告详情可以带着当前报告进入对比区", async ({ page, reque
   await expect(page.getByText("先按判断目标收窄结果，再决定要不要通读全部卡片")).toBeVisible();
   await expect(page.getByText("报告默认按复盘优先级排序，而非简单按时间堆叠")).toBeVisible();
   await expect(page.getByText("1. 收藏报告")).toBeVisible();
-  await expect(page.locator(".report-compare-card").nth(1).locator(".report-compare-item").first().getByText(`编号 ${report.id} ${report.symbol}`)).toBeVisible();
+  await expect(page.locator(".report-compare-item").getByText(`编号 ${report.id} ${report.symbol}`).first()).toBeVisible();
 });

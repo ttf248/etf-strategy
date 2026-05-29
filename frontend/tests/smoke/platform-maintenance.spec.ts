@@ -23,17 +23,18 @@ test("维护页首屏先给出是否需要排障的判断", async ({ page, reque
   const activeTaskCount = queuedJobs + runningJobs + cancelRequestedJobs;
   const platformReady = serviceOk(status.api.status) && serviceOk(status.frontend.status) && serviceOk(status.database.status);
 
-  let expectedBanner = "现在不需要继续停留在这里";
+  let expectedBanner = "当前无需继续停留在此页面";
   if (!platformReady) {
-    expectedBanner = "先确认是不是服务异常，而不是先翻日志";
+    expectedBanner = "优先确认是否存在服务异常，而不是直接翻日志";
   } else if (activeTaskCount > 0) {
-    expectedBanner = "平台本身正常，先看任务是否只是还在处理";
+    expectedBanner = "平台本身正常，先确认任务是否仍在处理中";
   }
 
   await page.goto("/platform");
 
   await expect(page.getByRole("heading", { name: "系统状态" })).toBeVisible();
   await expect(page.getByText(expectedBanner)).toBeVisible();
-  await expect(page.getByText("如果页面打不开，再看服务心跳与定时同步")).toBeVisible();
-  await expect(page.getByText("如果怀疑执行服务没运行，再看本机服务")).toBeVisible();
+  await expect(page.getByText("先确认当前是否需要进入该页")).toBeVisible();
+  await expect(page.getByText("服务不可用时，再看服务心跳与定时同步")).toBeVisible();
+  await expect(page.getByText("怀疑执行服务未运行时，再看本机服务")).toBeVisible();
 });

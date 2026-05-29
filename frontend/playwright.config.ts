@@ -9,6 +9,7 @@ const backendOrigin =
 export default defineConfig({
   testDir: "./tests/smoke",
   fullyParallel: false,
+  workers: 1,
   timeout: 60_000,
   expect: {
     timeout: 10_000,
