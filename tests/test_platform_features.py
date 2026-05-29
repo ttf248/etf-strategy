@@ -1011,6 +1011,123 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(ingestion_job.status, "succeeded")
         self.assertEqual(len(result["workflow_results"]), 3)
 
+    def test_tdx_pipeline_batch_workflow_uses_tdx_daily_targets_for_tushare_and_qfq(self) -> None:
+        session = SimpleNamespace()
+        session.commit = lambda: None
+        session.rollback = lambda: None
+        registry: dict[int, object] = {}
+        session.get = lambda _model, identity: registry.get(identity)
+
+        class _SessionContext:
+            def __enter__(self):
+                return session
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        provider = SimpleNamespace(id=321, provider_key="tdx_pipeline")
+        ingestion_job = SimpleNamespace(
+            id=421,
+            targets_total=0,
+            targets_completed=0,
+            rows_inserted=0,
+            rows_updated=0,
+            error_count=0,
+            summary_json={},
+            completed_at=None,
+            status="running",
+            error_message="",
+        )
+        registry[421] = ingestion_job
+
+        item_ids = [521, 522, 523]
+
+        def fake_create_item(*_args, **_kwargs):
+            current_id = item_ids.pop(0)
+            item = SimpleNamespace(
+                id=current_id,
+                status="running",
+                stage="download",
+                rows_inserted=0,
+                rows_updated=0,
+                details_json={},
+                error_message="",
+            )
+            registry[current_id] = item
+            return item
+
+        with (
+            patch("strategy_studio.services.sync.open_session", return_value=_SessionContext()),
+            patch("strategy_studio.services.sync.ensure_data_provider", return_value=provider),
+            patch("strategy_studio.services.sync.create_data_ingestion_job", return_value=ingestion_job),
+            patch("strategy_studio.services.sync.create_data_ingestion_job_item", side_effect=fake_create_item),
+            patch(
+                "strategy_studio.services.sync._sync_tdx_market_data",
+                return_value={
+                    "provider": "tdx",
+                    "interval": "all",
+                    "symbols_count": 2,
+                    "bars_inserted": 600,
+                    "bars_updated": 10,
+                    "ingestion_job_ids": [111, 112, 113],
+                    "status": "succeeded",
+                },
+            ),
+            patch(
+                "strategy_studio.services.sync._resolve_tdx_pipeline_batch_symbols",
+                return_value=["SH600000", "SZ000001"],
+            ) as mock_pipeline_targets,
+            patch(
+                "strategy_studio.services.sync._sync_tushare_corporate_actions",
+                return_value={
+                    "provider": "tushare",
+                    "interval": "corp_actions",
+                    "symbols_count": 2,
+                    "bars_inserted": 6,
+                    "bars_updated": 0,
+                    "ingestion_job_id": 114,
+                    "status": "succeeded",
+                },
+            ) as mock_tushare,
+            patch(
+                "strategy_studio.services.sync._rebuild_tdx_qfq_market_data",
+                return_value={
+                    "provider": "tdx_qfq",
+                    "interval": "1d",
+                    "symbols_count": 2,
+                    "bars_inserted": 200,
+                    "bars_updated": 2,
+                    "ingestion_job_id": 115,
+                    "status": "succeeded",
+                },
+            ) as mock_qfq,
+        ):
+            result = sync_service._run_tdx_pipeline_workflow(
+                symbol=None,
+                interval="all",
+                vipdoc_path="G:/new_tdx64/vipdoc",
+                force=True,
+                limit=2,
+            )
+
+        mock_pipeline_targets.assert_called_once_with(limit=2)
+        mock_tushare.assert_called_once_with(
+            symbol=None,
+            limit=2,
+            force=True,
+            target_symbols=["SH600000", "SZ000001"],
+        )
+        mock_qfq.assert_called_once_with(
+            symbol=None,
+            interval="1d",
+            force=True,
+            limit=2,
+            target_symbols=["SH600000", "SZ000001"],
+        )
+        self.assertEqual(result["provider"], "tdx_pipeline")
+        self.assertEqual(result["symbols_count"], 2)
+        self.assertEqual(result["child_ingestion_job_ids"], [111, 112, 113, 114, 115])
+
 
 class StrategyTemplateServiceTests(unittest.TestCase):
     def test_backtest_parallelism_is_capped_by_worker_and_cpu_budget(self) -> None:

@@ -207,6 +207,7 @@ def _run_tdx_pipeline_workflow(
         child_ingestion_job_ids: list[int] = []
         workflow_results: list[dict[str, object]] = []
         step_statuses: list[str] = []
+        pipeline_target_symbols: list[str] | None = [normalized_symbol.upper()] if normalized_symbol else None
         blocked = False
         blocked_by = ""
         blocked_message = ""
@@ -250,11 +251,14 @@ def _run_tdx_pipeline_workflow(
                         force=force,
                         limit=limit,
                     )
+                    if not normalized_symbol:
+                        pipeline_target_symbols = _resolve_tdx_pipeline_batch_symbols(limit=limit)
                 elif step["key"] == "tushare_actions":
                     result = _sync_tushare_corporate_actions(
                         symbol=normalized_symbol or None,
                         limit=limit,
                         force=force,
+                        target_symbols=pipeline_target_symbols,
                     )
                 else:
                     result = _rebuild_tdx_qfq_market_data(
@@ -262,6 +266,7 @@ def _run_tdx_pipeline_workflow(
                         interval="1d",
                         force=force,
                         limit=limit,
+                        target_symbols=pipeline_target_symbols,
                     )
 
                 child_ids = _collect_child_ingestion_job_ids(result)
@@ -1078,9 +1083,10 @@ def _sync_tushare_corporate_actions(
     symbol: str | None,
     limit: int | None,
     force: bool,
+    target_symbols: list[str] | None = None,
 ) -> dict[str, object]:
     client = TushareClient(load_tushare_client_settings())
-    targets = _resolve_tushare_targets(client, symbol=symbol, limit=limit)
+    targets = _resolve_tushare_targets(client, symbol=symbol, limit=limit, target_symbols=target_symbols)
 
     with open_session() as session:
         provider = ensure_data_provider(
@@ -1105,6 +1111,7 @@ def _sync_tushare_corporate_actions(
             target_scope_json={
                 "symbol": (symbol or "").strip(),
                 "limit": limit or 0,
+                "target_symbols": [item.strip().upper() for item in target_symbols or []],
             },
             options_json={
                 "force": force,
@@ -1257,6 +1264,7 @@ def _rebuild_tdx_qfq_market_data(
     interval: str,
     force: bool,
     limit: int | None,
+    target_symbols: list[str] | None = None,
 ) -> dict[str, object]:
     if interval != "1d":
         raise ValueError("当前前复权重算只支持 1d 日线。")
@@ -1292,7 +1300,13 @@ def _rebuild_tdx_qfq_market_data(
             config_json={"depends_on": ["tdx", "tushare"], "supports_intervals": ["1d"], "adjustment_kind": "qfq"},
             status="active",
         )
-        targets = _resolve_tdx_qfq_targets(session, raw_provider=raw_provider, symbol=symbol, limit=limit)
+        targets = _resolve_tdx_qfq_targets(
+            session,
+            raw_provider=raw_provider,
+            symbol=symbol,
+            limit=limit,
+            target_symbols=target_symbols,
+        )
         if not targets:
             raise ValueError("当前数据库中没有可重算前复权的通达信原始 1d 序列。")
 
@@ -1305,6 +1319,7 @@ def _rebuild_tdx_qfq_market_data(
                 "symbol": (symbol or "").strip().lower(),
                 "interval": interval,
                 "limit": limit or 0,
+                "target_symbols": [item.strip().upper() for item in target_symbols or []],
             },
             options_json={"force": force},
         )
@@ -1536,7 +1551,26 @@ def _resolve_tushare_targets(
     *,
     symbol: str | None,
     limit: int | None,
+    target_symbols: list[str] | None = None,
 ) -> list[dict[str, str]]:
+    if target_symbols:
+        targets: list[dict[str, str]] = []
+        for raw_symbol in target_symbols:
+            normalized_symbol = str(raw_symbol).strip().upper()
+            if not normalized_symbol:
+                continue
+            ts_code = symbol_to_ts_code(normalized_symbol)
+            instrument_symbol = ts_code_to_instrument_symbol(ts_code)
+            targets.append(
+                {
+                    "ts_code": ts_code,
+                    "symbol": instrument_symbol,
+                    "name": instrument_symbol,
+                }
+            )
+        if not targets:
+            raise ValueError("统一补数链路没有解析出可抓取的 Tushare 标的。")
+        return targets
     if symbol and symbol.strip():
         ts_code = symbol_to_ts_code(symbol)
         instrument_symbol = ts_code_to_instrument_symbol(ts_code)
@@ -1575,6 +1609,7 @@ def _resolve_tdx_qfq_targets(
     raw_provider,
     symbol: str | None,
     limit: int | None,
+    target_symbols: list[str] | None = None,
 ) -> list[dict[str, object]]:
     statement = (
         select(MarketDataSeries, Instrument, InstrumentAlias)
@@ -1592,6 +1627,11 @@ def _resolve_tdx_qfq_targets(
         statement = statement.where(
             (Instrument.symbol == normalized_symbol) | (InstrumentAlias.source_symbol == normalized_symbol)
         )
+    elif target_symbols:
+        normalized_symbols = [item.strip().upper() for item in target_symbols if item.strip()]
+        if not normalized_symbols:
+            return []
+        statement = statement.where(Instrument.symbol.in_(normalized_symbols))
     if limit is not None:
         statement = statement.limit(limit)
 
@@ -1599,6 +1639,25 @@ def _resolve_tdx_qfq_targets(
         {"series": row[0], "instrument": row[1], "alias": row[2]}
         for row in session.execute(statement).all()
     ]
+
+
+def _resolve_tdx_pipeline_batch_symbols(limit: int | None) -> list[str]:
+    with open_session() as session:
+        raw_provider = ensure_data_provider(
+            session,
+            provider_key="tdx",
+            provider_name="通达信本地行情",
+            provider_type="market_data",
+            transport="filesystem",
+            timezone="Asia/Shanghai",
+            config_json={"supports_intervals": ["1d"]},
+            status="active",
+        )
+        targets = _resolve_tdx_qfq_targets(session, raw_provider=raw_provider, symbol=None, limit=limit)
+        symbols = [str(item["instrument"].symbol).strip().upper() for item in targets if str(item["instrument"].symbol).strip()]
+        if not symbols:
+            raise ValueError("统一补数链路未找到可用于公司行动和前复权的通达信原始 1d 标的。")
+        return symbols
 
 
 def _load_raw_market_data_frame(session, series: MarketDataSeries) -> pd.DataFrame:
