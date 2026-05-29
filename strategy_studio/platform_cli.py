@@ -219,7 +219,7 @@ def add_platform_subcommands(subparsers: argparse._SubParsersAction[argparse.Arg
         "--limit",
         type=int,
         default=None,
-        help="限制导入范围；provider=yahoo 或 provider=yahoo_pipeline 时限制 symbol_set 或已知标的数量，provider=tdx 时限制文件数（interval=all 时对每个 TDX 周期分别生效），provider=tushare、provider=tdx_qfq 或 provider=tdx_pipeline 时限制股票数",
+        help="限制导入范围；provider=yahoo 或 provider=yahoo_pipeline 时限制 symbol_set 或已知标的数量，provider=tdx 时限制本次实际处理的文件数（interval=all 时对每个 TDX 周期分别生效；未传 --force 且未指定 symbol 时，会优先挑选尚未导入或源文件已变化的文件），provider=tushare、provider=tdx_qfq 或 provider=tdx_pipeline 时限制股票数",
     )
 
     api_parser = subparsers.add_parser("api", help="启动 FastAPI 服务")

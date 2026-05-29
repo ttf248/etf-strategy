@@ -1539,6 +1539,86 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(result["ingestion_job_ids"], [101, 102, 103])
         self.assertEqual(result["status"], "succeeded")
 
+    def test_select_tdx_source_files_for_batch_skips_unchanged_manifest_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            vipdoc = Path(temp_dir) / "vipdoc"
+            market_dir = vipdoc / "sh" / "lday"
+            market_dir.mkdir(parents=True)
+            first_file = market_dir / "sh600000.day"
+            second_file = market_dir / "sh600001.day"
+            third_file = market_dir / "sh600002.day"
+            for source_file in (first_file, second_file, third_file):
+                source_file.write_bytes(b"\x00" * 32)
+
+            source_files = [first_file, second_file, third_file]
+            manifest_index = {
+                "sh/lday/sh600000.day": SimpleNamespace(status="success"),
+                "sh/lday/sh600001.day": SimpleNamespace(status="success"),
+            }
+
+            with patch(
+                "strategy_studio.services.sync.get_source_file_manifest_index",
+                return_value=manifest_index,
+            ):
+                selected = sync_service._select_tdx_source_files_for_batch(
+                    source_files,
+                    provider=SimpleNamespace(id=1, provider_key="tdx"),
+                    vipdoc=vipdoc,
+                    interval="1d",
+                    symbol=None,
+                    force=False,
+                    limit=1,
+                    session=object(),
+                )
+
+        self.assertEqual([item.name for item in selected], ["sh600002.day"])
+
+    def test_select_tdx_source_files_for_batch_keeps_changed_tracked_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            vipdoc = Path(temp_dir) / "vipdoc"
+            market_dir = vipdoc / "sh" / "lday"
+            market_dir.mkdir(parents=True)
+            first_file = market_dir / "sh600000.day"
+            second_file = market_dir / "sh600001.day"
+            for source_file in (first_file, second_file):
+                source_file.write_bytes(b"\x00" * 32)
+
+            source_files = [first_file, second_file]
+            manifest_index = {
+                "sh/lday/sh600000.day": SimpleNamespace(status="success"),
+                "sh/lday/sh600001.day": SimpleNamespace(status="success"),
+            }
+
+            with (
+                patch(
+                    "strategy_studio.services.sync.get_source_file_manifest_index",
+                    return_value=manifest_index,
+                ),
+                patch(
+                    "strategy_studio.services.sync.build_tdx_file_signature",
+                    side_effect=[
+                        {"source_size": 32, "source_mtime": 1.0, "record_count": 1, "tail_hash": "a", "record_size": 32, "size_aligned": True},
+                        {"source_size": 64, "source_mtime": 2.0, "record_count": 2, "tail_hash": "b", "record_size": 32, "size_aligned": True},
+                    ],
+                ),
+                patch(
+                    "strategy_studio.services.sync.manifest_is_unchanged",
+                    side_effect=[True, False],
+                ),
+            ):
+                selected = sync_service._select_tdx_source_files_for_batch(
+                    source_files,
+                    provider=SimpleNamespace(id=1, provider_key="tdx"),
+                    vipdoc=vipdoc,
+                    interval="1d",
+                    symbol=None,
+                    force=False,
+                    limit=1,
+                    session=object(),
+                )
+
+        self.assertEqual([item.name for item in selected], ["sh600001.day"])
+
     def test_sync_market_data_dispatches_tushare_provider(self) -> None:
         with patch(
             "strategy_studio.services.sync._sync_tushare_corporate_actions",

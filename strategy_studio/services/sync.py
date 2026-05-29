@@ -57,6 +57,7 @@ from strategy_studio.repositories.market_data import (
     get_or_create_instrument,
     get_or_create_instrument_alias,
     get_or_create_market_data_series,
+    get_source_file_manifest_index,
     get_source_file_manifest,
     list_instruments,
     replace_price_adjustment_segments,
@@ -1430,9 +1431,8 @@ def _sync_tdx_single_interval_market_data(
     vipdoc = _resolve_tdx_vipdoc_path(vipdoc_path)
     if not vipdoc.exists():
         raise FileNotFoundError(f"通达信 vipdoc 目录不存在：{vipdoc}")
-
-    source_files = iter_tdx_files(vipdoc, interval=interval, symbol=symbol, limit=limit)
-    if not source_files:
+    all_source_files = iter_tdx_files(vipdoc, interval=interval, symbol=symbol, limit=None)
+    if not all_source_files:
         if allow_empty:
             return {
                 "provider": "tdx",
@@ -1478,6 +1478,53 @@ def _sync_tdx_single_interval_market_data(
             },
             options_json={"force": force, "limit": limit or 0},
         )
+        source_files = _select_tdx_source_files_for_batch(
+            all_source_files,
+            provider=provider,
+            vipdoc=vipdoc,
+            interval=interval,
+            symbol=symbol,
+            force=force,
+            limit=limit,
+            session=session,
+        )
+        if not source_files:
+            if allow_empty:
+                ingestion_job.targets_total = 0
+                ingestion_job.targets_completed = 0
+                ingestion_job.completed_at = datetime.now(UTC)
+                ingestion_job.summary_json = {
+                    "provider_key": provider.provider_key,
+                    "vipdoc_path": str(vipdoc),
+                    "files_total": 0,
+                    "files_imported": 0,
+                    "files_skipped": 0,
+                    "files_failed": 0,
+                    "selection_mode": "pending_only" if limit and not force and not symbol else "direct_limit",
+                }
+                ingestion_job.status = "skipped"
+                ingestion_job.error_message = ""
+                session.commit()
+                return {
+                    "provider": "tdx",
+                    "ingestion_job_id": ingestion_job.id,
+                    "interval": interval,
+                    "symbols_count": 0,
+                    "bars_inserted": 0,
+                    "bars_updated": 0,
+                    "series_bars_inserted": 0,
+                    "series_bars_updated": 0,
+                    "files_imported": 0,
+                    "files_skipped": 0,
+                    "files_failed": 0,
+                    "error_message": "",
+                    "status": "skipped",
+                    "vipdoc_path": str(vipdoc),
+                }
+            raise ValueError(
+                f"通达信 {interval} 批量导入当前没有待处理文件："
+                f"vipdoc={vipdoc} limit={limit or 0}"
+            )
         ingestion_job.targets_total = len(source_files)
         session.commit()
 
@@ -1725,6 +1772,48 @@ def _sync_tdx_single_interval_market_data(
             "status": ingestion_job.status,
             "vipdoc_path": str(vipdoc),
         }
+
+
+def _select_tdx_source_files_for_batch(
+    source_files: list[Path],
+    *,
+    provider: object,
+    vipdoc: Path,
+    interval: str,
+    symbol: str | None,
+    force: bool,
+    limit: int | None,
+    session: object,
+) -> list[Path]:
+    """批量模式下优先挑出待导入文件，避免 limit 长期卡在已完成 manifest 上。"""
+    if limit is None:
+        return source_files
+    if limit <= 0:
+        return []
+    if force or symbol:
+        return source_files[:limit]
+
+    manifest_index = get_source_file_manifest_index(session, provider, interval=interval)
+    pending_files: list[Path] = []
+    tracked_files: list[tuple[Path, object]] = []
+    for source_file in source_files:
+        relative_path = source_file.relative_to(vipdoc).as_posix()
+        previous = manifest_index.get(relative_path)
+        if previous is None:
+            pending_files.append(source_file)
+            if len(pending_files) >= limit:
+                return pending_files
+            continue
+        tracked_files.append((source_file, previous))
+
+    for source_file, previous in tracked_files:
+        signature = build_tdx_file_signature(source_file, interval=interval)
+        if manifest_is_unchanged(previous, signature):
+            continue
+        pending_files.append(source_file)
+        if len(pending_files) >= limit:
+            break
+    return pending_files[:limit]
 
 
 def _read_tdx_frame(source_file: Path, vipdoc: Path, interval: str) -> pd.DataFrame:

@@ -554,6 +554,20 @@ def get_source_file_manifest(
     )
 
 
+def get_source_file_manifest_index(
+    session: Session,
+    provider: DataProvider,
+    *,
+    interval: str | None = None,
+) -> dict[str, SourceFileManifest]:
+    """批量读取指定 provider 下的 manifest，供大范围导入前先做增量筛选。"""
+    statement = select(SourceFileManifest).where(SourceFileManifest.provider_id == provider.id)
+    if interval and interval.strip():
+        statement = statement.where(SourceFileManifest.interval == interval.strip().lower())
+    rows = session.scalars(statement).all()
+    return {row.source_path: row for row in rows}
+
+
 def upsert_source_file_manifest(
     session: Session,
     provider: DataProvider,

@@ -101,6 +101,12 @@ py -3.13 main.py sync-now --provider tdx_qfq --limit 20
 
 当前 `provider=tdx` 已支持原始 `1d / 1m / 5m` 文件导入，并依赖 `STRATEGY_STUDIO_TDX_VIPDOC` 或 `STRATEGY_STUDIO_TDX_CONFIG_PATH` 指向有效的 `vipdoc` 配置。其中 `1d` 扫描 `.day`，`1m` 扫描 `.lc1/.1`，`5m` 扫描 `.lc5/.5`；若使用 `interval=all`，会顺序执行三个 TDX 周期，适合直接按配置路径全量导入。当前导入会保留 `vipdoc` 第一层市场目录，已覆盖常见 `sh / sz / bj / ds`；其中 `ds` 日线价格字段按 `float32` 位模式解析，不再沿用 A 股 `.day` 的整数缩放口径。若命令里要显式指定 `ds` 代码，PowerShell 下请用引号包住 `#`，例如 `--symbol "10#AUDUSD"`。若本机 `vipdoc` 目录结构和默认假设不一致，应先确认实际文件位置再执行导入。
 
+`--limit` 在通达信批量模式下还有一个关键约定：
+
+- 若未传 `--force` 且未显式传 `--symbol`，当前会先跳过已有且未变化的 manifest，优先挑选“还没导过”或“源文件已变化”的文件，再把 `limit` 应用到这批待处理文件上。
+- 这让 `py -3.13 main.py sync-now --provider tdx --interval all --limit 100` 可以反复多次执行，并持续往完整 `vipdoc` 全路径推进，而不是一直卡在排序最靠前、但已经导过的同一批文件。
+- 若显式传了 `--force`，则仍按排序后的文件直接截断 `limit`，用于强制重建某一批固定范围。
+
 A 股统一补数链路注意事项：
 
 - `provider=tdx_pipeline` 会把 `tdx raw -> tushare actions -> tdx_qfq rebuild` 串成一个总任务，并另外在统一任务域记录 workflow 本身与所有子任务 ID。

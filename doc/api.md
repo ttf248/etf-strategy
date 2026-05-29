@@ -161,7 +161,7 @@ http://127.0.0.1:8000/docs
 - `period`：分钟线窗口，例如 `60d` 或 `7d`。
 - `vipdoc_path`：通达信 `vipdoc` 根目录；`provider=tdx` 和 `provider=tdx_pipeline` 会使用它解析本地原始行情。
 - `force`：是否忽略文件 manifest 强制重建；`provider=tdx` 和 `provider=tdx_pipeline` 时生效。
-- `limit`：`provider=yahoo` 或 `provider=yahoo_pipeline` 时限制 `symbol_set` 或已知标的数量；`provider=tdx` 时限制本次扫描到的 `1d / 1m / 5m` 文件数量；若 `interval=all`，当前按每个 TDX 周期各自套用同一个 `limit`；`provider=tushare`、`provider=tdx_qfq` 或 `provider=tdx_pipeline` 时限制抓取股票数。当前 `provider=tushare` 未传 `symbol` 时必须提供 `limit`，避免误触发全市场全量抓取。
+- `limit`：`provider=yahoo` 或 `provider=yahoo_pipeline` 时限制 `symbol_set` 或已知标的数量；`provider=tdx` 时限制本次实际处理的 `1d / 1m / 5m` 文件数量；若 `interval=all`，当前按每个 TDX 周期各自套用同一个 `limit`。当 `provider=tdx` 未传 `symbol` 且未传 `force` 时，服务会先跳过 manifest 已确认“未变化”的文件，优先把 `limit` 用在尚未导入或源文件已变化的文件上，便于多次分批推进完整 `vipdoc` 导入；`provider=tushare`、`provider=tdx_qfq` 或 `provider=tdx_pipeline` 时限制抓取股票数。当前 `provider=tushare` 未传 `symbol` 时必须提供 `limit`，避免误触发全市场全量抓取。
 
 当前返回体除了旧版 `run_id / bars_inserted / bars_updated`，还会附带统一任务域的 `ingestion_job_id / series_bars_inserted / series_bars_updated`。其中 `provider=tushare` 会把“事件条数”复用到 `bars_inserted / bars_updated` 字段，并额外返回 `events_deleted / fetched_rows / implemented_rows`；`provider=tdx_qfq` 会额外返回 `segment_rows_inserted / segment_rows_updated / segment_rows_deleted / action_rows_used`；`provider=yahoo_pipeline` 和 `provider=tdx_pipeline` 会返回 workflow 总任务 `ingestion_job_id`、子任务 `child_ingestion_job_ids` / `ingestion_job_ids` 以及逐步骤的 `workflow_results`，便于前端直接展示统一链路状态。
 
