@@ -91,7 +91,7 @@ market_data_bars + data_ingestion_jobs
 - `source_file_manifests`：文件型来源的增量状态。
 - `data_ingestion_jobs` / `data_ingestion_job_items`：统一后台任务状态。
 
-这些表当前已接通 Yahoo 原始 K 线、通达信原始日线、Tushare 公司行动和通达信前复权日线四条子链路；统一前端任务面板仍会在后续子任务中继续接入。
+这些表当前已接通 Yahoo 原始 K 线、通达信原始日线、Tushare 公司行动和通达信前复权日线四条子链路；前端 `/market-data` 也已经接入统一任务面板，可直接查看 provider 摘要和最近导入任务。
 
 ## 同步记录
 

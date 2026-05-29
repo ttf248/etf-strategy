@@ -37,7 +37,10 @@ http://127.0.0.1:8000/docs
 - `GET /api/market-data/sync-runs`
 - `POST /api/market-data/sync`
 
-这些接口用于查询标的、行情覆盖、统计信息、K 线数据、同步历史，以及手动触发行情同步。
+这些接口用于查询标的、行情覆盖、统计信息、K 线数据、同步历史，以及手动触发行情同步。其中 `GET /api/market-data/stats` 当前除了保留旧 `coverages / recent_sync_runs` 外，还会返回：
+
+- `provider_summaries`：按 provider 聚合的多渠道摘要，包含 `series_count / bars_count / action_count / segment_count / manifest_count / latest_ingestion_at / latest_ingestion_status` 等字段，供 `/market-data` 多渠道任务面板直接渲染。
+- `recent_ingestion_jobs`：统一导入任务域的最近任务列表，覆盖 Yahoo、通达信原始、Tushare 公司行动和通达信前复权四类后台任务。
 
 `POST /api/market-data/sync` 支持字段：
 

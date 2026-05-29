@@ -9,11 +9,50 @@ export type MarketCoverage = {
   last_ingested_at: string;
 };
 
+export type MarketDataProviderSummary = {
+  provider_key: string;
+  provider_name: string;
+  provider_type: string;
+  status: string;
+  series_count: number;
+  bars_count: number;
+  action_count: number;
+  segment_count: number;
+  manifest_count: number;
+  intervals: string[];
+  adjustment_kinds: string[];
+  latest_bar_time: string;
+  latest_ingestion_at: string;
+  latest_ingestion_status: string;
+  latest_ingestion_job_id: number | null;
+};
+
+export type MarketDataIngestionJob = {
+  id: number;
+  provider_key: string;
+  provider_name: string;
+  job_type: string;
+  status: string;
+  targets_total: number;
+  targets_completed: number;
+  rows_inserted: number;
+  rows_updated: number;
+  error_count: number;
+  requested_at: string;
+  completed_at: string;
+  error_message: string;
+  target_symbol: string;
+  interval: string;
+  requested_via: string;
+};
+
 export type MarketDataStats = {
   instrument_count: number;
   total_bars: number;
   by_interval: Array<{ interval: string; bar_count: number }>;
   coverages: MarketCoverage[];
+  provider_summaries: MarketDataProviderSummary[];
+  recent_ingestion_jobs: MarketDataIngestionJob[];
   recent_sync_runs: Array<Record<string, unknown>>;
 };
 

@@ -3,8 +3,15 @@
 import Link from "next/link";
 import { Button, Card, Collapse, Empty, Input, Select, Skeleton, Space, Table, Tag, Typography, message } from "antd";
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch, apiFetchSafe, type MarketCoverage, type MarketDataStats } from "@/lib/api";
-import { MetricCard, PageErrorState, PageHeader, ToolbarCount } from "@/components/platform-ui";
+import {
+  apiFetch,
+  apiFetchSafe,
+  type MarketCoverage,
+  type MarketDataIngestionJob,
+  type MarketDataProviderSummary,
+  type MarketDataStats,
+} from "@/lib/api";
+import { MetricCard, PageErrorState, PageHeader, StatusTag, ToolbarCount } from "@/components/platform-ui";
 import { intervalOptions } from "@/lib/strategy-template-config";
 import { buildBacktestLaunchHref, buildBacktestPresetHref, buildBeginnerPresets } from "@/lib/beginner-presets";
 
@@ -42,6 +49,136 @@ type SymbolIntervalCard = {
   description: string;
   ready: boolean;
 };
+
+type ProviderPanelConfig = {
+  providerKey: string;
+  fallbackName: string;
+  title: string;
+  description: string;
+  currentActionLabel: string;
+  batchActionLabel: string;
+  symbolHint: string;
+  currentIntervalLabel: string;
+};
+
+type ProviderPanelModel = ProviderPanelConfig & {
+  summary: MarketDataProviderSummary;
+  currentTarget: string;
+};
+
+const providerPanelConfigs: ProviderPanelConfig[] = [
+  {
+    providerKey: "yahoo",
+    fallbackName: "Yahoo Finance",
+    title: "Yahoo 回测样本",
+    description: "下载 Yahoo 行情，并继续双写当前回测主表与统一行情表。适合先把一个可直接回测的样本补齐。",
+    currentActionLabel: "同步当前标的",
+    batchActionLabel: "同步全部标的当前周期",
+    symbolHint: "示例：1810.HK、SPY",
+    currentIntervalLabel: "当前周期",
+  },
+  {
+    providerKey: "tdx",
+    fallbackName: "通达信本地行情",
+    title: "通达信原始日线",
+    description: "从本地 vipdoc 导入 A 股原始 `.day` 日线，并维护文件 manifest，适合作为后续前复权与本地化扩仓底座。",
+    currentActionLabel: "导入当前标的原始日线",
+    batchActionLabel: "批量导入",
+    symbolHint: "示例：SH600000、SZ000001",
+    currentIntervalLabel: "固定 1d",
+  },
+  {
+    providerKey: "tushare",
+    fallbackName: "Tushare 公司行动",
+    title: "Tushare 公司行动",
+    description: "抓取分红送转实施事件，写入统一公司行动事实表，供通达信前复权重算直接复用。",
+    currentActionLabel: "抓取当前标的公司行动",
+    batchActionLabel: "批量抓取",
+    symbolHint: "示例：600000.SH、000001.SZ",
+    currentIntervalLabel: "事件模式",
+  },
+  {
+    providerKey: "tdx_qfq",
+    fallbackName: "通达信前复权",
+    title: "通达信前复权重算",
+    description: "基于通达信原始日线与 Tushare 公司行动重建前复权序列，并落库公式区间，便于后续稳定复算。",
+    currentActionLabel: "重算当前标的前复权",
+    batchActionLabel: "批量重算",
+    symbolHint: "示例：SH600000、SZ000001",
+    currentIntervalLabel: "固定 1d / qfq",
+  },
+];
+
+function normalizeProviderSymbol(providerKey: string, rawSymbol: string): string {
+  const normalized = rawSymbol.trim().toUpperCase();
+  if (!normalized) {
+    return "";
+  }
+  const dottedMatch = normalized.match(/^(\d{6})\.(SH|SZ|BJ)$/);
+  const prefixedMatch = normalized.match(/^(SH|SZ|BJ)(\d{6})$/);
+  if (providerKey === "tdx" || providerKey === "tdx_qfq") {
+    if (dottedMatch) {
+      return `${dottedMatch[2].toLowerCase()}${dottedMatch[1]}`;
+    }
+    if (prefixedMatch) {
+      return `${prefixedMatch[1].toLowerCase()}${prefixedMatch[2]}`;
+    }
+    return normalized.toLowerCase();
+  }
+  if (providerKey === "tushare") {
+    if (prefixedMatch) {
+      return `${prefixedMatch[2]}.${prefixedMatch[1]}`;
+    }
+    return normalized;
+  }
+  return normalized;
+}
+
+function ingestionStatusLabel(status: string): string {
+  if (status === "succeeded") {
+    return "已完成";
+  }
+  if (status === "completed") {
+    return "已结束";
+  }
+  if (status === "partially_failed") {
+    return "部分失败";
+  }
+  if (status === "failed") {
+    return "失败";
+  }
+  if (status === "running") {
+    return "执行中";
+  }
+  if (status === "queued") {
+    return "排队中";
+  }
+  if (status === "skipped") {
+    return "已跳过";
+  }
+  if (status === "inactive") {
+    return "未初始化";
+  }
+  if (status === "active") {
+    return "可用";
+  }
+  return status || "-";
+}
+
+function buildIngestionTargetLabel(job: MarketDataIngestionJob): string {
+  const target = job.target_symbol?.trim();
+  const interval = job.interval?.trim();
+  if (target && interval) {
+    return `${target} / ${interval}`;
+  }
+  if (target) {
+    return target;
+  }
+  if (interval) {
+    return `批量 / ${interval}`;
+  }
+  return "批量任务";
+}
 
 function coverageStage(profile: CoverageProfile) {
   const hasDaily = profile.intervals.has("1d");
@@ -242,8 +379,10 @@ export function MarketDataView() {
   const [tableKeyword, setTableKeyword] = useState("");
   const [interval, setInterval] = useState<string | undefined>(undefined);
   const [syncInterval, setSyncInterval] = useState("1d");
+  const [batchLimit, setBatchLimit] = useState(20);
   const [syncing, setSyncing] = useState(false);
   const [syncingSymbol, setSyncingSymbol] = useState(false);
+  const [syncingActionKey, setSyncingActionKey] = useState<string | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
 
   async function loadStatsData(showSpinner: boolean = true) {
@@ -313,6 +452,51 @@ export function MarketDataView() {
     }
   }
 
+  async function runProviderAction(providerKey: string, mode: "current" | "batch") {
+    if (providerKey === "yahoo") {
+      if (mode === "current") {
+        await syncSymbolForInterval(syncInterval);
+      } else {
+        await syncAll();
+      }
+      return;
+    }
+
+    const normalizedTarget = normalizeProviderSymbol(providerKey, checkedSymbol);
+    if (mode === "current" && !normalizedTarget) {
+      messageApi.warning("请先输入一个目标标的，再执行当前标的任务。");
+      return;
+    }
+    const actionKey = `${providerKey}:${mode}`;
+    const payload: Record<string, unknown> = {
+      provider: providerKey,
+      interval: "1d",
+    };
+    if (mode === "current") {
+      payload.symbol = normalizedTarget;
+    } else {
+      payload.limit = batchLimit;
+    }
+
+    setSyncingActionKey(actionKey);
+    try {
+      await apiFetch("/api/market-data/sync", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      const actionLabel =
+        mode === "current"
+          ? `${providerKey} 当前标的任务已完成`
+          : `${providerKey} 批量任务已完成`;
+      messageApi.success(actionLabel);
+      await loadStatsData(false);
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "同步失败");
+    } finally {
+      setSyncingActionKey(null);
+    }
+  }
+
   const filteredRows = useMemo(() => {
     if (!stats) {
       return [];
@@ -328,6 +512,36 @@ export function MarketDataView() {
   }, [stats, tableKeyword, interval]);
 
   const beginnerPresets = useMemo(() => (stats ? buildBeginnerPresets(stats.coverages) : []), [stats]);
+  const providerPanels = useMemo<ProviderPanelModel[]>(() => {
+    if (!stats) {
+      return [];
+    }
+    return providerPanelConfigs.map((config) => {
+      const matched = stats.provider_summaries.find((item) => item.provider_key === config.providerKey);
+      return {
+        ...config,
+        summary:
+          matched ?? {
+            provider_key: config.providerKey,
+            provider_name: config.fallbackName,
+            provider_type: "unknown",
+            status: "inactive",
+            series_count: 0,
+            bars_count: 0,
+            action_count: 0,
+            segment_count: 0,
+            manifest_count: 0,
+            intervals: [],
+            adjustment_kinds: [],
+            latest_bar_time: "",
+            latest_ingestion_at: "",
+            latest_ingestion_status: "",
+            latest_ingestion_job_id: null,
+          },
+        currentTarget: normalizeProviderSymbol(config.providerKey, checkedSymbol),
+      };
+    });
+  }, [checkedSymbol, stats]);
 
   const coverageProfiles = useMemo<CoverageProfile[]>(() => {
     if (!stats) {
@@ -490,6 +704,37 @@ export function MarketDataView() {
       }),
     [checkedSymbol, intervalRecommendations, symbolIntervals, symbolRows.length],
   );
+  const unifiedBarsCount = useMemo(
+    () => providerPanels.reduce((total, item) => total + item.summary.bars_count, 0),
+    [providerPanels],
+  );
+  const corporateActionCount = useMemo(
+    () => providerPanels.reduce((total, item) => total + item.summary.action_count, 0),
+    [providerPanels],
+  );
+  const adjustmentSegmentCount = useMemo(
+    () => providerPanels.reduce((total, item) => total + item.summary.segment_count, 0),
+    [providerPanels],
+  );
+  const activeProviderCount = useMemo(
+    () =>
+      providerPanels.filter(
+        (item) =>
+          item.summary.series_count > 0 ||
+          item.summary.action_count > 0 ||
+          item.summary.segment_count > 0 ||
+          item.summary.manifest_count > 0 ||
+          item.summary.latest_ingestion_at,
+      ).length,
+    [providerPanels],
+  );
+  const recentIngestionJobs = stats?.recent_ingestion_jobs ?? [];
+  const batchLimitOptions = [
+    { label: "10", value: 10 },
+    { label: "20", value: 20 },
+    { label: "50", value: 50 },
+    { label: "100", value: 100 },
+  ];
 
   function applyCheckedSymbol(targetSymbol: string) {
     const normalizedSymbol = targetSymbol.trim().toUpperCase();
@@ -514,24 +759,26 @@ export function MarketDataView() {
     <div className="page-stack">
       {contextHolder}
       <PageHeader
-        eyebrow="数据覆盖"
-        title="数据覆盖检查"
-        description="先确认目标标的是否具备可研究行情覆盖；缺少关键周期时再同步，无需先浏览全部明细。"
+        eyebrow="数据准备"
+        title="多渠道数据准备"
+        description="先设定当前目标标的，再决定是补 Yahoo 回测样本、导入通达信原始日线、抓取 Tushare 公司行动，还是重算前复权。"
       />
 
       <Card size="small" className="section-card data-check-card">
         <div className="data-check-main">
-          <Typography.Title level={4}>检查标的覆盖情况</Typography.Title>
-          <Typography.Paragraph>输入 Yahoo 标的代码，系统会展示当前可用周期以及覆盖截止时间。</Typography.Paragraph>
+          <Typography.Title level={4}>设定当前目标标的</Typography.Title>
+          <Typography.Paragraph>
+            下方多渠道卡片会复用这里的标的代码。当前覆盖检查仍主要围绕可直接回测的样本覆盖，A 股原始日线、公司行动和前复权状态请看后面的多渠道任务面板。
+          </Typography.Paragraph>
           <Space.Compact className="data-check-input">
             <Input
               value={checkInput}
               onChange={(event) => setCheckInput(event.target.value)}
               onPressEnter={checkSymbol}
-              placeholder="例如 1810.HK"
+              placeholder="例如 1810.HK、SH600000、600000.SH"
             />
             <Button type="primary" onClick={checkSymbol}>
-              检查
+              设为当前标的
             </Button>
           </Space.Compact>
         </div>
@@ -540,6 +787,7 @@ export function MarketDataView() {
           <strong>{symbolRows[0]?.name ?? (checkedSymbol || "等待输入")}</strong>
           {checkedSymbol ? <small>最近检查：{checkedSymbol}</small> : null}
           <span>{readiness.description}</span>
+          <small>多渠道任务会自动把当前输入转换成各 provider 所需格式，例如 `SH600000` / `600000.SH`。</small>
           {intervalRecommendations.length > 0 ? (
             <div className="data-recommend-list">
               {intervalRecommendations.map((item) => (
@@ -559,9 +807,161 @@ export function MarketDataView() {
             <Button loading={syncingSymbol} onClick={() => void syncCheckedSymbol()}>
               同步当前标的 {syncInterval}
             </Button>
-            <small>若不确定补数顺序，优先按上方推荐周期执行；分钟级基线研究通常先补 15m。</small>
+            <small>若不确定补数顺序，优先按上方推荐周期执行；这里主要处理现有回测样本覆盖，其他渠道请使用下方 provider 卡片。</small>
           </div>
         </div>
+      </Card>
+
+      <Card size="small" title="多渠道任务面板" className="section-card">
+        <div className="provider-overview-banner">
+          <div>
+            <strong>同一页直接管理 Yahoo、通达信原始、Tushare 公司行动和通达信前复权</strong>
+            <p>当前目标标的：{checkedSymbol || "未设置"}。Yahoo 使用上方当前周期；其余批量任务使用这里的批量上限。</p>
+          </div>
+          <Space wrap>
+            <Select value={syncInterval} options={intervalOptions} onChange={setSyncInterval} style={{ width: 120 }} />
+            <Select value={batchLimit} options={batchLimitOptions} onChange={setBatchLimit} style={{ width: 120 }} />
+          </Space>
+        </div>
+        <div className="provider-panel-grid">
+          {providerPanels.map((provider) => (
+            <article key={provider.providerKey} className="provider-panel-card">
+              <div className="provider-panel-head">
+                <div>
+                  <span>{provider.title}</span>
+                  <strong>{provider.summary.provider_name || provider.fallbackName}</strong>
+                </div>
+                <StatusTag
+                  value={provider.summary.latest_ingestion_status || provider.summary.status}
+                  label={ingestionStatusLabel(provider.summary.latest_ingestion_status || provider.summary.status || "inactive")}
+                />
+              </div>
+              <p>{provider.description}</p>
+              <div className="provider-panel-meta">
+                <small>{provider.symbolHint}</small>
+                <small>当前任务目标：{provider.currentTarget || "未设置"}</small>
+                <small>{provider.currentIntervalLabel}</small>
+              </div>
+              <div className="provider-panel-metric-grid">
+                <div className="provider-panel-metric">
+                  <span>序列</span>
+                  <strong>{provider.summary.series_count.toLocaleString()}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>K 线</span>
+                  <strong>{provider.summary.bars_count.toLocaleString()}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>公司行动</span>
+                  <strong>{provider.summary.action_count.toLocaleString()}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>前复权区间</span>
+                  <strong>{provider.summary.segment_count.toLocaleString()}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>Manifest</span>
+                  <strong>{provider.summary.manifest_count.toLocaleString()}</strong>
+                </div>
+              </div>
+              <div className="provider-panel-tags">
+                {(provider.summary.intervals.length > 0 ? provider.summary.intervals : ["未形成序列"]).map((item) => (
+                  <Tag key={`${provider.providerKey}-interval-${item}`}>{item}</Tag>
+                ))}
+                {provider.summary.adjustment_kinds.map((item) => (
+                  <Tag key={`${provider.providerKey}-adjustment-${item}`} color="cyan">
+                    {item}
+                  </Tag>
+                ))}
+              </div>
+              <div className="provider-panel-latest">
+                <span>最近导入</span>
+                <strong>{provider.summary.latest_ingestion_at || "暂无任务记录"}</strong>
+                <small>最近 K 线时间：{provider.summary.latest_bar_time || "暂无"}</small>
+              </div>
+              <div className="provider-panel-actions">
+                <Button
+                  loading={syncingActionKey === `${provider.providerKey}:current`}
+                  onClick={() => void runProviderAction(provider.providerKey, "current")}
+                >
+                  {provider.providerKey === "yahoo" ? `${provider.currentActionLabel} ${syncInterval}` : provider.currentActionLabel}
+                </Button>
+                <Button
+                  type="primary"
+                  loading={syncingActionKey === `${provider.providerKey}:batch`}
+                  onClick={() => void runProviderAction(provider.providerKey, "batch")}
+                >
+                  {provider.providerKey === "yahoo" ? provider.batchActionLabel : `${provider.batchActionLabel} ${batchLimit} 项`}
+                </Button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </Card>
+
+      <Card size="small" title="最近导入任务" className="section-card">
+        <div className="provider-overview-banner compact">
+          <div>
+            <strong>统一任务域会同时记录 Yahoo、TDX、Tushare 和前复权重算</strong>
+            <p>这里优先看最近一次批量或单标的导入是否成功，再决定是否深入排查某个 provider。</p>
+          </div>
+        </div>
+        {recentIngestionJobs.length === 0 ? (
+          <Typography.Text type="secondary">当前还没有导入任务记录。执行任一 provider 操作后，这里会显示统一任务状态。</Typography.Text>
+        ) : (
+          <>
+            <div className="ingestion-mobile-list">
+              {recentIngestionJobs.slice(0, 8).map((job) => (
+                <article key={job.id} className="ingestion-mobile-card">
+                  <div className="ingestion-mobile-card-head">
+                    <div>
+                      <strong>任务 #{job.id}</strong>
+                      <span>{job.provider_name || job.provider_key || "未命名渠道"}</span>
+                    </div>
+                    <StatusTag value={job.status} label={ingestionStatusLabel(job.status)} />
+                  </div>
+                  <div className="ingestion-mobile-metrics">
+                    <span>目标 {buildIngestionTargetLabel(job)}</span>
+                    <span>进度 {job.targets_completed}/{job.targets_total || 0}</span>
+                    <span>新增 {job.rows_inserted.toLocaleString()}</span>
+                    <span>更新 {job.rows_updated.toLocaleString()}</span>
+                  </div>
+                  <small>申请时间：{job.requested_at || "-"}</small>
+                  {job.error_message ? <Typography.Text type="danger">{job.error_message}</Typography.Text> : null}
+                </article>
+              ))}
+            </div>
+            <Table<MarketDataIngestionJob>
+              className="ingestion-desktop-table"
+              size="small"
+              rowKey="id"
+              dataSource={recentIngestionJobs}
+              pagination={{ pageSize: 8, showSizeChanger: false }}
+              scroll={{ x: 1180 }}
+              columns={[
+                { title: "编号", dataIndex: "id", width: 80, fixed: "left" },
+                {
+                  title: "渠道",
+                  width: 180,
+                  render: (_, row) => (
+                    <div className="ingestion-provider-cell">
+                      <strong>{row.provider_name || row.provider_key || "-"}</strong>
+                      <span>{row.provider_key || "-"}</span>
+                    </div>
+                  ),
+                },
+                { title: "任务类型", dataIndex: "job_type", width: 180 },
+                { title: "目标", width: 180, render: (_, row) => buildIngestionTargetLabel(row) },
+                { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <StatusTag value={value} label={ingestionStatusLabel(value)} /> },
+                { title: "完成/总数", width: 110, render: (_, row) => `${row.targets_completed}/${row.targets_total}` },
+                { title: "新增", dataIndex: "rows_inserted", width: 110, render: (value: number) => value.toLocaleString() },
+                { title: "更新", dataIndex: "rows_updated", width: 110, render: (value: number) => value.toLocaleString() },
+                { title: "申请时间", dataIndex: "requested_at", width: 180 },
+                { title: "完成时间", dataIndex: "completed_at", width: 180 },
+              ]}
+            />
+          </>
+        )}
       </Card>
 
       <Card size="small" className="section-card start-path-card">
@@ -733,22 +1133,25 @@ export function MarketDataView() {
       ) : null}
 
       <div className="summary-grid">
-        <MetricCard label="已覆盖标的" value={stats.instrument_count} note="可直接进入研究流程" />
-        <MetricCard label="行情记录" value={stats.total_bars.toLocaleString()} note="当前已入库 K 线" />
+        <MetricCard label="可回测标的" value={stats.instrument_count} note="当前仍以 Yahoo 覆盖为主" />
+        <MetricCard label="回测 K 线" value={stats.total_bars.toLocaleString()} note="当前主流程直接读取的行情表" />
+        <MetricCard label="统一 K 线" value={unifiedBarsCount.toLocaleString()} note={`${activeProviderCount}/${providerPanels.length} 个渠道已产生数据痕迹`} />
+        <MetricCard label="公司行动事件" value={corporateActionCount.toLocaleString()} note="Tushare 实施事件总量" />
+        <MetricCard label="前复权区间" value={adjustmentSegmentCount.toLocaleString()} note="通达信前复权公式区间" />
         {stats.by_interval.map((item) => (
-          <MetricCard key={item.interval} label={`${item.interval} 覆盖`} value={item.bar_count.toLocaleString()} note="可用于对应研究周期" />
+          <MetricCard key={item.interval} label={`${item.interval} 覆盖`} value={item.bar_count.toLocaleString()} note="当前可直接回测的样本周期" />
         ))}
       </div>
 
-      <Card size="small" title="数据覆盖高级明细" className="section-card">
+      <Card size="small" title="回测样本覆盖高级明细" className="section-card">
         <div className="data-library-banner">
-          <strong>只有在需要核对全部覆盖细节时，再展开完整明细</strong>
-          <p>大多数情况下，上方的覆盖检查、当前标的下一步与推荐样本已足以支持决策。只有在筛选多个标的、核对更新时间或排查覆盖异常时，再查看完整表格。</p>
+          <strong>这里只有现有回测主流程直接使用的覆盖明细</strong>
+          <p>上方多渠道任务面板负责 Yahoo、TDX、Tushare 和前复权任务状态；这里继续保留面向回测样本的完整覆盖表，适合筛选可直接跑策略的标的。</p>
         </div>
         <div className="data-maintenance-banner">
           <div>
-            <strong>高级补数：仅在准备扩充标的池时，再补全部标的某个周期</strong>
-            <p>如果当前只需建立单标的研究样本，通常无需执行这里的操作。全量补数更适合扩大标的池或当前可直接研究标的过少的场景。</p>
+            <strong>高级补数：这里只处理当前回测样本的 Yahoo 全量同步</strong>
+            <p>如果当前只需建立单标的研究样本，通常无需执行这里的操作。A 股原始日线、公司行动和前复权批量任务请使用上方 provider 卡片。</p>
           </div>
           <Space wrap>
             <Select value={syncInterval} options={intervalOptions} onChange={setSyncInterval} style={{ width: 120 }} />
@@ -763,7 +1166,7 @@ export function MarketDataView() {
           items={[
             {
               key: "coverage-table",
-              label: "高级明细：全部标的覆盖、筛选与更新时间",
+              label: "高级明细：当前回测样本覆盖、筛选与更新时间",
               children: (
                 <>
                   <div className="table-toolbar">
