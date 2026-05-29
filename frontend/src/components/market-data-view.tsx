@@ -157,10 +157,10 @@ const providerPanelConfigs: ProviderPanelConfig[] = [
     providerKey: "tdx",
     fallbackName: "通达信本地行情",
     title: "通达信原始行情",
-    description: "从本地 vipdoc 导入 A 股原始 `1d / 1m / 5m` 文件；也可直接按 `all` 一次性顺序导入全部周期，并维护文件 manifest，适合作为后续前复权与本地化扩仓底座。",
+    description: "从本地 vipdoc 导入全部可见市场的原始 `1d / 1m / 5m` 文件；也可直接按 `all` 一次性顺序导入全部周期，并维护文件 manifest。当前已覆盖常见 `sh / sz / bj / ds` 目录，适合作为后续前复权与本地化扩仓底座。",
     currentActionLabel: "导入当前标的原始行情",
     batchActionLabel: "批量导入",
-    symbolHint: "示例：SH600000、SZ000001",
+    symbolHint: "示例：SH600000、SZ000001、10#AUDUSD",
     currentIntervalLabel: "支持 all / 1d / 1m / 5m",
   },
   {
@@ -1403,14 +1403,14 @@ export function MarketDataView() {
         <div className="data-check-main">
           <Typography.Title level={4}>设定当前目标标的</Typography.Title>
           <Typography.Paragraph>
-            下方多渠道卡片会复用这里的标的代码。当前覆盖检查仍主要围绕可直接回测的样本覆盖，A 股统一补数链路、原始 all/1d/1m/5m、公司行动和前复权状态请看后面的多渠道任务面板。
+            下方多渠道卡片会复用这里的标的代码。当前覆盖检查仍主要围绕可直接回测的样本覆盖，A 股统一补数链路、通达信原始 all/1d/1m/5m、公司行动和前复权状态请看后面的多渠道任务面板。
           </Typography.Paragraph>
           <Space.Compact className="data-check-input">
             <Input
               value={checkInput}
               onChange={(event) => setCheckInput(event.target.value)}
               onPressEnter={checkSymbol}
-              placeholder="例如 1810.HK、SH600000、600000.SH"
+              placeholder="例如 1810.HK、SH600000、600000.SH、10#AUDUSD"
             />
             <Button type="primary" onClick={checkSymbol}>
               设为当前标的
@@ -1422,7 +1422,7 @@ export function MarketDataView() {
           <strong>{symbolRows[0]?.name ?? (checkedSymbol || "等待输入")}</strong>
           {checkedSymbol ? <small>最近检查：{checkedSymbol}</small> : null}
           <span>{readiness.description}</span>
-          <small>多渠道任务会自动把当前输入转换成各 provider 所需格式，例如 `SH600000` / `600000.SH`。</small>
+          <small>多渠道任务会自动把当前输入转换成各 provider 所需格式，例如 `SH600000` / `600000.SH`；通达信 `ds` 原始行情也支持直接输入 `10#AUDUSD` 这类代码。</small>
           {intervalRecommendations.length > 0 ? (
             <div className="data-recommend-list">
               {intervalRecommendations.map((item) => (
@@ -1454,7 +1454,7 @@ export function MarketDataView() {
         <div className="provider-overview-banner">
           <div>
             <strong>同一页直接管理 Yahoo 单周期、Yahoo 三周期链路、A 股统一补数链路、通达信原始 all/1d/1m/5m、Tushare 公司行动和通达信前复权</strong>
-            <p>当前目标标的：{checkedSymbol || "未设置"}。Yahoo 单周期使用上方当前周期；Yahoo 三周期链路固定补 1d/15m/1m；TDX 与 A 股统一补数链路在卡片内单独选择周期；其余批量任务使用这里的批量上限。</p>
+            <p>当前目标标的：{checkedSymbol || "未设置"}。Yahoo 单周期使用上方当前周期；Yahoo 三周期链路固定补 1d/15m/1m；TDX 原始导入支持 `sh / sz / bj / ds` 多市场代码，并与 A 股统一补数链路在卡片内单独选择周期；其余批量任务使用这里的批量上限。</p>
           </div>
           <Space wrap>
             <Select value={syncInterval} options={intervalOptions} onChange={setSyncInterval} style={{ width: 120 }} />
@@ -1697,7 +1697,7 @@ export function MarketDataView() {
               style={{ width: 200 }}
             />
             <Input
-              placeholder="留空看最近序列，或输入 SH600000"
+              placeholder="留空看最近序列，或输入 SH600000 / 10#AUDUSD"
               value={seriesSymbolFilter}
               onChange={(event) => setSeriesSymbolFilter(event.target.value.toUpperCase())}
               onPressEnter={() => void loadProviderSeriesData(seriesProviderFilter, true, seriesSymbolFilter)}
@@ -1797,7 +1797,7 @@ export function MarketDataView() {
           </div>
           <Space wrap>
             <Input
-              placeholder="留空看最近文件，或输入 SH600000"
+              placeholder="留空看最近文件，或输入 SH600000 / 10#AUDUSD"
               value={manifestSymbolFilter}
               onChange={(event) => setManifestSymbolFilter(event.target.value.toUpperCase())}
               style={{ width: 220 }}

@@ -387,6 +387,39 @@ class PlatformFeatureTests(unittest.TestCase):
             limit=1,
         )
 
+    def test_web_api_market_data_sync_route_supports_tdx_ds_symbol(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.enqueue_market_data_sync",
+            return_value={"provider": "tdx", "ingestion_job_id": 6, "status": "queued"},
+        ) as mock_sync:
+            response = client.post(
+                "/api/market-data/sync",
+                json={
+                    "provider": "tdx",
+                    "symbol": "10#AUDUSD",
+                    "interval": "1d",
+                    "vipdoc_path": "G:/new_tdx64/vipdoc",
+                    "limit": 1,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["provider"], "tdx")
+        mock_sync.assert_called_once_with(
+            symbol="10#AUDUSD",
+            symbol_set=None,
+            interval="1d",
+            proxy=None,
+            period=None,
+            provider="tdx",
+            vipdoc_path="G:/new_tdx64/vipdoc",
+            force=False,
+            limit=1,
+        )
+
     def test_web_api_market_data_sync_route_supports_tdx_all_interval(self) -> None:
         app = create_app()
         client = TestClient(app)
@@ -1273,6 +1306,31 @@ class PlatformFeatureTests(unittest.TestCase):
             interval="5m",
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=False,
+            limit=1,
+            requested_via=None,
+        )
+
+    def test_sync_market_data_dispatches_tdx_ds_symbol_provider(self) -> None:
+        with patch(
+            "strategy_studio.services.sync._sync_tdx_market_data",
+            return_value={"provider": "tdx", "ingestion_job_id": 11, "symbols_count": 1, "bars_inserted": 1253, "bars_updated": 0, "status": "succeeded"},
+        ) as mock_tdx:
+            result = sync_market_data(
+                symbol="10#audusd",
+                interval="1d",
+                proxy=None,
+                provider="tdx",
+                vipdoc_path="G:/new_tdx64/vipdoc",
+                force=True,
+                limit=1,
+            )
+
+        self.assertEqual(result["provider"], "tdx")
+        mock_tdx.assert_called_once_with(
+            symbol="10#audusd",
+            interval="1d",
+            vipdoc_path="G:/new_tdx64/vipdoc",
+            force=True,
             limit=1,
             requested_via=None,
         )
