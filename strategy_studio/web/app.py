@@ -105,8 +105,8 @@ def create_app() -> FastAPI:
         return fetch_market_data_stats()
 
     @app.get("/api/market-data/provider-series")
-    def get_provider_series(provider: str | None = None, limit: int = 100) -> list[dict[str, object]]:
-        return fetch_provider_series(provider_key=provider, limit=limit)
+    def get_provider_series(provider: str | None = None, symbol: str | None = None, limit: int = 100) -> list[dict[str, object]]:
+        return fetch_provider_series(provider_key=provider, symbol=symbol, limit=limit)
 
     @app.get("/api/market-data/symbol-diagnostics")
     def get_symbol_diagnostics(symbol: str, limit: int = 20) -> dict[str, object]:

@@ -51,6 +51,7 @@ http://127.0.0.1:8000/docs
 `GET /api/market-data/provider-series` 用于直接检查统一主干表里的实际序列结果，默认按最近入库时间倒序返回最近 100 条，也支持：
 
 - `provider`：可选；传 `yahoo`、`tdx`、`tushare`、`tdx_qfq`、`tdx_pipeline` 对应的底层落库渠道，传 `all` 或留空表示不过滤。
+- `symbol`：可选；传统一标的代码或源代码，例如 `SH600000`，用于把序列检查聚焦到单个标的。
 - `limit`：可选；限制返回条数，便于前端仅展示最近一批真实落库序列。
 
 返回项当前包含：

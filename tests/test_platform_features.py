@@ -186,7 +186,30 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()[0]["provider_key"], "tdx")
         self.assertEqual(response.json()[0]["series_id"], 11)
-        mock_series.assert_called_once_with(provider_key="tdx", limit=20)
+        mock_series.assert_called_once_with(provider_key="tdx", symbol=None, limit=20)
+
+    def test_web_api_market_data_provider_series_route_supports_symbol_filter(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.fetch_provider_series",
+            return_value=[
+                {
+                    "series_id": 12,
+                    "provider_key": "tdx_qfq",
+                    "instrument_symbol": "SH600000",
+                    "interval": "1d",
+                    "adjustment_kind": "qfq",
+                    "bar_count": 6314,
+                }
+            ],
+        ) as mock_series:
+            response = client.get("/api/market-data/provider-series?provider=tdx_qfq&symbol=sh600000&limit=12")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]["instrument_symbol"], "SH600000")
+        mock_series.assert_called_once_with(provider_key="tdx_qfq", symbol="sh600000", limit=12)
 
     def test_web_api_market_data_symbol_diagnostics_route(self) -> None:
         app = create_app()

@@ -23,9 +23,13 @@ def fetch_market_data_stats() -> dict[str, object]:
         return get_market_data_stats(session)
 
 
-def fetch_provider_series(provider_key: str | None = None, limit: int = 100) -> list[dict[str, object]]:
+def fetch_provider_series(
+    provider_key: str | None = None,
+    symbol: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, object]]:
     with open_session() as session:
-        return list_provider_series(session, provider_key=provider_key, limit=limit)
+        return list_provider_series(session, provider_key=provider_key, symbol=symbol, limit=limit)
 
 
 def fetch_symbol_diagnostics(symbol: str, limit: int = 20) -> dict[str, object]:

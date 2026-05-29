@@ -280,6 +280,31 @@ function ingestionJobIsPending(status: string): boolean {
   return status === "queued" || status === "running";
 }
 
+function normalizeFocusSymbol(rawSymbol: string): string {
+  return rawSymbol.trim().toUpperCase();
+}
+
+function scrollToSection(sectionId: string): void {
+  queueMicrotask(() => {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+function inferJobItemProviderKey(item: MarketDataIngestionJobItem, fallbackProviderKey: string): string {
+  if (isRecord(item.details_json) && typeof item.details_json.provider_key === "string" && item.details_json.provider_key.trim()) {
+    return item.details_json.provider_key.trim();
+  }
+  return fallbackProviderKey;
+}
+
+function inferJobItemSymbol(item: MarketDataIngestionJobItem): string {
+  return normalizeFocusSymbol(item.instrument_symbol || item.source_symbol || "");
+}
+
+function normalizeManifestIntervalValue(interval: string): string {
+  return interval === "1d" || interval === "1m" || interval === "5m" ? interval : "all";
+}
+
 function coverageStage(profile: CoverageProfile) {
   const hasDaily = profile.intervals.has("1d");
   const has15m = profile.intervals.has("15m");
@@ -534,6 +559,7 @@ export function MarketDataView() {
   const [selectedJobDetail, setSelectedJobDetail] = useState<MarketDataIngestionJobDetail | null>(null);
   const [jobDetailLoading, setJobDetailLoading] = useState(false);
   const [seriesProviderFilter, setSeriesProviderFilter] = useState("all");
+  const [seriesSymbolFilter, setSeriesSymbolFilter] = useState("");
   const [providerSeriesRows, setProviderSeriesRows] = useState<MarketDataSeriesRow[]>([]);
   const [providerSeriesLoading, setProviderSeriesLoading] = useState(false);
   const [qfqSymbolFilter, setQfqSymbolFilter] = useState("");
@@ -563,11 +589,17 @@ export function MarketDataView() {
     setLoading(false);
   }
 
-  async function loadProviderSeriesData(providerKey: string = seriesProviderFilter, showSpinner: boolean = true) {
+  async function loadProviderSeriesData(
+    providerKey: string = seriesProviderFilter,
+    showSpinner: boolean = true,
+    symbol: string = seriesSymbolFilter,
+  ) {
     if (showSpinner) {
       setProviderSeriesLoading(true);
     }
-    const path = `/api/market-data/provider-series?provider=${encodeURIComponent(providerKey)}&limit=50`;
+    const normalizedSymbol = normalizeFocusSymbol(symbol);
+    const symbolQuery = normalizedSymbol ? `&symbol=${encodeURIComponent(normalizedSymbol)}` : "";
+    const path = `/api/market-data/provider-series?provider=${encodeURIComponent(providerKey)}${symbolQuery}&limit=50`;
     const result = await apiFetchSafe<MarketDataSeriesRow[]>(path);
     if (result.ok) {
       setProviderSeriesRows(result.data);
@@ -648,10 +680,10 @@ export function MarketDataView() {
     queueMicrotask(() => {
       void loadStatsData();
       void (async () => {
-        setProviderSeriesLoading(true);
-        const result = await apiFetchSafe<MarketDataSeriesRow[]>("/api/market-data/provider-series?provider=all&limit=50");
-        if (result.ok) {
-          setProviderSeriesRows(result.data);
+      setProviderSeriesLoading(true);
+      const result = await apiFetchSafe<MarketDataSeriesRow[]>("/api/market-data/provider-series?provider=all&limit=50");
+      if (result.ok) {
+        setProviderSeriesRows(result.data);
         } else {
           messageApi.error(result.error.message);
         }
@@ -689,6 +721,30 @@ export function MarketDataView() {
       })();
     });
   }, [messageApi]);
+
+  async function focusProviderSeriesData(providerKey: string, symbol: string = "") {
+    const normalizedSymbol = normalizeFocusSymbol(symbol);
+    const normalizedProvider = providerKey || "all";
+    setSeriesProviderFilter(normalizedProvider);
+    setSeriesSymbolFilter(normalizedSymbol);
+    await loadProviderSeriesData(normalizedProvider, true, normalizedSymbol);
+    scrollToSection("provider-series-section");
+  }
+
+  async function focusManifestDiagnostics(symbol: string, intervalValue: string = manifestIntervalFilter) {
+    const normalizedSymbol = normalizeFocusSymbol(symbol);
+    setManifestSymbolFilter(normalizedSymbol);
+    setManifestIntervalFilter(intervalValue);
+    await loadManifestData(normalizedSymbol, intervalValue, true);
+    scrollToSection("manifest-section");
+  }
+
+  async function focusQfqDiagnostics(symbol: string) {
+    const normalizedSymbol = normalizeFocusSymbol(symbol);
+    setQfqSymbolFilter(normalizedSymbol);
+    await loadQfqDiagnosticsData(normalizedSymbol, true);
+    scrollToSection("qfq-section");
+  }
 
   useEffect(() => {
     if (!stats?.recent_ingestion_jobs.some((job) => ingestionJobIsPending(job.status))) {
@@ -1418,7 +1474,7 @@ export function MarketDataView() {
         )}
       </Card>
 
-      <Card size="small" title="统一序列检查" className="section-card">
+      <Card id="provider-series-section" size="small" title="统一序列检查" className="section-card">
         <div className="provider-overview-banner compact">
           <div>
             <strong>按渠道检查 `market_data_series` 的真实持久化结果</strong>
@@ -1430,11 +1486,27 @@ export function MarketDataView() {
               options={providerSeriesOptions}
               onChange={(value) => {
                 setSeriesProviderFilter(value);
-                void loadProviderSeriesData(value);
+                void loadProviderSeriesData(value, true, seriesSymbolFilter);
               }}
               style={{ width: 200 }}
             />
-            <Button loading={providerSeriesLoading} onClick={() => void loadProviderSeriesData(seriesProviderFilter)}>
+            <Input
+              placeholder="留空看最近序列，或输入 SH600000"
+              value={seriesSymbolFilter}
+              onChange={(event) => setSeriesSymbolFilter(event.target.value.toUpperCase())}
+              onPressEnter={() => void loadProviderSeriesData(seriesProviderFilter, true, seriesSymbolFilter)}
+              style={{ width: 220 }}
+            />
+            <Button
+              onClick={() => {
+                const normalized = checkedSymbol.trim().toUpperCase();
+                setSeriesSymbolFilter(normalized);
+                void loadProviderSeriesData(seriesProviderFilter, true, normalized);
+              }}
+            >
+              使用当前标的
+            </Button>
+            <Button loading={providerSeriesLoading} onClick={() => void loadProviderSeriesData(seriesProviderFilter, true, seriesSymbolFilter)}>
               刷新序列
             </Button>
           </Space>
@@ -1511,7 +1583,7 @@ export function MarketDataView() {
         )}
       </Card>
 
-      <Card size="small" title="通达信原始文件 Manifest 检查" className="section-card">
+      <Card id="manifest-section" size="small" title="通达信原始文件 Manifest 检查" className="section-card">
         <div className="provider-overview-banner compact">
           <div>
             <strong>直接检查 `source_file_manifests` 的增量状态</strong>
@@ -1623,7 +1695,7 @@ export function MarketDataView() {
         )}
       </Card>
 
-      <Card size="small" title="前复权输入与公式检查" className="section-card">
+      <Card id="qfq-section" size="small" title="前复权输入与公式检查" className="section-card">
         <div className="provider-overview-banner compact">
           <div>
             <strong>直接检查 `corporate_action_events` 和 `price_adjustment_segments`</strong>
@@ -1847,24 +1919,44 @@ export function MarketDataView() {
               ) : (
                 <>
                   <div className="ingestion-mobile-list">
-                    {selectedJobItems.map((item) => (
-                      <article key={item.id} className="ingestion-mobile-card">
-                        <div className="ingestion-mobile-card-head">
-                          <div>
-                            <strong>{item.instrument_symbol || item.source_symbol || item.item_key}</strong>
-                            <span>{item.interval || item.stage || "-"}</span>
+                    {selectedJobItems.map((item) => {
+                      const itemSymbol = inferJobItemSymbol(item);
+                      const itemProviderKey = inferJobItemProviderKey(item, selectedJobDetail.provider_key);
+                      return (
+                        <article key={item.id} className="ingestion-mobile-card">
+                          <div className="ingestion-mobile-card-head">
+                            <div>
+                              <strong>{item.instrument_symbol || item.source_symbol || item.item_key}</strong>
+                              <span>{item.interval || item.stage || "-"}</span>
+                            </div>
+                            <StatusTag value={item.status} label={ingestionStatusLabel(item.status)} />
                           </div>
-                          <StatusTag value={item.status} label={ingestionStatusLabel(item.status)} />
-                        </div>
-                        <div className="ingestion-mobile-metrics">
-                          <span>阶段 {item.stage || "-"}</span>
-                          <span>新增 {item.rows_inserted.toLocaleString()}</span>
-                          <span>更新 {item.rows_updated.toLocaleString()}</span>
-                        </div>
-                        <small>{item.item_key}</small>
-                        {item.error_message ? <Typography.Text type="danger">{item.error_message}</Typography.Text> : null}
-                      </article>
-                    ))}
+                          <div className="ingestion-mobile-metrics">
+                            <span>阶段 {item.stage || "-"}</span>
+                            <span>新增 {item.rows_inserted.toLocaleString()}</span>
+                            <span>更新 {item.rows_updated.toLocaleString()}</span>
+                          </div>
+                          <small>{item.item_key}</small>
+                          {itemSymbol ? (
+                            <Space wrap>
+                              <Button size="small" onClick={() => void loadSymbolDiagnosticsData(itemSymbol)}>
+                                全链路诊断
+                              </Button>
+                              <Button size="small" onClick={() => void focusProviderSeriesData(itemProviderKey || "all", itemSymbol)}>
+                                看序列
+                              </Button>
+                              <Button size="small" onClick={() => void focusManifestDiagnostics(itemSymbol, normalizeManifestIntervalValue(item.interval || ""))}>
+                                看 Manifest
+                              </Button>
+                              <Button size="small" onClick={() => void focusQfqDiagnostics(itemSymbol)}>
+                                看前复权输入
+                              </Button>
+                            </Space>
+                          ) : null}
+                          {item.error_message ? <Typography.Text type="danger">{item.error_message}</Typography.Text> : null}
+                        </article>
+                      );
+                    })}
                   </div>
                   <Table<MarketDataIngestionJobItem>
                     size="small"
@@ -1892,6 +1984,33 @@ export function MarketDataView() {
                       { title: "开始时间", dataIndex: "started_at", width: 180 },
                       { title: "完成时间", dataIndex: "completed_at", width: 180 },
                       { title: "错误", dataIndex: "error_message", width: 260 },
+                      {
+                        title: "联动排查",
+                        width: 320,
+                        render: (_, row) => {
+                          const itemSymbol = inferJobItemSymbol(row);
+                          const itemProviderKey = inferJobItemProviderKey(row, selectedJobDetail.provider_key);
+                          if (!itemSymbol) {
+                            return <Typography.Text type="secondary">无标的</Typography.Text>;
+                          }
+                          return (
+                            <Space wrap>
+                              <Button size="small" onClick={() => void loadSymbolDiagnosticsData(itemSymbol)}>
+                                诊断
+                              </Button>
+                              <Button size="small" onClick={() => void focusProviderSeriesData(itemProviderKey || "all", itemSymbol)}>
+                                序列
+                              </Button>
+                              <Button size="small" onClick={() => void focusManifestDiagnostics(itemSymbol, normalizeManifestIntervalValue(row.interval || ""))}>
+                                Manifest
+                              </Button>
+                              <Button size="small" onClick={() => void focusQfqDiagnostics(itemSymbol)}>
+                                前复权输入
+                              </Button>
+                            </Space>
+                          );
+                        },
+                      },
                     ]}
                   />
                 </>
@@ -1950,6 +2069,17 @@ export function MarketDataView() {
                   <strong>{symbolDiagnostics.summary.recent_job_count}</strong>
                 </div>
               </div>
+              <Space wrap>
+                <Button size="small" onClick={() => void focusProviderSeriesData("all", symbolDiagnostics.symbol)}>
+                  定位到统一序列
+                </Button>
+                <Button size="small" onClick={() => void focusManifestDiagnostics(symbolDiagnostics.symbol, manifestIntervalFilter)}>
+                  定位到 Manifest
+                </Button>
+                <Button size="small" onClick={() => void focusQfqDiagnostics(symbolDiagnostics.symbol)}>
+                  定位到前复权输入
+                </Button>
+              </Space>
             </Card>
 
             <Card size="small" title="最近相关任务">
@@ -1980,11 +2110,16 @@ export function MarketDataView() {
                     { title: "申请时间", dataIndex: "requested_at", width: 180 },
                     {
                       title: "详情",
-                      width: 100,
+                      width: 260,
                       render: (_, row) => (
-                        <Button size="small" onClick={() => void openJobDetail(row.id)}>
-                          查看任务
-                        </Button>
+                        <Space wrap>
+                          <Button size="small" onClick={() => void openJobDetail(row.id)}>
+                            查看任务
+                          </Button>
+                          <Button size="small" onClick={() => void focusProviderSeriesData(row.provider_key || "all", symbolDiagnostics.symbol)}>
+                            看序列
+                          </Button>
+                        </Space>
                       ),
                     },
                   ]}
