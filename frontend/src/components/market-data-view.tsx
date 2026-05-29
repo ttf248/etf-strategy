@@ -683,6 +683,8 @@ export function MarketDataView() {
   const [seriesSymbolFilter, setSeriesSymbolFilter] = useState("");
   const [providerSeriesRows, setProviderSeriesRows] = useState<MarketDataSeriesRow[]>([]);
   const [providerSeriesLoading, setProviderSeriesLoading] = useState(false);
+  const [checkedSymbolSeriesRows, setCheckedSymbolSeriesRows] = useState<MarketDataSeriesRow[]>([]);
+  const [checkedSymbolSeriesLoading, setCheckedSymbolSeriesLoading] = useState(false);
   const [qfqSymbolFilter, setQfqSymbolFilter] = useState("");
   const [corporateActionRows, setCorporateActionRows] = useState<MarketDataCorporateActionRow[]>([]);
   const [adjustmentSegmentRows, setAdjustmentSegmentRows] = useState<MarketDataAdjustmentSegmentRow[]>([]);
@@ -728,6 +730,28 @@ export function MarketDataView() {
       messageApi.error(result.error.message);
     }
     setProviderSeriesLoading(false);
+  }
+
+  async function loadCheckedSymbolSeriesData(symbol: string, showSpinner: boolean = true) {
+    const normalizedSymbol = normalizeFocusSymbol(symbol);
+    if (!normalizedSymbol) {
+      setCheckedSymbolSeriesRows([]);
+      setCheckedSymbolSeriesLoading(false);
+      return;
+    }
+    if (showSpinner) {
+      setCheckedSymbolSeriesLoading(true);
+    }
+    const result = await apiFetchSafe<MarketDataSeriesRow[]>(
+      `/api/market-data/provider-series?provider=all&symbol=${encodeURIComponent(normalizedSymbol)}&limit=20`,
+    );
+    if (result.ok) {
+      setCheckedSymbolSeriesRows(result.data);
+    } else {
+      setCheckedSymbolSeriesRows([]);
+      messageApi.error(result.error.message);
+    }
+    setCheckedSymbolSeriesLoading(false);
   }
 
   async function loadQfqDiagnosticsData(symbol: string = qfqSymbolFilter, showSpinner: boolean = true) {
@@ -891,9 +915,20 @@ export function MarketDataView() {
           }
         })();
       }
+      if (checkedSymbol.trim()) {
+        const normalizedCheckedSymbol = normalizeFocusSymbol(checkedSymbol);
+        void (async () => {
+          const result = await apiFetchSafe<MarketDataSeriesRow[]>(
+            `/api/market-data/provider-series?provider=all&symbol=${encodeURIComponent(normalizedCheckedSymbol)}&limit=20`,
+          );
+          if (result.ok) {
+            setCheckedSymbolSeriesRows(result.data);
+          }
+        })();
+      }
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [diagnosticSymbol, selectedJobId, stats]);
+  }, [checkedSymbol, diagnosticSymbol, selectedJobId, stats]);
 
   function syncPeriodForInterval(targetInterval: string) {
     return targetInterval === "15m" ? "60d" : targetInterval === "1m" ? "7d" : undefined;
@@ -1227,6 +1262,17 @@ export function MarketDataView() {
     if (!checkedSymbol.trim()) {
       return { label: "待输入标的", color: "default", description: "例如 1810.HK、0700.HK、513050.SS。" };
     }
+    if (symbolRows.length === 0 && checkedSymbolSeriesRows.length > 0) {
+      const providerSummary = checkedSymbolSeriesRows
+        .slice(0, 3)
+        .map((item) => `${item.provider_key}:${item.interval}`)
+        .join(" / ");
+      return {
+        label: "已存在统一序列",
+        color: "blue",
+        description: `该标的已经写入统一多数据源主干表。当前可见序列：${providerSummary}${checkedSymbolSeriesRows.length > 3 ? " ..." : ""}。`,
+      };
+    }
     if (symbolRows.length === 0) {
       return { label: "未找到覆盖", color: "red", description: "当前还没有该标的行情。可先确认代码格式，再执行同步。" };
     }
@@ -1236,10 +1282,13 @@ export function MarketDataView() {
       return { label: "覆盖可用", color: "green", description: "该标的已同时具备日线和分钟级数据，可直接创建回测。" };
     }
     return { label: "覆盖有限", color: "gold", description: "该标的已有部分周期数据，建议先确认策略所需周期是否齐备。" };
-  }, [checkedSymbol, symbolRows, symbolIntervals]);
+  }, [checkedSymbol, checkedSymbolSeriesRows, symbolRows, symbolIntervals]);
 
   const intervalRecommendations = useMemo<IntervalRecommendation[]>(() => {
     if (!checkedSymbol.trim()) {
+      return [];
+    }
+    if (symbolRows.length === 0 && checkedSymbolSeriesRows.length > 0) {
       return [];
     }
     if (symbolRows.length === 0) {
@@ -1280,7 +1329,7 @@ export function MarketDataView() {
       });
     }
     return recommendations;
-  }, [checkedSymbol, symbolRows, symbolIntervals]);
+  }, [checkedSymbol, checkedSymbolSeriesRows.length, symbolRows, symbolIntervals]);
 
   const checkedSymbolLaunchHref = useMemo(() => {
     const normalizedSymbol = checkedSymbol.trim().toUpperCase();
@@ -1376,6 +1425,7 @@ export function MarketDataView() {
     setCheckInput(normalizedSymbol);
     setCheckedSymbol(normalizedSymbol);
     setTableKeyword(normalizedSymbol);
+    void loadCheckedSymbolSeriesData(normalizedSymbol);
   }
 
   function checkSymbol() {
@@ -1423,6 +1473,16 @@ export function MarketDataView() {
           {checkedSymbol ? <small>最近检查：{checkedSymbol}</small> : null}
           <span>{readiness.description}</span>
           <small>多渠道任务会自动把当前输入转换成各 provider 所需格式，例如 `SH600000` / `600000.SH`；通达信 `ds` 原始行情也支持直接输入 `10#AUDUSD` 这类代码。</small>
+          {checkedSymbolSeriesRows.length > 0 ? (
+            <div className="provider-panel-tags">
+              {checkedSymbolSeriesRows.map((row) => (
+                <Tag key={`checked-series-${row.series_id}`} color="blue">
+                  {row.provider_key}:{row.interval}:{row.adjustment_kind}
+                </Tag>
+              ))}
+            </div>
+          ) : null}
+          {checkedSymbolSeriesLoading ? <small>正在检查统一多数据源主干表中的现有序列…</small> : null}
           {intervalRecommendations.length > 0 ? (
             <div className="data-recommend-list">
               {intervalRecommendations.map((item) => (
@@ -1441,6 +1501,9 @@ export function MarketDataView() {
           <div className="data-check-actions">
             <Button loading={syncingSymbol} onClick={() => void syncCheckedSymbol()}>
               同步当前标的 {syncInterval}
+            </Button>
+            <Button onClick={() => void focusProviderSeriesData("all", checkedSymbol)}>
+              检查统一序列
             </Button>
             <Button onClick={() => void loadSymbolDiagnosticsData(checkedSymbol)}>
               打开全链路诊断
