@@ -573,6 +573,12 @@ def resolve_backtest_request_payload(request: Any, session: Session) -> dict[str
     symbol = _normalize_string(getattr(request, "symbol", None), "symbol").upper()
     interval = str(getattr(request, "interval", None) or (template.interval if template else DEFAULT_MINUTE_INTERVAL))
     strategy_kind = str(getattr(request, "strategy_kind", None) or (template.strategy_kind if template else "grid"))
+    market_data_provider = str(getattr(request, "market_data_provider", None) or "").strip().lower() or None
+    market_data_adjustment_kind = str(getattr(request, "market_data_adjustment_kind", None) or "").strip().lower() or None
+    if market_data_adjustment_kind is None and market_data_provider == "tdx_qfq":
+        market_data_adjustment_kind = "qfq"
+    if market_data_adjustment_kind is None and market_data_provider in {"yahoo", "tdx"}:
+        market_data_adjustment_kind = "raw"
     _validate_strategy_interval(strategy_kind, interval)
 
     execution_profile = str(getattr(request, "execution_profile", None) or (template.execution_profile if template else DEFAULT_TEMPLATE_EXECUTION_PROFILE))
@@ -591,6 +597,8 @@ def resolve_backtest_request_payload(request: Any, session: Session) -> dict[str
         "symbol": symbol,
         "interval": interval,
         "strategy_kind": strategy_kind,
+        "market_data_provider": market_data_provider,
+        "market_data_adjustment_kind": market_data_adjustment_kind,
         "validation_start": getattr(request, "validation_start", None) or (template.validation_start if template else DEFAULT_VALIDATION_START),
         "lookback_days": int(getattr(request, "lookback_days", None) or (template.lookback_days if template and template.lookback_days is not None else DEFAULT_LOOKBACK_DAYS)),
         "validation_ratio": float(

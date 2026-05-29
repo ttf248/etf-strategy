@@ -6,9 +6,11 @@ from pydantic import BaseModel, Field
 
 
 class BacktestRequestModel(BaseModel):
-    symbol: str = Field(..., description="Yahoo 标的代码")
+    symbol: str = Field(..., description="统一标的代码，例如 1810.HK、SH600000")
     interval: str | None = Field(default=None)
     strategy_kind: str | None = Field(default=None)
+    market_data_provider: str | None = Field(default=None, description="可选：显式指定统一行情 provider，例如 yahoo、tdx、tdx_qfq")
+    market_data_adjustment_kind: str | None = Field(default=None, description="可选：显式指定统一行情复权口径，例如 raw、qfq")
     validation_start: str | None = Field(default=None)
     lookback_days: int | None = Field(default=None, ge=1)
     validation_ratio: float | None = Field(default=None, gt=0, lt=1)

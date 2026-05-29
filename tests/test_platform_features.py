@@ -138,6 +138,29 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(stats_response.json()["instrument_count"], 2)
         self.assertEqual(stats_response.json()["provider_summaries"][0]["provider_key"], "yahoo")
 
+    def test_web_api_backtest_route_supports_unified_market_data_fields(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch("strategy_studio.web.app.submit_backtest", return_value={"job_id": 13, "status": "queued"}) as mock_submit:
+            response = client.post(
+                "/api/backtests",
+                json={
+                    "symbol": "sh600000",
+                    "interval": "1d",
+                    "strategy_kind": "dca",
+                    "market_data_provider": "tdx_qfq",
+                    "market_data_adjustment_kind": "qfq",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["job_id"], 13)
+        request = mock_submit.call_args.args[0]
+        self.assertEqual(request.symbol, "sh600000")
+        self.assertEqual(request.market_data_provider, "tdx_qfq")
+        self.assertEqual(request.market_data_adjustment_kind, "qfq")
+
     def test_web_api_market_data_ingestion_job_detail_route(self) -> None:
         app = create_app()
         client = TestClient(app)
@@ -3281,6 +3304,37 @@ class StrategyTemplateServiceTests(unittest.TestCase):
         self.assertEqual(payload["validation_ratio"], 0.3)
         self.assertEqual(payload["jobs"], 4)
         self.assertEqual(payload["template_snapshot"]["template_key"], "minute_rebound_1m_realistic_default")
+
+    def test_resolve_backtest_request_payload_normalizes_unified_market_data_fields(self) -> None:
+        request = SimpleNamespace(
+            symbol="sh600000",
+            template_id=None,
+            interval="1d",
+            strategy_kind="dca",
+            market_data_provider="TDX_QFQ",
+            market_data_adjustment_kind=None,
+            validation_start=None,
+            lookback_days=None,
+            validation_ratio=None,
+            execution_profile=None,
+            commission_bps=None,
+            slippage_bps=None,
+            max_position_ratio=None,
+            stop_loss_pct=None,
+            cooldown_bars=None,
+            benchmark=None,
+            left_side_policy=None,
+            force_exit_loss_pct=None,
+            jobs=2,
+            parameter_space=None,
+        )
+
+        payload = resolve_backtest_request_payload(request, session=object())
+
+        self.assertEqual(payload["symbol"], "SH600000")
+        self.assertEqual(payload["market_data_provider"], "tdx_qfq")
+        self.assertEqual(payload["market_data_adjustment_kind"], "qfq")
+        self.assertEqual(payload["jobs"], 2)
 
     def test_seed_templates_keep_unique_keys(self) -> None:
         seeds = build_seed_templates()

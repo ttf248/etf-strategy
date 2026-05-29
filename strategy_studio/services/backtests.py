@@ -25,7 +25,10 @@ from strategy_studio.repositories.backtests import (
     mark_job_progress,
     replace_report_details,
 )
-from strategy_studio.repositories.market_data import get_instrument_by_symbol, load_price_frame_from_database
+from strategy_studio.repositories.market_data import (
+    get_instrument_by_symbol,
+    load_backtest_price_frame_from_database,
+)
 from strategy_studio.settings import build_execution_config
 from strategy_studio.services.templates import resolve_backtest_request_payload
 from strategy_studio.workflow import run_full_workflow, run_minute_full_workflow
@@ -36,6 +39,8 @@ class BacktestRequest:
     symbol: str
     interval: str | None = None
     strategy_kind: str | None = None
+    market_data_provider: str | None = None
+    market_data_adjustment_kind: str | None = None
     validation_start: str | None = None
     lookback_days: int | None = None
     validation_ratio: float | None = None
@@ -76,10 +81,6 @@ def submit_backtest(request: BacktestRequest) -> dict[str, object]:
         )
         session.commit()
         return {"job_id": job.id, "status": job.status}
-
-
-def _database_source_label(symbol: str, interval: str) -> str:
-    return f"database://price_bars/{symbol.upper()}/{interval}"
 
 
 _RUNTIME_STAGE_ORDER = (
@@ -214,6 +215,10 @@ def _serialize_runtime(job, session) -> dict[str, object]:
 def _normalize_artifacts(
     workflow_result: dict[str, object],
     template_snapshot: dict[str, object] | None = None,
+    *,
+    data_source_label: str = "database",
+    market_data_provider: str | None = None,
+    market_data_adjustment_kind: str | None = None,
 ) -> dict[str, object]:
     def _stringify(value: object) -> object:
         if isinstance(value, Path):
@@ -233,9 +238,12 @@ def _normalize_artifacts(
     payload = {
         "storage_mode": "database_only",
         "data_source": "database",
+        "data_source_label": data_source_label,
         "artifact_transport": "embedded_database_rows",
         "in_sample_window": asdict(workflow_result["optimization"]["decline_window"]),
         "template_snapshot": template_snapshot,
+        "market_data_provider": market_data_provider,
+        "market_data_adjustment_kind": market_data_adjustment_kind,
     }
     return _stringify(payload)
 
@@ -442,7 +450,14 @@ def execute_next_job(
             )
             session.commit()
 
-            price_frame = load_price_frame_from_database(session, payload.symbol, payload.interval)
+            price_snapshot = load_backtest_price_frame_from_database(
+                session,
+                payload.symbol,
+                payload.interval,
+                provider_key=payload.market_data_provider,
+                adjustment_kind=payload.market_data_adjustment_kind,
+            )
+            price_frame = price_snapshot.frame
             instrument = get_instrument_by_symbol(session, payload.symbol)
             if instrument is None:
                 raise ValueError(f"数据库中不存在标的: {payload.symbol}")
@@ -457,7 +472,7 @@ def execute_next_job(
                 left_side_policy=payload.left_side_policy,
                 force_exit_loss_pct=payload.force_exit_loss_pct,
             )
-            database_source = _database_source_label(payload.symbol, payload.interval)
+            database_source = price_snapshot.source_label
 
             if _cancel_if_requested(session, job):
                 return job.id
@@ -535,6 +550,9 @@ def execute_next_job(
                 artifacts=_normalize_artifacts(
                     workflow_result,
                     template_snapshot=payload.template_snapshot,
+                    data_source_label=price_snapshot.source_label,
+                    market_data_provider=price_snapshot.provider_key,
+                    market_data_adjustment_kind=price_snapshot.adjustment_kind,
                 ),
             )
             replace_report_details(

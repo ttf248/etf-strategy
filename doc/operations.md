@@ -134,11 +134,17 @@ Scheduler 默认在 Asia/Shanghai 时区运行：
 
 1. 确认 Worker 进程存在。
 2. 查看日志中是否有数据库或策略异常。
-3. 确认目标标的和周期在 `price_bars` 中有足够数据。
+3. 确认目标标的和周期在旧 `price_bars`，或 `market_data_series + market_data_bars` 的统一序列中有足够数据。
 
 失败任务可以通过前端重试，也可以调用 `POST /api/backtests/{job_id}/retry`。
 
 取消任务可以在前端任务中心执行，也可以调用 `POST /api/backtests/{job_id}/cancel`。排队任务会立即取消，运行中任务会先进入 `cancel_requested`，等待 Worker 到达安全检查点后变为 `cancelled`。
+
+回测读取链路当前的优先顺序是：
+
+1. 若请求未显式指定统一行情 provider，且 `price_bars` 中已存在该标的/周期，则优先复用旧 Yahoo 兼容表。
+2. 若请求带了 `market_data_provider` / `market_data_adjustment_kind`，或旧表没有该标的周期，则继续尝试从 `market_data_series + market_data_bars` 读取。
+3. 如果统一主干表里同一标的/周期存在多条可用序列，例如同时有 `tdx raw` 和 `tdx_qfq qfq`，当前会明确报错，要求请求方显式指定 provider 或复权口径，避免 Worker 误选错误序列。
 
 ## 日志
 

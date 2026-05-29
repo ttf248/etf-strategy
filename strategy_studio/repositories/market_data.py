@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import datetime
 
 import pandas as pd
@@ -60,6 +61,18 @@ def _safe_int(value: object) -> int:
 
 def _safe_text(value: object) -> str:
     return str(value or "").strip()
+
+
+@dataclass(frozen=True)
+class BacktestPriceFrameSnapshot:
+    """回测读取层返回的统一载体。"""
+
+    frame: pd.DataFrame
+    source_label: str
+    source_kind: str
+    provider_key: str
+    adjustment_kind: str
+    series_id: int | None
 
 
 def _build_series_metadata_summary(metadata_json: dict[str, object] | None) -> dict[str, object]:
@@ -184,6 +197,24 @@ def _infer_exchange(symbol: str) -> str:
         if suffix:
             return suffix
     return "US"
+
+
+def _normalize_backtest_provider_key(value: str | None) -> str | None:
+    normalized = _safe_text(value).lower()
+    return normalized or None
+
+
+def _normalize_backtest_adjustment_kind(value: str | None) -> str | None:
+    normalized = _safe_text(value).lower()
+    return normalized or None
+
+
+def _default_adjustment_kind_for_provider(provider_key: str | None) -> str | None:
+    if provider_key == "tdx_qfq":
+        return "qfq"
+    if provider_key in {"yahoo", "tdx"}:
+        return "raw"
+    return None
 
 
 def _chunked(values: list[datetime], size: int = 5000) -> Iterable[list[datetime]]:
@@ -1570,7 +1601,7 @@ def load_price_frame_from_database(
     interval: str,
     start: str | None = None,
     end: str | None = None,
-) -> pd.DataFrame:
+) -> BacktestPriceFrameSnapshot:
     instrument = get_instrument_by_symbol(session, symbol)
     if instrument is None:
         raise ValueError(f"数据库中不存在该标的: {symbol}")
@@ -1602,7 +1633,122 @@ def load_price_frame_from_database(
         ]
     )
     frame["Date"] = pd.to_datetime(frame["Date"])
-    return frame.sort_values("Date").set_index("Date")
+    return BacktestPriceFrameSnapshot(
+        frame=frame.sort_values("Date").set_index("Date"),
+        source_label=f"database://price_bars/{symbol.upper()}/{interval}",
+        source_kind="legacy_price_bars",
+        provider_key="yahoo",
+        adjustment_kind="raw",
+        series_id=None,
+    )
+
+
+def load_backtest_price_frame_from_database(
+    session: Session,
+    symbol: str,
+    interval: str,
+    *,
+    start: str | None = None,
+    end: str | None = None,
+    provider_key: str | None = None,
+    adjustment_kind: str | None = None,
+) -> BacktestPriceFrameSnapshot:
+    """优先兼容旧 price_bars，同时支持从统一主干表读取回测行情。"""
+
+    normalized_provider = _normalize_backtest_provider_key(provider_key)
+    normalized_adjustment = _normalize_backtest_adjustment_kind(adjustment_kind)
+    if normalized_adjustment is None:
+        normalized_adjustment = _default_adjustment_kind_for_provider(normalized_provider)
+
+    should_try_legacy = normalized_provider in {None, "yahoo"} and normalized_adjustment in {None, "raw"}
+    legacy_error: ValueError | None = None
+    if should_try_legacy:
+        try:
+            return load_price_frame_from_database(session, symbol, interval, start=start, end=end)
+        except ValueError as exc:
+            legacy_error = exc
+
+    candidate_rows = list_provider_series(
+        session,
+        provider_key=normalized_provider or "all",
+        symbol=symbol,
+        limit=200,
+    )
+    filtered_candidates = [
+        row
+        for row in candidate_rows
+        if str(row.get("interval") or "") == interval
+        and bool(row.get("is_active"))
+        and int(row.get("bar_count") or 0) > 0
+        and (
+            normalized_adjustment is None
+            or str(row.get("adjustment_kind") or "").strip().lower() == normalized_adjustment
+        )
+    ]
+    if not filtered_candidates:
+        if legacy_error is not None:
+            raise legacy_error
+        provider_text = normalized_provider or "all"
+        adjustment_text = normalized_adjustment or "all"
+        raise ValueError(
+            "数据库中没有匹配的统一行情序列: "
+            f"symbol={symbol} interval={interval} provider={provider_text} adjustment={adjustment_text}"
+        )
+    if len(filtered_candidates) > 1:
+        candidate_summary = ", ".join(
+            f"{row['provider_key']}:{row['interval']}:{row['adjustment_kind']}(series_id={row['series_id']})"
+            for row in filtered_candidates[:5]
+        )
+        raise ValueError(
+            "数据库中存在多条可用于回测的统一行情序列，请显式指定 provider 或 adjustment_kind："
+            f" {candidate_summary}"
+        )
+
+    selected_series = filtered_candidates[0]
+    series_id = int(selected_series["series_id"])
+    statement = (
+        select(MarketDataBar)
+        .where(MarketDataBar.series_id == series_id)
+        .order_by(MarketDataBar.bar_time)
+    )
+    if start:
+        statement = statement.where(MarketDataBar.bar_time >= pd.Timestamp(start).to_pydatetime())
+    if end:
+        statement = statement.where(MarketDataBar.bar_time <= pd.Timestamp(end).to_pydatetime())
+    rows = session.scalars(statement).all()
+    if not rows:
+        raise ValueError(
+            "统一行情序列存在，但当前筛选范围没有可用于回测的 K 线: "
+            f"symbol={symbol} interval={interval} series_id={series_id}"
+        )
+
+    frame = pd.DataFrame(
+        [
+            {
+                "Date": row.bar_time,
+                "Open": row.open,
+                "High": row.high,
+                "Low": row.low,
+                "Close": row.close,
+                "Volume": row.volume,
+            }
+            for row in rows
+        ]
+    )
+    frame["Date"] = pd.to_datetime(frame["Date"])
+    resolved_provider = str(selected_series.get("provider_key") or "")
+    resolved_adjustment = str(selected_series.get("adjustment_kind") or "")
+    return BacktestPriceFrameSnapshot(
+        frame=frame.sort_values("Date").set_index("Date"),
+        source_label=(
+            "database://market_data_series/"
+            f"{resolved_provider}/{symbol.upper()}/{interval}/{resolved_adjustment or 'raw'}"
+        ),
+        source_kind="market_data_series",
+        provider_key=resolved_provider,
+        adjustment_kind=resolved_adjustment or "raw",
+        series_id=series_id,
+    )
 
 
 def create_sync_run(session: Session, job_type: str, interval: str) -> DataSyncRun:

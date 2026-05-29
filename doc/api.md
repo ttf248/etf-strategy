@@ -179,12 +179,20 @@ http://127.0.0.1:8000/docs
 
 主要请求字段：
 
-- `symbol`：必填，Yahoo 标的代码。
+- `symbol`：必填，统一标的代码，例如 `1810.HK`、`SH600000`。
 - `interval`：可选，默认由模板或服务默认值决定。
 - `strategy_kind`：可选，策略类型。
+- `market_data_provider`：可选；显式指定回测要读取的统一行情 provider，例如 `yahoo`、`tdx`、`tdx_qfq`。
+- `market_data_adjustment_kind`：可选；显式指定统一行情复权口径，例如 `raw`、`qfq`。若传 `market_data_provider=tdx_qfq` 且未显式传该字段，后端会自动补成 `qfq`。
 - `template_id`：可选，引用参数模板。
 - `parameter_space`：可选，覆盖或补充模板参数空间。
 - `execution_profile` 和费用/风控字段：可选，控制实盘化回测口径。
+
+回测读取顺序当前为：
+
+- 默认先尝试旧 `price_bars`，保证现有 Yahoo 回测入口不回归。
+- 若请求显式给出了 `market_data_provider` / `market_data_adjustment_kind`，或旧 `price_bars` 没有该标的周期，则继续尝试统一主干表 `market_data_series + market_data_bars`。
+- 如果统一主干表里同一标的/周期匹配出多条可用序列，接口会返回 `400`，要求调用方显式指定 provider 或复权口径，而不是隐式猜测。
 
 当前内置策略类型包括 `grid`、`dca`、`ma_cross`、`macd_trend`、`donchian_breakout`、`volume_breakout`、`bollinger_reversion`、`daily_rebound`、`minute_rebound`、`minute_rebound_with_fade_filter` 和 `minute_index_grid_retrace`。其中 `dca`、`ma_cross`、`macd_trend`、`donchian_breakout`、`volume_breakout` 与 `bollinger_reversion` 仅支持日线周期。
 
