@@ -37,15 +37,6 @@ type ShellSnapshot = {
   ready: boolean;
 };
 
-type WorkflowStep = {
-  key: string;
-  href: string;
-  title: string;
-  summary: string;
-  detail: string;
-  status: "ready" | "active" | "waiting";
-};
-
 type ShellGuidance = {
   tone: "ready" | "active" | "attention";
   kicker: string;
@@ -149,50 +140,6 @@ function getValidationMetrics(report: ReportSummary | null): {
         ? relativeValue > 0
         : false;
   return { netReturn, maxDrawdown, closedTrades, outperformBuyHold };
-}
-
-function buildShellStatusLabel(snapshot: ShellSnapshot): { title: string; description: string } {
-  if (!snapshot.ready) {
-    return {
-      title: "正在读取当前研究状态",
-      description: "稍后会显示数据覆盖、运行中任务和最近结果入口。",
-    };
-  }
-
-  const runningJobs = snapshot.jobs.filter((item) => item.status === "running");
-  const queuedJobs = snapshot.jobs.filter((item) => item.status === "queued");
-  const latestReport = snapshot.reports[0] ?? null;
-
-  if (runningJobs.length > 0) {
-    const latestRunning = runningJobs[0];
-    const stage = latestRunning.runtime_details.stage_label ?? "执行中";
-    return {
-      title: `有 ${runningJobs.length} 个任务正在推进`,
-      description: `最新任务 #${latestRunning.id} 当前阶段为“${stage}”，预计还需 ${formatDuration(latestRunning.runtime_details.eta_seconds)}。`,
-    };
-  }
-  if (queuedJobs.length > 0) {
-    return {
-      title: `有 ${queuedJobs.length} 个任务等待执行`,
-      description: "队列中已有待执行任务，通常无需重复提交相同配置。",
-    };
-  }
-  if (latestReport) {
-    return {
-      title: "已有结果可直接复盘",
-      description: `最近结果来自 ${latestReport.symbol} / ${latestReport.interval} / ${strategyLabel(latestReport.strategy_kind)}。`,
-    };
-  }
-  if ((snapshot.stats?.instrument_count ?? 0) > 0) {
-    return {
-      title: "数据已具备，可直接进入回测主流程",
-      description: "建议先基于默认模板提交一份基线任务，再回到结果页判断结论。",
-    };
-  }
-  return {
-    title: "当前仍需先补齐数据覆盖",
-    description: "至少准备一个熟悉标的的 1d 或 15m，才能进入完整回测流程。",
-  };
 }
 
 function buildShellGuidance(snapshot: ShellSnapshot): ShellGuidance {
@@ -426,68 +373,6 @@ function buildShellGuidance(snapshot: ShellSnapshot): ShellGuidance {
   };
 }
 
-function buildWorkflowSteps(snapshot: ShellSnapshot): WorkflowStep[] {
-  const instrumentCount = snapshot.stats?.instrument_count ?? 0;
-  const totalBars = snapshot.stats?.total_bars ?? 0;
-  const activeTemplateHint = snapshot.ready
-    ? "优先选默认模板，只有默认不匹配时再改详细参数。"
-    : "读取模板入口中。";
-  const runningJobs = snapshot.jobs.filter((item) => item.status === "running");
-  const queuedJobs = snapshot.jobs.filter((item) => item.status === "queued");
-  const latestReport = snapshot.reports[0] ?? null;
-  const latestRunning = runningJobs[0] ?? queuedJobs[0] ?? null;
-
-  return [
-    {
-      key: "/market-data",
-      href: "/market-data",
-      title: "准备数据",
-      summary: instrumentCount > 0 ? `${instrumentCount} 个标的可研究` : "尚未形成可研究样本",
-      detail:
-        instrumentCount > 0
-          ? `当前共 ${totalBars.toLocaleString()} 条 K 线，先确认目标标的具备 1d 或 15m。`
-          : "先补齐至少一个熟悉标的的关键周期，避免后续回测因覆盖不足失败。",
-      status: instrumentCount > 0 ? "ready" : "waiting",
-    },
-    {
-      key: "/templates",
-      href: "/templates",
-      title: "选择模板",
-      summary: snapshot.ready ? "默认模板优先" : "正在读取模板建议",
-      detail: activeTemplateHint,
-      status: instrumentCount > 0 ? "ready" : "waiting",
-    },
-    {
-      key: "/backtests",
-      href: "/backtests",
-      title: "运行回测",
-      summary:
-        latestRunning && latestRunning.status === "running"
-          ? `任务 #${latestRunning.id} 进行中`
-          : queuedJobs.length > 0
-            ? `${queuedJobs.length} 个任务排队中`
-            : "可直接发起新任务",
-      detail:
-        latestRunning && latestRunning.status === "running"
-          ? `${latestRunning.runtime_details.stage_label ?? "执行中"}，预计还需 ${formatDuration(latestRunning.runtime_details.eta_seconds)}。`
-          : queuedJobs.length > 0
-            ? "已有任务等待 worker 执行，通常无需重复提交同一套配置。"
-            : "提交后会实时看到阶段、进度、ETA 和资源占用摘要。",
-      status: latestRunning ? "active" : instrumentCount > 0 ? "ready" : "waiting",
-    },
-    {
-      key: "/reports",
-      href: "/reports",
-      title: "结果复盘",
-      summary: latestReport ? `最近结果 #${latestReport.id}` : "尚无结果可复盘",
-      detail: latestReport
-        ? `${latestReport.symbol} / ${latestReport.interval} / ${strategyLabel(latestReport.strategy_kind)}，建议先判断收益和回撤结论。`
-        : "当第一份结果生成后，这里会成为默认的下一步入口。",
-      status: latestReport ? "active" : "waiting",
-    },
-  ];
-}
-
 export function ConsoleShell({ children }: ConsoleShellProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -549,8 +434,6 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
     return () => window.clearInterval(timer);
   }, [snapshot.jobs]);
 
-  const workflowSteps = useMemo(() => buildWorkflowSteps(snapshot), [snapshot]);
-  const shellStatus = useMemo(() => buildShellStatusLabel(snapshot), [snapshot]);
   const shellGuidance = useMemo(() => buildShellGuidance(snapshot), [snapshot]);
   const runningJobs = useMemo(() => snapshot.jobs.filter((item) => item.status === "running"), [snapshot.jobs]);
   const queuedJobs = useMemo(() => snapshot.jobs.filter((item) => item.status === "queued"), [snapshot.jobs]);
@@ -614,7 +497,7 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
 
   return (
     <Layout className="platform-shell">
-      <Sider width={292} theme="light" className="platform-sider" breakpoint="lg" collapsedWidth="0">
+      <Sider width={236} theme="light" className="platform-sider" breakpoint="lg" collapsedWidth="0">
         <div className="platform-sider-inner">
           <div className="platform-side-head">
             <div className="platform-logo">
@@ -623,50 +506,6 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
                 <span className="platform-logo-title">Strategy Studio</span>
                 <span className="platform-logo-subtitle">策略研究工作台</span>
               </div>
-            </div>
-            <div className="nav-workbench-card">
-              <span className="nav-workbench-label">当前研究状态</span>
-              <strong>{shellStatus.title}</strong>
-              <p>{shellStatus.description}</p>
-              <div className="nav-workbench-pills">
-                {shellStatusPills.map((pill) => (
-                  <span key={pill.label}>
-                    {pill.label} {pill.value}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="workflow-rail">
-            <div className="workflow-rail-head">
-              <strong>标准研究路径</strong>
-              <span>保持“数据准备 → 回测 → 结果复盘”的常规工作台顺序。</span>
-            </div>
-            <div className="workflow-rail-list">
-              {workflowSteps.map((step, index) => {
-                const isCurrent = selectedKey === step.key;
-                const isRecommended = shellGuidance.recommendedKey === step.key;
-                return (
-                  <Link
-                    key={step.key}
-                    href={step.href}
-                    className={`workflow-rail-item status-${step.status}${isCurrent ? " is-current" : ""}${isRecommended ? " is-recommended" : ""}`}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    <div className="workflow-rail-index">{index + 1}</div>
-                    <div className="workflow-rail-body">
-                      <div className="workflow-rail-title-row">
-                        <strong>{step.title}</strong>
-                        <span className={`workflow-badge ${isRecommended ? "status-recommended" : `status-${step.status}`}`}>
-                          {isRecommended ? (isCurrent ? "当前最该做" : "建议下一步") : step.status === "active" ? "当前重点" : step.status === "ready" ? "可直接进入" : "待准备"}
-                        </span>
-                      </div>
-                      <span className="workflow-rail-summary">{step.summary}</span>
-                      <p>{step.detail}</p>
-                    </div>
-                  </Link>
-                );
-              })}
             </div>
           </div>
           {renderMenu()}
@@ -742,61 +581,6 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
         onClose={() => setMobileMenuOpen(false)}
         className="mobile-nav-drawer"
       >
-        <div className="mobile-shell-summary">
-          <strong>{shellStatus.title}</strong>
-          <p>{shellStatus.description}</p>
-          <div className="mobile-shell-pill-grid">
-            {shellStatusPills.map((pill) => (
-              <span key={pill.label} className="platform-status-pill">
-                <b>{pill.value}</b>
-                <small>{pill.label}</small>
-              </span>
-            ))}
-          </div>
-          <div className="mobile-shell-summary-actions">
-            <Button type="primary" block>
-              <Link href={shellGuidance.primaryHref} onClick={() => setMobileMenuOpen(false)}>
-                {shellGuidance.primaryLabel}
-              </Link>
-            </Button>
-            <Button block>
-              <Link href={shellGuidance.secondaryHref} onClick={() => setMobileMenuOpen(false)}>
-                {shellGuidance.secondaryLabel}
-              </Link>
-            </Button>
-          </div>
-        </div>
-        <div className="workflow-rail mobile-workflow-rail">
-          <div className="workflow-rail-list">
-            {workflowSteps.map((step, index) => (
-              <Link
-                key={step.key}
-                href={step.href}
-                className={`workflow-rail-item status-${step.status}${selectedKey === step.key ? " is-current" : ""}${shellGuidance.recommendedKey === step.key ? " is-recommended" : ""}`}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <div className="workflow-rail-index">{index + 1}</div>
-                <div className="workflow-rail-body">
-                  <div className="workflow-rail-title-row">
-                    <strong>{step.title}</strong>
-                    <span className={`workflow-badge ${shellGuidance.recommendedKey === step.key ? "status-recommended" : `status-${step.status}`}`}>
-                      {shellGuidance.recommendedKey === step.key
-                        ? selectedKey === step.key
-                          ? "当前最该做"
-                          : "建议下一步"
-                        : step.status === "active"
-                          ? "当前重点"
-                          : step.status === "ready"
-                            ? "可直接进入"
-                            : "待准备"}
-                    </span>
-                  </div>
-                  <span className="workflow-rail-summary">{step.summary}</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
         {renderMenu()}
       </Drawer>
     </Layout>
