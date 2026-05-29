@@ -44,6 +44,7 @@ export type MarketDataIngestionJob = {
   target_symbol: string;
   interval: string;
   requested_via: string;
+  summary_json: Record<string, unknown>;
 };
 
 export type MarketDataStats = {

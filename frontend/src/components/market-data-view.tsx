@@ -55,6 +55,20 @@ type ProviderIntervalOption = {
   value: string;
 };
 
+type WorkflowStepResult = {
+  step: string;
+  step_label: string;
+  provider: string;
+  interval: string;
+  symbols_count: number;
+  bars_inserted: number;
+  bars_updated: number;
+  status: string;
+  error_message: string;
+  child_ingestion_job_ids: number[];
+  blocked_by?: string;
+};
+
 type ProviderPanelConfig = {
   providerKey: string;
   fallbackName: string;
@@ -205,6 +219,53 @@ function buildIngestionTargetLabel(job: MarketDataIngestionJob): string {
     return `批量 / ${interval}`;
   }
   return "批量任务";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toNumberArray(value: unknown): number[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item))
+    .map((item) => Math.trunc(item));
+}
+
+function extractWorkflowResults(job: MarketDataIngestionJob): WorkflowStepResult[] {
+  const summary = isRecord(job.summary_json) ? job.summary_json : {};
+  const rawResults = summary.workflow_results;
+  if (!Array.isArray(rawResults)) {
+    return [];
+  }
+  const parsedResults: WorkflowStepResult[] = [];
+  for (const item of rawResults) {
+    if (!isRecord(item)) {
+      continue;
+    }
+    parsedResults.push({
+      step: String(item.step ?? ""),
+      step_label: String(item.step_label ?? item.step ?? ""),
+      provider: String(item.provider ?? ""),
+      interval: String(item.interval ?? ""),
+      symbols_count: Number(item.symbols_count ?? 0),
+      bars_inserted: Number(item.bars_inserted ?? 0),
+      bars_updated: Number(item.bars_updated ?? 0),
+      status: String(item.status ?? ""),
+      error_message: String(item.error_message ?? ""),
+      child_ingestion_job_ids: toNumberArray(item.child_ingestion_job_ids),
+      blocked_by: item.blocked_by ? String(item.blocked_by) : undefined,
+    });
+  }
+  return parsedResults;
+}
+
+function extractChildIngestionJobIds(job: MarketDataIngestionJob): number[] {
+  const summary = isRecord(job.summary_json) ? job.summary_json : {};
+  return toNumberArray(summary.child_ingestion_job_ids ?? summary.ingestion_job_ids);
 }
 
 function coverageStage(profile: CoverageProfile) {
@@ -395,6 +456,51 @@ function buildPrimaryResearchPath(params: {
     title: `${normalizedSymbol} 已有部分覆盖，建议补齐常用周期后再扩大范围`,
     description: "如果你只研究这一只标的，先把日线和 15m 补齐通常比先做全量同步更有效。",
   };
+}
+
+function renderWorkflowSummary(job: MarketDataIngestionJob) {
+  const workflowResults = extractWorkflowResults(job);
+  const childJobIds = extractChildIngestionJobIds(job);
+  if (workflowResults.length === 0 && childJobIds.length === 0) {
+    return null;
+  }
+  return (
+    <Collapse
+      size="small"
+      ghost
+      items={[
+        {
+          key: `workflow-${job.id}`,
+          label: "查看链路详情",
+          children: (
+            <div className="provider-panel-tags">
+              {childJobIds.length > 0 ? (
+                <Typography.Text type="secondary">子任务 #{childJobIds.join(", #")}</Typography.Text>
+              ) : null}
+              {workflowResults.map((item) => (
+                <article key={`${job.id}-${item.step}`} className="ingestion-mobile-card">
+                  <div className="ingestion-mobile-card-head">
+                    <div>
+                      <strong>{item.step_label || item.step || item.provider}</strong>
+                      <span>{item.provider}{item.interval ? ` / ${item.interval}` : ""}</span>
+                    </div>
+                    <StatusTag value={item.status} label={ingestionStatusLabel(item.status)} />
+                  </div>
+                  <div className="ingestion-mobile-metrics">
+                    <span>目标 {item.symbols_count}</span>
+                    <span>新增 {item.bars_inserted.toLocaleString()}</span>
+                    <span>更新 {item.bars_updated.toLocaleString()}</span>
+                  </div>
+                  {item.child_ingestion_job_ids.length > 0 ? <small>子任务 #{item.child_ingestion_job_ids.join(", #")}</small> : null}
+                  {item.error_message ? <Typography.Text type="danger">{item.error_message}</Typography.Text> : null}
+                </article>
+              ))}
+            </div>
+          ),
+        },
+      ]}
+    />
+  );
 }
 
 export function MarketDataView() {
@@ -1021,7 +1127,9 @@ export function MarketDataView() {
                     <span>更新 {job.rows_updated.toLocaleString()}</span>
                   </div>
                   <small>申请时间：{job.requested_at || "-"}</small>
+                  {extractChildIngestionJobIds(job).length > 0 ? <small>子任务 #{extractChildIngestionJobIds(job).join(", #")}</small> : null}
                   {job.error_message ? <Typography.Text type="danger">{job.error_message}</Typography.Text> : null}
+                  {renderWorkflowSummary(job)}
                 </article>
               ))}
             </div>
@@ -1032,6 +1140,10 @@ export function MarketDataView() {
               dataSource={recentIngestionJobs}
               pagination={{ pageSize: 8, showSizeChanger: false }}
               scroll={{ x: 1180 }}
+              expandable={{
+                expandedRowRender: (row) => renderWorkflowSummary(row),
+                rowExpandable: (row) => extractWorkflowResults(row).length > 0 || extractChildIngestionJobIds(row).length > 0,
+              }}
               columns={[
                 { title: "编号", dataIndex: "id", width: 80, fixed: "left" },
                 {

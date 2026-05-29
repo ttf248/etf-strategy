@@ -165,7 +165,82 @@ class MarketDataStatsTests(unittest.TestCase):
         self.assertEqual(stats["recent_ingestion_jobs"][0]["provider_key"], "tdx_qfq")
         self.assertEqual(stats["recent_ingestion_jobs"][0]["target_symbol"], "sh600000")
         self.assertEqual(stats["recent_ingestion_jobs"][0]["interval"], "1d")
+        self.assertEqual(stats["recent_ingestion_jobs"][0]["summary_json"], {})
         self.assertEqual(stats["recent_sync_runs"][0]["status"], "succeeded")
+
+    def test_get_market_data_stats_exposes_pipeline_workflow_summary(self) -> None:
+        now = datetime(2026, 5, 29, 13, 0, tzinfo=UTC)
+        workflow_summary = {
+            "requested_symbol": "SH600000",
+            "requested_interval": "all",
+            "child_ingestion_job_ids": [19, 20, 21, 22, 23],
+            "workflow_results": [
+                {
+                    "step": "tdx_raw",
+                    "step_label": "通达信原始导入",
+                    "provider": "tdx",
+                    "interval": "all",
+                    "symbols_count": 3,
+                    "bars_inserted": 600,
+                    "bars_updated": 10,
+                    "status": "succeeded",
+                    "child_ingestion_job_ids": [19, 20, 21],
+                },
+                {
+                    "step": "tushare_actions",
+                    "step_label": "Tushare 公司行动抓取",
+                    "provider": "tushare",
+                    "interval": "corp_actions",
+                    "symbols_count": 1,
+                    "bars_inserted": 5,
+                    "bars_updated": 0,
+                    "status": "succeeded",
+                    "child_ingestion_job_ids": [22],
+                },
+            ],
+        }
+        session = _FakeSession(
+            scalar_results=[0, 0],
+            execute_results=[
+                [],
+                [],
+                [
+                    (
+                        SimpleNamespace(
+                            id=18,
+                            provider_id=5,
+                            job_type="tdx_pipeline_workflow",
+                            status="succeeded",
+                            targets_total=3,
+                            targets_completed=3,
+                            rows_inserted=605,
+                            rows_updated=10,
+                            error_count=0,
+                            requested_at=now,
+                            completed_at=now,
+                            error_message="",
+                            target_scope_json={},
+                            summary_json=workflow_summary,
+                            requested_via="manual",
+                        ),
+                        "tdx_pipeline",
+                        "A 股统一补数链路",
+                    ),
+                ],
+            ],
+            scalars_results=[[]],
+        )
+
+        with patch("strategy_studio.repositories.market_data.list_instrument_coverages", return_value=[]):
+            stats = get_market_data_stats(session)
+
+        self.assertEqual(len(stats["recent_ingestion_jobs"]), 1)
+        job = stats["recent_ingestion_jobs"][0]
+        self.assertEqual(job["provider_key"], "tdx_pipeline")
+        self.assertEqual(job["target_symbol"], "SH600000")
+        self.assertEqual(job["interval"], "all")
+        self.assertEqual(job["summary_json"]["child_ingestion_job_ids"], [19, 20, 21, 22, 23])
+        self.assertEqual(job["summary_json"]["workflow_results"][0]["step_label"], "通达信原始导入")
 
 
 if __name__ == "__main__":

@@ -669,6 +669,7 @@ def list_recent_ingestion_jobs(session: Session, limit: int = 10) -> list[dict[s
     jobs: list[dict[str, object]] = []
     for job, provider_key, provider_name in rows:
         target_scope = dict(job.target_scope_json or {})
+        summary_json = dict(getattr(job, "summary_json", {}) or {})
         jobs.append(
             {
                 "id": job.id,
@@ -684,9 +685,10 @@ def list_recent_ingestion_jobs(session: Session, limit: int = 10) -> list[dict[s
                 "requested_at": _format_timestamp(job.requested_at),
                 "completed_at": _format_timestamp(job.completed_at),
                 "error_message": job.error_message,
-                "target_symbol": str(target_scope.get("symbol") or ""),
-                "interval": str(target_scope.get("interval") or ""),
+                "target_symbol": str(target_scope.get("symbol") or summary_json.get("requested_symbol") or ""),
+                "interval": str(target_scope.get("interval") or summary_json.get("requested_interval") or ""),
                 "requested_via": job.requested_via,
+                "summary_json": summary_json,
             }
         )
     return jobs
