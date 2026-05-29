@@ -14,6 +14,7 @@ import {
   type MarketDataIngestionJobItem,
   type MarketDataProviderSummary,
   type MarketDataSeriesRow,
+  type MarketDataSourceFileManifestRow,
   type MarketDataStats,
 } from "@/lib/api";
 import { MetricCard, PageErrorState, PageHeader, StatusTag, ToolbarCount } from "@/components/platform-ui";
@@ -533,6 +534,10 @@ export function MarketDataView() {
   const [corporateActionRows, setCorporateActionRows] = useState<MarketDataCorporateActionRow[]>([]);
   const [adjustmentSegmentRows, setAdjustmentSegmentRows] = useState<MarketDataAdjustmentSegmentRow[]>([]);
   const [qfqDiagnosticsLoading, setQfqDiagnosticsLoading] = useState(false);
+  const [manifestSymbolFilter, setManifestSymbolFilter] = useState("");
+  const [manifestIntervalFilter, setManifestIntervalFilter] = useState("all");
+  const [sourceFileManifestRows, setSourceFileManifestRows] = useState<MarketDataSourceFileManifestRow[]>([]);
+  const [manifestLoading, setManifestLoading] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
 
   async function loadStatsData(showSpinner: boolean = true) {
@@ -586,6 +591,28 @@ export function MarketDataView() {
     setQfqDiagnosticsLoading(false);
   }
 
+  async function loadManifestData(
+    symbol: string = manifestSymbolFilter,
+    intervalValue: string = manifestIntervalFilter,
+    showSpinner: boolean = true,
+  ) {
+    if (showSpinner) {
+      setManifestLoading(true);
+    }
+    const normalizedSymbol = symbol.trim().toUpperCase();
+    const symbolQuery = normalizedSymbol ? `&symbol=${encodeURIComponent(normalizedSymbol)}` : "";
+    const intervalQuery = intervalValue && intervalValue !== "all" ? `&interval=${encodeURIComponent(intervalValue)}` : "";
+    const result = await apiFetchSafe<MarketDataSourceFileManifestRow[]>(
+      `/api/market-data/source-file-manifests?provider=tdx${symbolQuery}${intervalQuery}&limit=20`,
+    );
+    if (result.ok) {
+      setSourceFileManifestRows(result.data);
+    } else {
+      messageApi.error(result.error.message);
+    }
+    setManifestLoading(false);
+  }
+
   useEffect(() => {
     queueMicrotask(() => {
       void loadStatsData();
@@ -616,6 +643,18 @@ export function MarketDataView() {
           messageApi.error(segmentsResult.error.message);
         }
         setQfqDiagnosticsLoading(false);
+      })();
+      void (async () => {
+        setManifestLoading(true);
+        const result = await apiFetchSafe<MarketDataSourceFileManifestRow[]>(
+          "/api/market-data/source-file-manifests?provider=tdx&limit=20",
+        );
+        if (result.ok) {
+          setSourceFileManifestRows(result.data);
+        } else {
+          messageApi.error(result.error.message);
+        }
+        setManifestLoading(false);
       })();
     });
   }, [messageApi]);
@@ -655,6 +694,7 @@ export function MarketDataView() {
       await loadStatsData(false);
       await loadProviderSeriesData(seriesProviderFilter, false);
       await loadQfqDiagnosticsData(qfqSymbolFilter, false);
+      await loadManifestData(manifestSymbolFilter, manifestIntervalFilter, false);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
     } finally {
@@ -683,6 +723,7 @@ export function MarketDataView() {
       await loadStatsData(false);
       await loadProviderSeriesData(seriesProviderFilter, false);
       await loadQfqDiagnosticsData(qfqSymbolFilter || targetSymbol, false);
+      await loadManifestData(manifestSymbolFilter || targetSymbol, manifestIntervalFilter, false);
       setTableKeyword(targetSymbol);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
@@ -712,6 +753,7 @@ export function MarketDataView() {
           await loadStatsData(false);
           await loadProviderSeriesData(seriesProviderFilter, false);
           await loadQfqDiagnosticsData(qfqSymbolFilter, false);
+          await loadManifestData(manifestSymbolFilter, manifestIntervalFilter, false);
         } catch (error) {
           messageApi.error(error instanceof Error ? error.message : "同步失败");
         } finally {
@@ -752,6 +794,7 @@ export function MarketDataView() {
       await loadStatsData(false);
       await loadProviderSeriesData(seriesProviderFilter, false);
       await loadQfqDiagnosticsData(qfqSymbolFilter || normalizedTarget || "", false);
+      await loadManifestData(manifestSymbolFilter || normalizedTarget || "", manifestIntervalFilter, false);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
     } finally {
@@ -1393,6 +1436,118 @@ export function MarketDataView() {
                 { title: "首条时间", dataIndex: "first_bar_time", width: 180 },
                 { title: "最新时间", dataIndex: "last_bar_time", width: 180 },
                 { title: "最近入库", dataIndex: "last_ingested_at", width: 180 },
+              ]}
+            />
+          </>
+        )}
+      </Card>
+
+      <Card size="small" title="通达信原始文件 Manifest 检查" className="section-card">
+        <div className="provider-overview-banner compact">
+          <div>
+            <strong>直接检查 `source_file_manifests` 的增量状态</strong>
+            <p>当通达信原始导入结果和预期不一致时，这里可以直接核对某个 `vipdoc` 文件最近是跳过、追加还是重建，以及最后一次成功导入到哪根 K 线。</p>
+          </div>
+          <Space wrap>
+            <Input
+              placeholder="留空看最近文件，或输入 SH600000"
+              value={manifestSymbolFilter}
+              onChange={(event) => setManifestSymbolFilter(event.target.value.toUpperCase())}
+              style={{ width: 220 }}
+            />
+            <Select
+              value={manifestIntervalFilter}
+              options={[
+                { label: "全部周期", value: "all" },
+                { label: "1d", value: "1d" },
+                { label: "1m", value: "1m" },
+                { label: "5m", value: "5m" },
+              ]}
+              onChange={setManifestIntervalFilter}
+              style={{ width: 140 }}
+            />
+            <Button
+              onClick={() => {
+                const normalized = checkedSymbol.trim().toUpperCase();
+                setManifestSymbolFilter(normalized);
+                void loadManifestData(normalized, manifestIntervalFilter);
+              }}
+            >
+              使用当前标的
+            </Button>
+            <Button loading={manifestLoading} onClick={() => void loadManifestData(manifestSymbolFilter, manifestIntervalFilter)}>
+              刷新 Manifest
+            </Button>
+          </Space>
+        </div>
+        {manifestLoading && sourceFileManifestRows.length === 0 ? (
+          <Skeleton active paragraph={{ rows: 5 }} />
+        ) : sourceFileManifestRows.length === 0 ? (
+          <Typography.Text type="secondary">当前筛选条件下还没有通达信文件 manifest 记录。</Typography.Text>
+        ) : (
+          <>
+            <div className="ingestion-mobile-list">
+              {sourceFileManifestRows.slice(0, 6).map((row) => (
+                <article key={row.manifest_id} className="ingestion-mobile-card">
+                  <div className="ingestion-mobile-card-head">
+                    <div>
+                      <strong>{row.instrument_symbol || row.source_path.split("/").at(-1) || row.source_path}</strong>
+                      <span>{row.provider_name || row.provider_key}</span>
+                    </div>
+                    <StatusTag value={row.status} label={ingestionStatusLabel(row.status)} />
+                  </div>
+                  <div className="ingestion-mobile-metrics">
+                    <span>周期 {row.interval}</span>
+                    <span>模式 {String(row.payload_json.mode ?? "-")}</span>
+                    <span>记录 {row.record_count.toLocaleString()}</span>
+                  </div>
+                  <small>{row.source_path}</small>
+                  <small>最新 K 线：{row.last_bar_time || "暂无"}</small>
+                </article>
+              ))}
+            </div>
+            <Table<MarketDataSourceFileManifestRow>
+              size="small"
+              rowKey="manifest_id"
+              dataSource={sourceFileManifestRows}
+              pagination={{ pageSize: 8, showSizeChanger: false }}
+              scroll={{ x: 1560 }}
+              columns={[
+                { title: "Manifest", dataIndex: "manifest_id", width: 90, fixed: "left" },
+                {
+                  title: "标的/文件",
+                  width: 240,
+                  render: (_, row) => (
+                    <div className="ingestion-provider-cell">
+                      <strong>{row.instrument_symbol || row.source_path.split("/").at(-1) || row.source_path}</strong>
+                      <span>{row.source_path}</span>
+                    </div>
+                  ),
+                },
+                { title: "市场", dataIndex: "market", width: 90 },
+                { title: "周期", dataIndex: "interval", width: 90 },
+                { title: "文件类型", dataIndex: "file_kind", width: 120 },
+                { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <StatusTag value={value} label={ingestionStatusLabel(value)} /> },
+                {
+                  title: "模式",
+                  width: 100,
+                  render: (_, row) => String(row.payload_json.mode ?? "-"),
+                },
+                { title: "记录数", dataIndex: "record_count", width: 110, render: (value: number) => value.toLocaleString() },
+                { title: "文件大小", dataIndex: "source_size", width: 120, render: (value: number) => value.toLocaleString() },
+                { title: "最新 K 线", dataIndex: "last_bar_time", width: 180 },
+                {
+                  title: "证券类型",
+                  width: 120,
+                  render: (_, row) => String(row.payload_json.security_type ?? "-"),
+                },
+                {
+                  title: "源后缀",
+                  width: 100,
+                  render: (_, row) => String(row.payload_json.source_suffix ?? "-"),
+                },
+                { title: "Tail Hash", dataIndex: "tail_hash", width: 180 },
+                { title: "最近更新", dataIndex: "updated_at", width: 180 },
               ]}
             />
           </>

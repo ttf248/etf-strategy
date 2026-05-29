@@ -235,6 +235,29 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(response.json()[0]["provider_key"], "tdx_qfq")
         mock_segments.assert_called_once_with(provider_key="tdx_qfq", symbol="sh600000", limit=20)
 
+    def test_web_api_market_data_source_file_manifests_route(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.fetch_source_file_manifests",
+            return_value=[
+                {
+                    "manifest_id": 41,
+                    "provider_key": "tdx",
+                    "source_path": "sh/lday/sh600000.day",
+                    "interval": "1d",
+                    "status": "success",
+                }
+            ],
+        ) as mock_manifests:
+            response = client.get("/api/market-data/source-file-manifests?provider=tdx&symbol=sh600000&interval=1d&limit=20")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]["manifest_id"], 41)
+        self.assertEqual(response.json()[0]["provider_key"], "tdx")
+        mock_manifests.assert_called_once_with(provider_key="tdx", symbol="sh600000", interval="1d", limit=20)
+
     def test_web_api_market_data_sync_route_passes_provider_specific_fields(self) -> None:
         app = create_app()
         client = TestClient(app)

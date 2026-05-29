@@ -9,6 +9,7 @@ from strategy_studio.repositories.market_data import (
     get_ingestion_job_detail,
     get_market_data_stats,
     list_provider_series,
+    list_source_file_manifests,
     list_instrument_coverages,
     list_instruments,
     list_price_bars,
@@ -42,6 +43,22 @@ def fetch_adjustment_segments(
 ) -> list[dict[str, object]]:
     with open_session() as session:
         return list_adjustment_segments(session, provider_key=provider_key, symbol=symbol, limit=limit)
+
+
+def fetch_source_file_manifests(
+    provider_key: str | None = None,
+    symbol: str | None = None,
+    interval: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, object]]:
+    with open_session() as session:
+        return list_source_file_manifests(
+            session,
+            provider_key=provider_key,
+            symbol=symbol,
+            interval=interval,
+            limit=limit,
+        )
 
 
 def fetch_ingestion_job_detail(job_id: int) -> dict[str, object] | None:

@@ -137,6 +137,27 @@ export type MarketDataAdjustmentSegmentRow = {
   updated_at: string;
 };
 
+export type MarketDataSourceFileManifestRow = {
+  manifest_id: number;
+  provider_key: string;
+  provider_name: string;
+  instrument_symbol: string;
+  instrument_name: string;
+  series_id: number | null;
+  source_path: string;
+  file_kind: string;
+  market: string;
+  interval: string;
+  source_size: number;
+  source_mtime: number;
+  record_count: number;
+  tail_hash: string;
+  status: string;
+  last_bar_time: string;
+  payload_json: Record<string, unknown>;
+  updated_at: string;
+};
+
 export type MarketDataStats = {
   instrument_count: number;
   total_bars: number;

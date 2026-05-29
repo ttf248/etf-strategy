@@ -992,6 +992,80 @@ def list_adjustment_segments(
     ]
 
 
+def list_source_file_manifests(
+    session: Session,
+    *,
+    provider_key: str | None = None,
+    symbol: str | None = None,
+    interval: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, object]]:
+    statement = (
+        select(
+            SourceFileManifest.id,
+            DataProvider.provider_key,
+            DataProvider.provider_name,
+            Instrument.symbol.label("instrument_symbol"),
+            Instrument.name.label("instrument_name"),
+            SourceFileManifest.series_id,
+            SourceFileManifest.source_path,
+            SourceFileManifest.file_kind,
+            SourceFileManifest.market,
+            SourceFileManifest.interval,
+            SourceFileManifest.source_size,
+            SourceFileManifest.source_mtime,
+            SourceFileManifest.record_count,
+            SourceFileManifest.tail_hash,
+            SourceFileManifest.status,
+            SourceFileManifest.last_bar_time,
+            SourceFileManifest.payload_json,
+            SourceFileManifest.updated_at,
+        )
+        .join(DataProvider, DataProvider.id == SourceFileManifest.provider_id)
+        .outerjoin(Instrument, Instrument.id == SourceFileManifest.instrument_id)
+        .order_by(
+            SourceFileManifest.updated_at.desc().nullslast(),
+            SourceFileManifest.interval,
+            SourceFileManifest.source_path,
+        )
+        .limit(limit)
+    )
+    if provider_key and provider_key.strip() and provider_key.strip().lower() != "all":
+        statement = statement.where(DataProvider.provider_key == provider_key.strip().lower())
+    if symbol and symbol.strip():
+        normalized_symbol = symbol.strip().upper()
+        statement = statement.where(
+            (Instrument.symbol == normalized_symbol) | func.upper(SourceFileManifest.source_path).contains(normalized_symbol)
+        )
+    if interval and interval.strip() and interval.strip().lower() != "all":
+        statement = statement.where(SourceFileManifest.interval == interval.strip().lower())
+
+    rows = session.execute(statement).all()
+    return [
+        {
+            "manifest_id": row.id,
+            "provider_key": row.provider_key,
+            "provider_name": row.provider_name,
+            "instrument_symbol": row.instrument_symbol or "",
+            "instrument_name": row.instrument_name or row.instrument_symbol or "",
+            "series_id": row.series_id,
+            "source_path": row.source_path,
+            "file_kind": row.file_kind,
+            "market": row.market or "",
+            "interval": row.interval,
+            "source_size": _safe_int(row.source_size),
+            "source_mtime": float(row.source_mtime or 0.0),
+            "record_count": _safe_int(row.record_count),
+            "tail_hash": row.tail_hash or "",
+            "status": row.status,
+            "last_bar_time": _format_timestamp(row.last_bar_time),
+            "payload_json": dict(row.payload_json or {}),
+            "updated_at": _format_timestamp(row.updated_at),
+        }
+        for row in rows
+    ]
+
+
 def get_market_data_stats(session: Session) -> dict[str, object]:
     instrument_count = int(session.scalar(select(func.count(Instrument.id))) or 0)
     total_bars = int(session.scalar(select(func.count(PriceBar.id))) or 0)

@@ -36,6 +36,7 @@ http://127.0.0.1:8000/docs
 - `GET /api/market-data/provider-series`
 - `GET /api/market-data/corporate-actions`
 - `GET /api/market-data/adjustment-segments`
+- `GET /api/market-data/source-file-manifests`
 - `GET /api/market-data/ingestion-jobs/{job_id}`
 - `GET /api/market-data/bars`
 - `GET /api/market-data/sync-runs`
@@ -84,6 +85,21 @@ http://127.0.0.1:8000/docs
 - 标的与口径：`instrument_symbol / instrument_name / adjustment_kind`
 - 公式区间：`start_date / end_date / adjust_a / adjust_b / status`
 - 来源与审计字段：`action_provider_name / payload_json / generated_at / updated_at`
+
+`GET /api/market-data/source-file-manifests` 用于直接检查 `source_file_manifests` 中的文件增量状态，默认按最近更新时间倒序返回最近 100 条，也支持：
+
+- `provider`：可选；当前主要是 `tdx`，传 `all` 或留空表示不过滤。
+- `symbol`：可选；支持按统一标的代码过滤，例如 `sh600000`，也会同时尝试匹配 `source_path`。
+- `interval`：可选；支持 `1d / 1m / 5m`。
+- `limit`：可选；限制返回条数。
+
+返回项当前包含：
+
+- Manifest 主键与 provider 信息：`manifest_id / provider_key / provider_name`
+- 关联对象：`instrument_symbol / instrument_name / series_id`
+- 文件与周期：`source_path / file_kind / market / interval`
+- 文件状态：`source_size / source_mtime / record_count / tail_hash / status / last_bar_time`
+- 导入附加信息：`payload_json / updated_at`
 
 `GET /api/market-data/ingestion-jobs/{job_id}` 返回单个统一导入任务的完整详情，包含：
 

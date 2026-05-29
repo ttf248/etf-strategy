@@ -26,6 +26,7 @@ from strategy_studio.services.market_data import (
     fetch_market_data_stats,
     fetch_provider_series,
     fetch_price_bars,
+    fetch_source_file_manifests,
     fetch_sync_runs,
 )
 from strategy_studio.services.platform import (
@@ -113,6 +114,15 @@ def create_app() -> FastAPI:
     @app.get("/api/market-data/adjustment-segments")
     def get_adjustment_segments(provider: str | None = None, symbol: str | None = None, limit: int = 100) -> list[dict[str, object]]:
         return fetch_adjustment_segments(provider_key=provider, symbol=symbol, limit=limit)
+
+    @app.get("/api/market-data/source-file-manifests")
+    def get_source_file_manifests(
+        provider: str | None = None,
+        symbol: str | None = None,
+        interval: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, object]]:
+        return fetch_source_file_manifests(provider_key=provider, symbol=symbol, interval=interval, limit=limit)
 
     @app.get("/api/market-data/ingestion-jobs/{job_id}")
     def get_ingestion_job(job_id: int) -> dict[str, object]:
