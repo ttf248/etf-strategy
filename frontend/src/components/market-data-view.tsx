@@ -50,6 +50,11 @@ type SymbolIntervalCard = {
   ready: boolean;
 };
 
+type ProviderIntervalOption = {
+  label: string;
+  value: string;
+};
+
 type ProviderPanelConfig = {
   providerKey: string;
   fallbackName: string;
@@ -66,6 +71,12 @@ type ProviderPanelModel = ProviderPanelConfig & {
   currentTarget: string;
 };
 
+const tdxIntervalOptions: ProviderIntervalOption[] = [
+  { label: "1d 原始日线", value: "1d" },
+  { label: "1m 原始分钟", value: "1m" },
+  { label: "5m 原始分钟", value: "5m" },
+];
+
 const providerPanelConfigs: ProviderPanelConfig[] = [
   {
     providerKey: "yahoo",
@@ -80,12 +91,12 @@ const providerPanelConfigs: ProviderPanelConfig[] = [
   {
     providerKey: "tdx",
     fallbackName: "通达信本地行情",
-    title: "通达信原始日线",
-    description: "从本地 vipdoc 导入 A 股原始 `.day` 日线，并维护文件 manifest，适合作为后续前复权与本地化扩仓底座。",
-    currentActionLabel: "导入当前标的原始日线",
+    title: "通达信原始行情",
+    description: "从本地 vipdoc 导入 A 股原始 `1d / 1m / 5m` 文件，并维护文件 manifest，适合作为后续前复权与本地化扩仓底座。",
+    currentActionLabel: "导入当前标的原始行情",
     batchActionLabel: "批量导入",
     symbolHint: "示例：SH600000、SZ000001",
-    currentIntervalLabel: "固定 1d",
+    currentIntervalLabel: "支持 1d / 1m / 5m",
   },
   {
     providerKey: "tushare",
@@ -379,6 +390,7 @@ export function MarketDataView() {
   const [tableKeyword, setTableKeyword] = useState("");
   const [interval, setInterval] = useState<string | undefined>(undefined);
   const [syncInterval, setSyncInterval] = useState("1d");
+  const [tdxSyncInterval, setTdxSyncInterval] = useState("1d");
   const [batchLimit, setBatchLimit] = useState(20);
   const [syncing, setSyncing] = useState(false);
   const [syncingSymbol, setSyncingSymbol] = useState(false);
@@ -407,6 +419,14 @@ export function MarketDataView() {
 
   function syncPeriodForInterval(targetInterval: string) {
     return targetInterval === "15m" ? "60d" : targetInterval === "1m" ? "7d" : undefined;
+  }
+
+  function providerIntervalValue(providerKey: string) {
+    return providerKey === "tdx" ? tdxSyncInterval : "1d";
+  }
+
+  function providerIntervalDisplay(providerKey: string) {
+    return providerKey === "tdx" ? tdxSyncInterval : providerKey === "yahoo" ? syncInterval : "1d";
   }
 
   async function syncAll() {
@@ -486,9 +506,10 @@ export function MarketDataView() {
       return;
     }
     const actionKey = `${providerKey}:${mode}`;
+    const requestedInterval = providerIntervalValue(providerKey);
     const payload: Record<string, unknown> = {
       provider: providerKey,
-      interval: "1d",
+      interval: requestedInterval,
     };
     if (mode === "current") {
       payload.symbol = normalizedTarget;
@@ -504,8 +525,8 @@ export function MarketDataView() {
       });
       const actionLabel =
         mode === "current"
-          ? `${providerKey} 当前标的任务已完成`
-          : `${providerKey} 批量任务已完成`;
+          ? `${providerKey} ${providerIntervalDisplay(providerKey)} 当前标的任务已完成`
+          : `${providerKey} ${providerIntervalDisplay(providerKey)} 批量任务已完成`;
       messageApi.success(actionLabel);
       await loadStatsData(false);
     } catch (error) {
@@ -779,14 +800,14 @@ export function MarketDataView() {
       <PageHeader
         eyebrow="数据准备"
         title="多渠道数据准备"
-        description="先设定当前目标标的，再决定是补 Yahoo 回测样本、导入通达信原始日线、抓取 Tushare 公司行动，还是重算前复权。"
+        description="先设定当前目标标的，再决定是补 Yahoo 回测样本、导入通达信原始 1d/1m/5m、抓取 Tushare 公司行动，还是重算前复权。"
       />
 
       <Card size="small" className="section-card data-check-card">
         <div className="data-check-main">
           <Typography.Title level={4}>设定当前目标标的</Typography.Title>
           <Typography.Paragraph>
-            下方多渠道卡片会复用这里的标的代码。当前覆盖检查仍主要围绕可直接回测的样本覆盖，A 股原始日线、公司行动和前复权状态请看后面的多渠道任务面板。
+            下方多渠道卡片会复用这里的标的代码。当前覆盖检查仍主要围绕可直接回测的样本覆盖，A 股原始 1d/1m/5m、公司行动和前复权状态请看后面的多渠道任务面板。
           </Typography.Paragraph>
           <Space.Compact className="data-check-input">
             <Input
@@ -833,8 +854,8 @@ export function MarketDataView() {
       <Card size="small" title="多渠道任务面板" className="section-card">
         <div className="provider-overview-banner">
           <div>
-            <strong>同一页直接管理 Yahoo、通达信原始、Tushare 公司行动和通达信前复权</strong>
-            <p>当前目标标的：{checkedSymbol || "未设置"}。Yahoo 使用上方当前周期；其余批量任务使用这里的批量上限。</p>
+            <strong>同一页直接管理 Yahoo、通达信原始 1d/1m/5m、Tushare 公司行动和通达信前复权</strong>
+            <p>当前目标标的：{checkedSymbol || "未设置"}。Yahoo 使用上方当前周期；TDX 在卡片内单独选择 `1d / 1m / 5m`；其余批量任务使用这里的批量上限。</p>
           </div>
           <Space wrap>
             <Select value={syncInterval} options={intervalOptions} onChange={setSyncInterval} style={{ width: 120 }} />
@@ -858,8 +879,24 @@ export function MarketDataView() {
               <div className="provider-panel-meta">
                 <small>{provider.symbolHint}</small>
                 <small>当前任务目标：{provider.currentTarget || "未设置"}</small>
-                <small>{provider.currentIntervalLabel}</small>
+                <small>
+                  {provider.providerKey === "tdx"
+                    ? `当前选择：${tdxSyncInterval}（${provider.currentIntervalLabel}）`
+                    : provider.currentIntervalLabel}
+                </small>
               </div>
+              {provider.providerKey === "tdx" ? (
+                <div className="provider-panel-meta">
+                  <small>导入周期</small>
+                  <Select
+                    size="small"
+                    value={tdxSyncInterval}
+                    options={tdxIntervalOptions}
+                    onChange={setTdxSyncInterval}
+                    style={{ width: 180 }}
+                  />
+                </div>
+              ) : null}
               <div className="provider-panel-metric-grid">
                 <div className="provider-panel-metric">
                   <span>序列</span>
@@ -902,14 +939,22 @@ export function MarketDataView() {
                   loading={syncingActionKey === `${provider.providerKey}:current`}
                   onClick={() => void runProviderAction(provider.providerKey, "current")}
                 >
-                  {provider.providerKey === "yahoo" ? `${provider.currentActionLabel} ${syncInterval}` : provider.currentActionLabel}
+                  {provider.providerKey === "yahoo"
+                    ? `${provider.currentActionLabel} ${syncInterval}`
+                    : provider.providerKey === "tdx"
+                      ? `${provider.currentActionLabel} ${tdxSyncInterval}`
+                      : provider.currentActionLabel}
                 </Button>
                 <Button
                   type="primary"
                   loading={syncingActionKey === `${provider.providerKey}:batch`}
                   onClick={() => void runProviderAction(provider.providerKey, "batch")}
                 >
-                  {provider.providerKey === "yahoo" ? `${provider.batchActionLabel} ${batchLimit} 个` : `${provider.batchActionLabel} ${batchLimit} 项`}
+                  {provider.providerKey === "yahoo"
+                    ? `${provider.batchActionLabel} ${batchLimit} 个`
+                    : provider.providerKey === "tdx"
+                      ? `${provider.batchActionLabel} ${tdxSyncInterval} ${batchLimit} 项`
+                      : `${provider.batchActionLabel} ${batchLimit} 项`}
                 </Button>
               </div>
             </article>
@@ -1169,7 +1214,7 @@ export function MarketDataView() {
         <div className="data-maintenance-banner">
           <div>
             <strong>高级补数：这里只处理当前回测样本的 Yahoo 全量同步</strong>
-            <p>如果当前只需建立单标的研究样本，通常无需执行这里的操作。A 股原始日线、公司行动和前复权批量任务请使用上方 provider 卡片。</p>
+            <p>如果当前只需建立单标的研究样本，通常无需执行这里的操作。A 股原始 1d/1m/5m、公司行动和前复权批量任务请使用上方 provider 卡片。</p>
           </div>
           <Space wrap>
             <Select value={syncInterval} options={intervalOptions} onChange={setSyncInterval} style={{ width: 120 }} />
