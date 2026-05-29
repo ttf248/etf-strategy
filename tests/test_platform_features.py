@@ -91,7 +91,18 @@ class PlatformFeatureTests(unittest.TestCase):
         app = create_app()
         client = TestClient(app)
 
-        with patch("strategy_studio.web.app.fetch_market_data_stats", return_value={"instrument_count": 2, "total_bars": 10, "by_interval": [], "coverages": [], "recent_sync_runs": []}):
+        with patch(
+            "strategy_studio.web.app.fetch_market_data_stats",
+            return_value={
+                "instrument_count": 2,
+                "total_bars": 10,
+                "by_interval": [],
+                "coverages": [],
+                "provider_summaries": [{"provider_key": "yahoo", "series_count": 1}],
+                "recent_ingestion_jobs": [{"id": 7, "provider_key": "yahoo", "status": "succeeded"}],
+                "recent_sync_runs": [],
+            },
+        ):
             health_response = client.get("/health")
             stats_response = client.get("/api/market-data/stats")
 
@@ -99,6 +110,7 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(health_response.json()["status"], "ok")
         self.assertEqual(stats_response.status_code, 200)
         self.assertEqual(stats_response.json()["instrument_count"], 2)
+        self.assertEqual(stats_response.json()["provider_summaries"][0]["provider_key"], "yahoo")
 
     def test_web_api_market_data_sync_route_passes_provider_specific_fields(self) -> None:
         app = create_app()

@@ -30,6 +30,20 @@ from strategy_studio.db.models import (
 )
 
 
+def _format_timestamp(value: datetime | None) -> str:
+    return value.isoformat(sep=" ") if value else ""
+
+
+def _normalize_string_list(values: object) -> list[str]:
+    if not values:
+        return []
+    return sorted({str(item) for item in values if str(item or "").strip()})
+
+
+def _safe_int(value: object) -> int:
+    return int(value or 0)
+
+
 def _infer_exchange(symbol: str) -> str:
     if symbol.endswith(".HK"):
         return "HK"
@@ -647,6 +661,39 @@ def list_instruments(session: Session) -> list[dict[str, object]]:
     return list(grouped.values())
 
 
+def list_recent_ingestion_jobs(session: Session, limit: int = 10) -> list[dict[str, object]]:
+    rows = session.execute(
+        select(DataIngestionJob, DataProvider.provider_key, DataProvider.provider_name)
+        .outerjoin(DataProvider, DataProvider.id == DataIngestionJob.provider_id)
+        .order_by(DataIngestionJob.requested_at.desc(), DataIngestionJob.id.desc())
+        .limit(limit)
+    )
+    jobs: list[dict[str, object]] = []
+    for job, provider_key, provider_name in rows:
+        target_scope = dict(job.target_scope_json or {})
+        jobs.append(
+            {
+                "id": job.id,
+                "provider_key": provider_key or "",
+                "provider_name": provider_name or "",
+                "job_type": job.job_type,
+                "status": job.status,
+                "targets_total": job.targets_total,
+                "targets_completed": job.targets_completed,
+                "rows_inserted": job.rows_inserted,
+                "rows_updated": job.rows_updated,
+                "error_count": job.error_count,
+                "requested_at": _format_timestamp(job.requested_at),
+                "completed_at": _format_timestamp(job.completed_at),
+                "error_message": job.error_message,
+                "target_symbol": str(target_scope.get("symbol") or ""),
+                "interval": str(target_scope.get("interval") or ""),
+                "requested_via": job.requested_via,
+            }
+        )
+    return jobs
+
+
 def get_market_data_stats(session: Session) -> dict[str, object]:
     instrument_count = int(session.scalar(select(func.count(Instrument.id))) or 0)
     total_bars = int(session.scalar(select(func.count(PriceBar.id))) or 0)
@@ -658,19 +705,160 @@ def get_market_data_stats(session: Session) -> dict[str, object]:
     by_interval = [{"interval": row.interval, "bar_count": int(row.bar_count)} for row in interval_rows]
     coverages = list_instrument_coverages(session)
     latest_sync = session.scalars(select(DataSyncRun).order_by(DataSyncRun.started_at.desc()).limit(10)).all()
+    provider_series_stats = (
+        select(
+            MarketDataSeries.provider_id.label("provider_id"),
+            func.count(MarketDataSeries.id).label("series_count"),
+            func.array_agg(func.distinct(MarketDataSeries.interval)).label("intervals"),
+            func.array_agg(func.distinct(MarketDataSeries.adjustment_kind)).label("adjustment_kinds"),
+            func.max(MarketDataSeries.last_ingested_at).label("series_last_ingested_at"),
+            func.max(MarketDataSeries.last_bar_time).label("latest_bar_time"),
+        )
+        .group_by(MarketDataSeries.provider_id)
+        .subquery()
+    )
+    provider_bar_stats = (
+        select(
+            MarketDataSeries.provider_id.label("provider_id"),
+            func.count(MarketDataBar.id).label("bars_count"),
+        )
+        .join(MarketDataBar, MarketDataBar.series_id == MarketDataSeries.id)
+        .group_by(MarketDataSeries.provider_id)
+        .subquery()
+    )
+    provider_action_stats = (
+        select(
+            CorporateActionEvent.provider_id.label("provider_id"),
+            func.count(CorporateActionEvent.id).label("action_count"),
+            func.max(CorporateActionEvent.ingested_at).label("latest_action_at"),
+        )
+        .group_by(CorporateActionEvent.provider_id)
+        .subquery()
+    )
+    provider_segment_stats = (
+        select(
+            PriceAdjustmentSegment.provider_id.label("provider_id"),
+            func.count(PriceAdjustmentSegment.id).label("segment_count"),
+            func.max(PriceAdjustmentSegment.updated_at).label("latest_segment_at"),
+        )
+        .group_by(PriceAdjustmentSegment.provider_id)
+        .subquery()
+    )
+    provider_manifest_stats = (
+        select(
+            SourceFileManifest.provider_id.label("provider_id"),
+            func.count(SourceFileManifest.id).label("manifest_count"),
+            func.max(SourceFileManifest.updated_at).label("latest_manifest_at"),
+        )
+        .group_by(SourceFileManifest.provider_id)
+        .subquery()
+    )
+    latest_job_ranked = (
+        select(
+            DataIngestionJob.provider_id.label("provider_id"),
+            DataIngestionJob.id.label("job_id"),
+            DataIngestionJob.status.label("status"),
+            DataIngestionJob.requested_at.label("requested_at"),
+            DataIngestionJob.completed_at.label("completed_at"),
+            func.row_number()
+            .over(
+                partition_by=DataIngestionJob.provider_id,
+                order_by=(DataIngestionJob.requested_at.desc(), DataIngestionJob.id.desc()),
+            )
+            .label("rank_index"),
+        )
+        .where(DataIngestionJob.provider_id.is_not(None))
+        .subquery()
+    )
+    latest_job_stats = (
+        select(
+            latest_job_ranked.c.provider_id,
+            latest_job_ranked.c.job_id,
+            latest_job_ranked.c.status,
+            latest_job_ranked.c.requested_at,
+            latest_job_ranked.c.completed_at,
+        )
+        .where(latest_job_ranked.c.rank_index == 1)
+        .subquery()
+    )
+    provider_rows = session.execute(
+        select(
+            DataProvider.provider_key,
+            DataProvider.provider_name,
+            DataProvider.provider_type,
+            DataProvider.status,
+            provider_series_stats.c.series_count,
+            provider_series_stats.c.intervals,
+            provider_series_stats.c.adjustment_kinds,
+            provider_series_stats.c.series_last_ingested_at,
+            provider_series_stats.c.latest_bar_time,
+            provider_bar_stats.c.bars_count,
+            provider_action_stats.c.action_count,
+            provider_action_stats.c.latest_action_at,
+            provider_segment_stats.c.segment_count,
+            provider_segment_stats.c.latest_segment_at,
+            provider_manifest_stats.c.manifest_count,
+            provider_manifest_stats.c.latest_manifest_at,
+            latest_job_stats.c.job_id,
+            latest_job_stats.c.status.label("latest_job_status"),
+            latest_job_stats.c.requested_at.label("latest_job_requested_at"),
+            latest_job_stats.c.completed_at.label("latest_job_completed_at"),
+        )
+        .select_from(DataProvider)
+        .outerjoin(provider_series_stats, provider_series_stats.c.provider_id == DataProvider.id)
+        .outerjoin(provider_bar_stats, provider_bar_stats.c.provider_id == DataProvider.id)
+        .outerjoin(provider_action_stats, provider_action_stats.c.provider_id == DataProvider.id)
+        .outerjoin(provider_segment_stats, provider_segment_stats.c.provider_id == DataProvider.id)
+        .outerjoin(provider_manifest_stats, provider_manifest_stats.c.provider_id == DataProvider.id)
+        .outerjoin(latest_job_stats, latest_job_stats.c.provider_id == DataProvider.id)
+        .order_by(DataProvider.provider_key)
+    )
+    provider_summaries: list[dict[str, object]] = []
+    for row in provider_rows:
+        latest_candidates = [
+            row.series_last_ingested_at,
+            row.latest_action_at,
+            row.latest_segment_at,
+            row.latest_manifest_at,
+            row.latest_job_completed_at,
+            row.latest_job_requested_at,
+        ]
+        latest_ingestion_at = max((item for item in latest_candidates if item is not None), default=None)
+        provider_summaries.append(
+            {
+                "provider_key": row.provider_key,
+                "provider_name": row.provider_name,
+                "provider_type": row.provider_type,
+                "status": row.status,
+                "series_count": _safe_int(row.series_count),
+                "bars_count": _safe_int(row.bars_count),
+                "action_count": _safe_int(row.action_count),
+                "segment_count": _safe_int(row.segment_count),
+                "manifest_count": _safe_int(row.manifest_count),
+                "intervals": _normalize_string_list(row.intervals),
+                "adjustment_kinds": _normalize_string_list(row.adjustment_kinds),
+                "latest_bar_time": _format_timestamp(row.latest_bar_time),
+                "latest_ingestion_at": _format_timestamp(latest_ingestion_at),
+                "latest_ingestion_status": row.latest_job_status or "",
+                "latest_ingestion_job_id": _safe_int(row.job_id) if row.job_id is not None else None,
+            }
+        )
+    recent_ingestion_jobs = list_recent_ingestion_jobs(session, limit=12)
     return {
         "instrument_count": instrument_count,
         "total_bars": total_bars,
         "by_interval": by_interval,
         "coverages": coverages,
+        "provider_summaries": provider_summaries,
+        "recent_ingestion_jobs": recent_ingestion_jobs,
         "recent_sync_runs": [
             {
                 "id": run.id,
                 "job_type": run.job_type,
                 "interval": run.interval,
                 "status": run.status,
-                "started_at": run.started_at.isoformat(sep=" "),
-                "completed_at": run.completed_at.isoformat(sep=" ") if run.completed_at else "",
+                "started_at": _format_timestamp(run.started_at),
+                "completed_at": _format_timestamp(run.completed_at),
                 "symbols_count": run.symbols_count,
                 "bars_inserted": run.bars_inserted,
                 "bars_updated": run.bars_updated,
