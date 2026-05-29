@@ -45,6 +45,8 @@ market_data_series(provider=tdx, adjustment_kind=raw, interval=1d/1m/5m)
 market_data_bars + source_file_manifests + data_ingestion_jobs
 ```
 
+当前导入会保留 `vipdoc` 第一层市场目录，已覆盖常见 `sh / sz / bj / ds`。其中 `sh / sz / bj` 日线仍按通达信股票 `.day` 的整数价格缩放解析，`ds` 日线则按 `float32` 价格字段单独解析，分钟线继续复用 `.lc1/.1/.lc5/.5` 的既有记录格式。
+
 同一文件再次导入时，会先比较 `source_size / source_mtime / record_count / tail_hash`；未变化则跳过，严格尾部增长时走安全增量窗口。
 
 Tushare 当前已接通的链路为：

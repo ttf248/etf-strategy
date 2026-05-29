@@ -56,6 +56,7 @@ py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 1d
 py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 1m
 py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 5m
 py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval all
+py -3.13 main.py sync-now --provider tdx --symbol "10#AUDUSD" --interval 1d
 py -3.13 main.py sync-now --provider tdx_pipeline --symbol sh600000 --interval 1d
 py -3.13 main.py sync-now --provider tdx_pipeline --symbol sh600000 --interval all
 py -3.13 main.py sync-now --provider tushare --symbol sh600000
@@ -76,13 +77,14 @@ py -3.13 main.py sync-now --provider tdx --interval 1d --force
 py -3.13 main.py sync-now --provider tdx --interval all --limit 100 --force
 py -3.13 main.py sync-now --provider tdx --interval 1m --symbol sh600000 --force
 py -3.13 main.py sync-now --provider tdx --interval 5m --symbol sh600000 --force
+py -3.13 main.py sync-now --provider tdx --interval 1d --symbol "10#AUDUSD" --force
 py -3.13 main.py sync-now --provider tdx_pipeline --interval all --limit 20 --force
 py -3.13 main.py sync-now --provider tdx_pipeline --symbol sh600000 --interval 1d --force
 py -3.13 main.py sync-now --provider tushare --limit 20
 py -3.13 main.py sync-now --provider tdx_qfq --limit 20
 ```
 
-当前 `provider=tdx` 已支持原始 `1d / 1m / 5m` 文件导入，并依赖 `STRATEGY_STUDIO_TDX_VIPDOC` 或 `STRATEGY_STUDIO_TDX_CONFIG_PATH` 指向有效的 `vipdoc` 配置。其中 `1d` 扫描 `.day`，`1m` 扫描 `.lc1/.1`，`5m` 扫描 `.lc5/.5`；若使用 `interval=all`，会顺序执行三个 TDX 周期，适合直接按配置路径全量导入。若本机 `vipdoc` 目录结构和默认假设不一致，应先确认实际文件位置再执行导入。
+当前 `provider=tdx` 已支持原始 `1d / 1m / 5m` 文件导入，并依赖 `STRATEGY_STUDIO_TDX_VIPDOC` 或 `STRATEGY_STUDIO_TDX_CONFIG_PATH` 指向有效的 `vipdoc` 配置。其中 `1d` 扫描 `.day`，`1m` 扫描 `.lc1/.1`，`5m` 扫描 `.lc5/.5`；若使用 `interval=all`，会顺序执行三个 TDX 周期，适合直接按配置路径全量导入。当前导入会保留 `vipdoc` 第一层市场目录，已覆盖常见 `sh / sz / bj / ds`；其中 `ds` 日线价格字段按 `float32` 位模式解析，不再沿用 A 股 `.day` 的整数缩放口径。若命令里要显式指定 `ds` 代码，PowerShell 下请用引号包住 `#`，例如 `--symbol "10#AUDUSD"`。若本机 `vipdoc` 目录结构和默认假设不一致，应先确认实际文件位置再执行导入。
 
 A 股统一补数链路注意事项：
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path
+import re
 import struct
 
 import numpy as np
@@ -65,6 +66,22 @@ DAY_DTYPE = np.dtype(
         ("reserved", "<u4"),
     ]
 )
+DS_DAY_DTYPE = np.dtype(
+    [
+        ("date", "<u4"),
+        ("open", "<f4"),
+        ("high", "<f4"),
+        ("low", "<f4"),
+        ("close", "<f4"),
+        ("amount", "<f4"),
+        ("volume", "<u4"),
+        ("reserved", "<u4"),
+    ]
+)
+DS_INDEX_PREFIXES = {"31", "33", "34", "44", "62", "74", "78"}
+DS_FUND_PREFIXES = {"102"}
+DS_DERIVATIVE_PREFIXES = {"4", "5", "6", "7", "8", "67"}
+DS_FOREX_PREFIXES = {"10"}
 
 
 @dataclass(frozen=True)
@@ -147,6 +164,8 @@ def detect_security_type(source_file: Path, vipdoc: Path | None = None) -> Secur
     """按通达信市场和代码前缀识别证券类型。"""
     market = infer_market_from_path(source_file, vipdoc)
     symbol = source_file.stem.lower()
+    if market == "ds":
+        return _detect_ds_security_type(symbol)
     prefix = symbol[2:5] if symbol.startswith("sh204") else symbol[2:4] if len(symbol) >= 4 else ""
 
     if market == "bj":
@@ -186,6 +205,8 @@ def infer_market_from_path(source_file: Path, vipdoc: Path | None = None) -> str
     stem = source_file.stem.lower()
     if stem.startswith(("sh", "sz", "bj")):
         return stem[:2]
+    if "#" in stem:
+        return "ds"
     return ""
 
 
@@ -193,7 +214,8 @@ def read_day_frame(source_file: Path, vipdoc: Path | None = None) -> pd.DataFram
     raw = source_file.read_bytes()
     if len(raw) % DAY_RECORD_SIZE != 0:
         raise ValueError(f".day 文件大小不是 {DAY_RECORD_SIZE} 字节整数倍，可能仍在写入：{source_file}")
-    return parse_day_records(raw, detect_security_type(source_file, vipdoc))
+    security = detect_security_type(source_file, vipdoc)
+    return parse_day_records(raw, security)
 
 
 def read_day_frame_tail(source_file: Path, start_offset: int, vipdoc: Path | None = None) -> pd.DataFrame:
@@ -205,7 +227,8 @@ def read_day_frame_tail(source_file: Path, start_offset: int, vipdoc: Path | Non
         raw = file.read()
     if len(raw) % DAY_RECORD_SIZE != 0:
         raise ValueError(f".day 尾部大小不是 {DAY_RECORD_SIZE} 字节整数倍，可能仍在写入：{source_file}")
-    return parse_day_records(raw, detect_security_type(source_file, vipdoc))
+    security = detect_security_type(source_file, vipdoc)
+    return parse_day_records(raw, security)
 
 
 def read_minute_frame(source_file: Path) -> pd.DataFrame:
@@ -231,6 +254,12 @@ def parse_day_records(raw: bytes, security: SecurityTypeInfo) -> pd.DataFrame:
     """使用 NumPy 结构化视图批量解析 `.day`。"""
     if not raw:
         return pd.DataFrame(columns=["open", "high", "low", "close", "amount", "volume"])
+    if security.market == "ds":
+        return _parse_ds_day_records(raw)
+    return _parse_standard_day_records(raw, security)
+
+
+def _parse_standard_day_records(raw: bytes, security: SecurityTypeInfo) -> pd.DataFrame:
     records = np.frombuffer(raw, dtype=DAY_DTYPE)
     frame = pd.DataFrame(
         {
@@ -240,6 +269,24 @@ def parse_day_records(raw: bytes, security: SecurityTypeInfo) -> pd.DataFrame:
             "close": records["close"].astype("float64") * security.price_scale,
             "amount": records["amount"].astype("float64"),
             "volume": records["volume"].astype("uint64") * security.volume_scale,
+        }
+    )
+    frame.index = pd.to_datetime(records["date"].astype(str), format="%Y%m%d", errors="coerce")
+    frame.index.name = "date"
+    return frame
+
+
+def _parse_ds_day_records(raw: bytes) -> pd.DataFrame:
+    """`vipdoc/ds/*.day` 的价格字段实际是 float32 位模式，不能沿用 A 股整数缩放。"""
+    records = np.frombuffer(raw, dtype=DS_DAY_DTYPE)
+    frame = pd.DataFrame(
+        {
+            "open": records["open"].astype("float64"),
+            "high": records["high"].astype("float64"),
+            "low": records["low"].astype("float64"),
+            "close": records["close"].astype("float64"),
+            "amount": records["amount"].astype("float64"),
+            "volume": records["volume"].astype("uint64"),
         }
     )
     frame.index = pd.to_datetime(records["date"].astype(str), format="%Y%m%d", errors="coerce")
@@ -459,7 +506,45 @@ def security_type_to_asset_type(security: SecurityTypeInfo) -> str:
         return "fund"
     if "BOND" in security.security_type or "REPO" in security.security_type:
         return "bond"
+    if "FOREX" in security.security_type:
+        return "forex"
+    if "OPTION" in security.security_type or "FUTURE" in security.security_type:
+        return "derivative"
+    if "OTHER" in security.security_type:
+        return "other"
     return "equity"
+
+
+def _detect_ds_security_type(symbol: str) -> SecurityTypeInfo:
+    """`ds` 市场混合了外汇、指数、基金和衍生品，先按已验证样本做保守分类。"""
+    prefix, _, raw_contract = symbol.partition("#")
+    contract = raw_contract.upper()
+    security_type = "DS_OTHER"
+    if prefix in DS_FUND_PREFIXES:
+        security_type = "DS_FUND"
+    elif prefix in DS_FOREX_PREFIXES and _looks_like_ds_forex_contract(contract):
+        security_type = "DS_FOREX"
+    elif _looks_like_ds_option_contract(contract):
+        security_type = "DS_OPTION"
+    elif prefix in DS_INDEX_PREFIXES:
+        security_type = "DS_INDEX"
+    elif prefix in DS_DERIVATIVE_PREFIXES or _looks_like_ds_future_contract(contract):
+        security_type = "DS_FUTURE"
+    elif contract.isdigit() and len(contract) in {5, 6}:
+        security_type = "DS_INDEX"
+    return SecurityTypeInfo("ds", symbol, prefix, security_type, 1.0, 1.0)
+
+
+def _looks_like_ds_forex_contract(contract: str) -> bool:
+    return len(contract) == 6 and contract.isalpha()
+
+
+def _looks_like_ds_option_contract(contract: str) -> bool:
+    return "-C-" in contract or "-P-" in contract
+
+
+def _looks_like_ds_future_contract(contract: str) -> bool:
+    return bool(re.match(r"^[A-Z]{1,3}\d{3,4}$", contract))
 
 
 def _manifest_status(previous: object) -> str:

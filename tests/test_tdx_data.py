@@ -7,9 +7,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from strategy_studio.data.tdx import (
+    DAY_RECORD_SIZE,
     MINUTE_RECORD_SIZE,
     build_day_file_signature,
     build_tdx_file_signature,
+    detect_security_type,
     detect_period_from_suffix,
     interval_to_period,
     iter_tdx_files,
@@ -21,6 +23,7 @@ from strategy_studio.data.tdx import (
     read_day_frame_tail,
     read_minute_frame,
     read_minute_frame_tail,
+    security_type_to_asset_type,
     suffixes_for_interval,
 )
 
@@ -35,6 +38,18 @@ def build_day_record(
     volume: int,
 ) -> bytes:
     return struct.pack("<IIIIIfII", trade_date, open_price, high_price, low_price, close_price, amount, volume, 0)
+
+
+def build_ds_day_record(
+    trade_date: int,
+    open_price: float,
+    high_price: float,
+    low_price: float,
+    close_price: float,
+    amount: float,
+    volume: int,
+) -> bytes:
+    return struct.pack("<IfffffII", trade_date, open_price, high_price, low_price, close_price, amount, volume, 0)
 
 
 def build_minute_date_code(year: int, month: int, day: int) -> int:
@@ -165,6 +180,61 @@ class TdxDataTests(unittest.TestCase):
         self.assertEqual(normalized.iloc[0]["period"], "min1")
         self.assertEqual(normalized.iloc[1]["source_file"], "sh/sh600000.lc1")
 
+    def test_read_day_frame_and_normalize_ds_forex(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            vipdoc = Path(temp_dir)
+            source_file = vipdoc / "ds" / "lday" / "10#AUDUSD.day"
+            source_file.parent.mkdir(parents=True)
+            source_file.write_bytes(
+                build_ds_day_record(20210802, 0.73358, 0.73808, 0.73297, 0.73639, 0.0, 0)
+                + build_ds_day_record(20210803, 0.73701, 0.7412, 0.7358, 0.73995, 0.0, 0)
+            )
+
+            frame = read_day_frame(source_file, vipdoc)
+            normalized = normalize_day_frame(frame, source_file, vipdoc)
+            tail = read_day_frame_tail(source_file, start_offset=DAY_RECORD_SIZE, vipdoc=vipdoc)
+
+        self.assertEqual(len(frame), 2)
+        self.assertAlmostEqual(float(frame.iloc[0]["open"]), 0.73358, places=5)
+        self.assertAlmostEqual(float(frame.iloc[0]["close"]), 0.73639, places=5)
+        self.assertEqual(int(frame.iloc[1]["volume"]), 0)
+        self.assertEqual(normalized.iloc[0]["market"], "ds")
+        self.assertEqual(normalized.iloc[0]["symbol"], "10#audusd")
+        self.assertEqual(normalized.iloc[0]["source_file"], "ds/lday/10#AUDUSD.day")
+        self.assertEqual(normalized.iloc[1]["datetime"], "2021-08-03")
+        self.assertEqual(len(tail), 1)
+        self.assertAlmostEqual(float(tail.iloc[0]["close"]), 0.73995, places=5)
+
+    def test_read_lc1_minute_frame_and_normalize_ds_market(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            vipdoc = Path(temp_dir)
+            source_file = vipdoc / "ds" / "minline" / "10#AUDUSD.lc1"
+            source_file.parent.mkdir(parents=True)
+            source_file.write_bytes(
+                build_lc_minute_record(
+                    year=2024,
+                    month=5,
+                    day=21,
+                    hour=9,
+                    minute=31,
+                    open_price=0.64696,
+                    high_price=0.64696,
+                    low_price=0.64693,
+                    close_price=0.64693,
+                    amount=0.0,
+                    volume=0,
+                )
+            )
+
+            frame = read_minute_frame(source_file)
+            normalized = normalize_minute_frame(frame, source_file, vipdoc, interval="1m")
+
+        self.assertEqual(len(frame), 1)
+        self.assertAlmostEqual(float(frame.iloc[0]["open"]), 0.64696, places=5)
+        self.assertEqual(normalized.iloc[0]["market"], "ds")
+        self.assertEqual(normalized.iloc[0]["symbol"], "10#audusd")
+        self.assertEqual(normalized.iloc[0]["source_file"], "ds/minline/10#AUDUSD.lc1")
+
     def test_read_legacy_minute_frame_and_normalize(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             vipdoc = Path(temp_dir)
@@ -207,6 +277,24 @@ class TdxDataTests(unittest.TestCase):
         self.assertAlmostEqual(float(frame.iloc[1]["close"]), 10.42)
         self.assertEqual(normalized.iloc[0]["period"], "min5")
         self.assertEqual(normalized.iloc[1]["datetime"], "2024-05-21 10:05:00")
+
+    def test_detect_security_type_supports_ds_categories(self) -> None:
+        forex = detect_security_type(Path("10#AUDUSD.day"))
+        option = detect_security_type(Path("5#A2607-C-3400.day"))
+        index = detect_security_type(Path("33#000001.day"))
+        fund = detect_security_type(Path("102#470006.day"))
+        unknown = detect_security_type(Path("56#35754B.day"))
+
+        self.assertEqual(forex.security_type, "DS_FOREX")
+        self.assertEqual(option.security_type, "DS_OPTION")
+        self.assertEqual(index.security_type, "DS_INDEX")
+        self.assertEqual(fund.security_type, "DS_FUND")
+        self.assertEqual(unknown.security_type, "DS_OTHER")
+        self.assertEqual(security_type_to_asset_type(forex), "forex")
+        self.assertEqual(security_type_to_asset_type(option), "derivative")
+        self.assertEqual(security_type_to_asset_type(index), "index")
+        self.assertEqual(security_type_to_asset_type(fund), "fund")
+        self.assertEqual(security_type_to_asset_type(unknown), "other")
 
     def test_interval_helpers_and_file_iteration_support_day_and_minute(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

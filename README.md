@@ -79,6 +79,7 @@ py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 1d
 py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 1m
 py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 5m
 py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval all
+py -3.13 main.py sync-now --provider tdx --symbol "10#AUDUSD" --interval 1d
 py -3.13 main.py sync-now --provider tdx_pipeline --symbol sh600000 --interval 1d
 py -3.13 main.py sync-now --provider tdx_pipeline --symbol sh600000 --interval all
 py -3.13 main.py sync-now --provider tushare --symbol sh600000
@@ -133,6 +134,7 @@ py -3.13 main.py sync-now --provider tdx --interval 1d --symbol sh600000
 py -3.13 main.py sync-now --provider tdx --interval 1m --symbol sh600000
 py -3.13 main.py sync-now --provider tdx --interval 5m --symbol sh600000
 py -3.13 main.py sync-now --provider tdx --interval all --symbol sh600000
+py -3.13 main.py sync-now --provider tdx --interval 1d --symbol "10#AUDUSD"
 py -3.13 main.py sync-now --provider tdx_pipeline --interval all --symbol sh600000
 py -3.13 main.py sync-now --provider tdx_pipeline --limit 20
 py -3.13 main.py sync-now --provider tushare --symbol sh600000
@@ -140,7 +142,7 @@ py -3.13 main.py sync-now --provider tushare --limit 10
 py -3.13 main.py sync-now --provider tdx_qfq --symbol sh600000 --interval 1d
 ```
 
-提交平台回测建议优先通过前端或 API 入队，Worker 会异步执行并把结果写回数据库；行情同步现在也已跟随这一模式：前端 `/market-data` 和 `POST /api/market-data/sync` 会先创建 `data_ingestion_jobs` 队列任务，由 `main.py worker` 在后台领取并执行，页面会按任务状态自动轮询刷新；如需立刻同步并等待结果，仍可直接使用 `main.py sync-now`。当前 `provider=yahoo` 已支持通过 `--symbol-set yahoo_global_active_100` 导入内置 100 个全球高活跃样本；`provider=yahoo_pipeline` 会把这套默认样本，或当前单个 Yahoo 标的，串行补齐 `1d / 15m / 1m` 三个周期，并把 workflow 本身与三个子任务一起记入统一任务域。`provider=tdx` 当前已支持通达信原始 `1d / 1m / 5m` 文件导入，其中 `1m` 对应 `.lc1/.1`、`5m` 对应 `.lc5/.5`，并支持 `--interval all` 顺序导入配置路径下可见的全部 TDX 周期；`provider=tdx_pipeline` 则会把 `tdx raw -> tushare actions -> tdx_qfq rebuild` 串成一条统一 A 股补数链路，支持 `--interval 1d` 或 `--interval all`，并在批量模式下自动跟随数据库里已有的通达信原始 `1d` 标的集继续抓取公司行动和重算前复权；`provider=tushare` 和 `provider=tdx_qfq` 仍可单独执行公司行动抓取与前复权日线重算。最近任务区现在还支持打开任务详情，直接查看 `data_ingestion_job_items` 文件级/标的级明细；若 API 队列任务下挂了内部子任务，还可以在详情抽屉里继续跳转查看，同时也支持直接取消排队/执行中的统一导入任务，或把失败、部分失败、已取消的任务按原条件重新入队；同页新增“统一序列检查”卡片，可直接按 provider 和 symbol 查看 `market_data_series + market_data_bars` 中真实落库的标的、周期、复权口径、K 线条数与最近时间；新增“前复权输入与公式检查”卡片后，还可以继续按标的核对 `corporate_action_events` 里的实施事件和 `price_adjustment_segments` 里的 A/B 公式区间；新增“通达信原始文件 Manifest 检查”卡片后，则可以继续核对 `source_file_manifests` 中每个 `vipdoc` 文件最近是跳过、追加还是重建；新增“全链路诊断”抽屉后，可以围绕单个标的一次性查看最近相关任务、统一序列、manifest、公司行动和复权区间，并直接把目标标的定位到对应排查表。
+提交平台回测建议优先通过前端或 API 入队，Worker 会异步执行并把结果写回数据库；行情同步现在也已跟随这一模式：前端 `/market-data` 和 `POST /api/market-data/sync` 会先创建 `data_ingestion_jobs` 队列任务，由 `main.py worker` 在后台领取并执行，页面会按任务状态自动轮询刷新；如需立刻同步并等待结果，仍可直接使用 `main.py sync-now`。当前 `provider=yahoo` 已支持通过 `--symbol-set yahoo_global_active_100` 导入内置 100 个全球高活跃样本；`provider=yahoo_pipeline` 会把这套默认样本，或当前单个 Yahoo 标的，串行补齐 `1d / 15m / 1m` 三个周期，并把 workflow 本身与三个子任务一起记入统一任务域。`provider=tdx` 当前已支持通达信原始 `1d / 1m / 5m` 文件导入，其中 `1m` 对应 `.lc1/.1`、`5m` 对应 `.lc5/.5`，并支持 `--interval all` 顺序导入配置路径下可见的全部 TDX 周期与市场；当前已覆盖常见 `sh / sz / bj / ds` 目录，其中 `ds` 市场的 `.day` 会按 `float32` 价格布局解析，命令行若传这类代码请使用引号包住 `#`。`provider=tdx_pipeline` 则会把 `tdx raw -> tushare actions -> tdx_qfq rebuild` 串成一条统一 A 股补数链路，支持 `--interval 1d` 或 `--interval all`，并在批量模式下自动跟随数据库里已有的通达信原始 `1d` 标的集继续抓取公司行动和重算前复权；`provider=tushare` 和 `provider=tdx_qfq` 仍可单独执行公司行动抓取与前复权日线重算。最近任务区现在还支持打开任务详情，直接查看 `data_ingestion_job_items` 文件级/标的级明细；若 API 队列任务下挂了内部子任务，还可以在详情抽屉里继续跳转查看，同时也支持直接取消排队/执行中的统一导入任务，或把失败、部分失败、已取消的任务按原条件重新入队；同页新增“统一序列检查”卡片，可直接按 provider 和 symbol 查看 `market_data_series + market_data_bars` 中真实落库的标的、周期、复权口径、K 线条数与最近时间；新增“前复权输入与公式检查”卡片后，还可以继续按标的核对 `corporate_action_events` 里的实施事件和 `price_adjustment_segments` 里的 A/B 公式区间；新增“通达信原始文件 Manifest 检查”卡片后，则可以继续核对 `source_file_manifests` 中每个 `vipdoc` 文件最近是跳过、追加还是重建；新增“全链路诊断”抽屉后，可以围绕单个标的一次性查看最近相关任务、统一序列、manifest、公司行动和复权区间，并直接把目标标的定位到对应排查表。
 
 批量研究：
 
