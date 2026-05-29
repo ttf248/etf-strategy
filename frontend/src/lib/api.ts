@@ -73,6 +73,29 @@ export type MarketDataIngestionJobDetail = MarketDataIngestionJob & {
   items: MarketDataIngestionJobItem[];
 };
 
+export type MarketDataSeriesRow = {
+  series_id: number;
+  provider_key: string;
+  provider_name: string;
+  instrument_symbol: string;
+  instrument_name: string;
+  source_symbol: string;
+  market: string;
+  exchange: string;
+  interval: string;
+  adjustment_kind: string;
+  session_type: string;
+  price_type: string;
+  bar_type: string;
+  currency: string;
+  timezone: string;
+  bar_count: number;
+  first_bar_time: string;
+  last_bar_time: string;
+  last_ingested_at: string;
+  is_active: boolean;
+};
+
 export type MarketDataStats = {
   instrument_count: number;
   total_bars: number;

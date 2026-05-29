@@ -11,6 +11,7 @@ import {
   type MarketDataIngestionJobDetail,
   type MarketDataIngestionJobItem,
   type MarketDataProviderSummary,
+  type MarketDataSeriesRow,
   type MarketDataStats,
 } from "@/lib/api";
 import { MetricCard, PageErrorState, PageHeader, StatusTag, ToolbarCount } from "@/components/platform-ui";
@@ -523,6 +524,9 @@ export function MarketDataView() {
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [selectedJobDetail, setSelectedJobDetail] = useState<MarketDataIngestionJobDetail | null>(null);
   const [jobDetailLoading, setJobDetailLoading] = useState(false);
+  const [seriesProviderFilter, setSeriesProviderFilter] = useState("all");
+  const [providerSeriesRows, setProviderSeriesRows] = useState<MarketDataSeriesRow[]>([]);
+  const [providerSeriesLoading, setProviderSeriesLoading] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
 
   async function loadStatsData(showSpinner: boolean = true) {
@@ -539,11 +543,35 @@ export function MarketDataView() {
     setLoading(false);
   }
 
+  async function loadProviderSeriesData(providerKey: string = seriesProviderFilter, showSpinner: boolean = true) {
+    if (showSpinner) {
+      setProviderSeriesLoading(true);
+    }
+    const path = `/api/market-data/provider-series?provider=${encodeURIComponent(providerKey)}&limit=50`;
+    const result = await apiFetchSafe<MarketDataSeriesRow[]>(path);
+    if (result.ok) {
+      setProviderSeriesRows(result.data);
+    } else {
+      messageApi.error(result.error.message);
+    }
+    setProviderSeriesLoading(false);
+  }
+
   useEffect(() => {
     queueMicrotask(() => {
       void loadStatsData();
+      void (async () => {
+        setProviderSeriesLoading(true);
+        const result = await apiFetchSafe<MarketDataSeriesRow[]>("/api/market-data/provider-series?provider=all&limit=50");
+        if (result.ok) {
+          setProviderSeriesRows(result.data);
+        } else {
+          messageApi.error(result.error.message);
+        }
+        setProviderSeriesLoading(false);
+      })();
     });
-  }, []);
+  }, [messageApi]);
 
   function syncPeriodForInterval(targetInterval: string) {
     return targetInterval === "15m" ? "60d" : targetInterval === "1m" ? "7d" : undefined;
@@ -578,6 +606,7 @@ export function MarketDataView() {
       });
       messageApi.success("同步已完成");
       await loadStatsData(false);
+      await loadProviderSeriesData(seriesProviderFilter, false);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
     } finally {
@@ -604,6 +633,7 @@ export function MarketDataView() {
       });
       messageApi.success(`${targetSymbol} ${targetInterval} 同步完成`);
       await loadStatsData(false);
+      await loadProviderSeriesData(seriesProviderFilter, false);
       setTableKeyword(targetSymbol);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
@@ -631,6 +661,7 @@ export function MarketDataView() {
           });
           messageApi.success(`Yahoo 默认样本池 ${syncInterval} 同步完成`);
           await loadStatsData(false);
+          await loadProviderSeriesData(seriesProviderFilter, false);
         } catch (error) {
           messageApi.error(error instanceof Error ? error.message : "同步失败");
         } finally {
@@ -669,6 +700,7 @@ export function MarketDataView() {
           : `${providerKey} ${providerIntervalDisplay(providerKey)} 批量任务已完成`;
       messageApi.success(actionLabel);
       await loadStatsData(false);
+      await loadProviderSeriesData(seriesProviderFilter, false);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
     } finally {
@@ -934,6 +966,16 @@ export function MarketDataView() {
     { label: "50", value: 50 },
     { label: "100", value: 100 },
   ];
+  const providerSeriesOptions = useMemo(
+    () => [
+      { label: "全部渠道", value: "all" },
+      ...providerPanels.map((item) => ({
+        label: item.summary.provider_name || item.fallbackName,
+        value: item.providerKey,
+      })),
+    ],
+    [providerPanels],
+  );
   const selectedJobItems = useMemo(() => selectedJobDetail?.items ?? [], [selectedJobDetail]);
   const selectedJobFailedItems = useMemo(
     () => selectedJobItems.filter((item) => item.status === "failed" || item.error_message),
@@ -1207,6 +1249,99 @@ export function MarketDataView() {
                     </Button>
                   ),
                 },
+              ]}
+            />
+          </>
+        )}
+      </Card>
+
+      <Card size="small" title="统一序列检查" className="section-card">
+        <div className="provider-overview-banner compact">
+          <div>
+            <strong>按渠道检查 `market_data_series` 的真实持久化结果</strong>
+            <p>这里直接看统一主干表中的序列范围、周期、复权口径和最近入库时间，用于判断“任务跑完之后，数据库里到底留下了什么”。</p>
+          </div>
+          <Space wrap>
+            <Select
+              value={seriesProviderFilter}
+              options={providerSeriesOptions}
+              onChange={(value) => {
+                setSeriesProviderFilter(value);
+                void loadProviderSeriesData(value);
+              }}
+              style={{ width: 200 }}
+            />
+            <Button loading={providerSeriesLoading} onClick={() => void loadProviderSeriesData(seriesProviderFilter)}>
+              刷新序列
+            </Button>
+          </Space>
+        </div>
+        {providerSeriesLoading && providerSeriesRows.length === 0 ? (
+          <Skeleton active paragraph={{ rows: 6 }} />
+        ) : providerSeriesRows.length === 0 ? (
+          <Typography.Text type="secondary">当前筛选条件下还没有统一序列记录。</Typography.Text>
+        ) : (
+          <>
+            <div className="ingestion-mobile-list">
+              {providerSeriesRows.slice(0, 8).map((row) => (
+                <article key={row.series_id} className="ingestion-mobile-card">
+                  <div className="ingestion-mobile-card-head">
+                    <div>
+                      <strong>{row.instrument_symbol}</strong>
+                      <span>{row.provider_name || row.provider_key}</span>
+                    </div>
+                    <Tag color={row.is_active ? "green" : "default"}>{row.interval}</Tag>
+                  </div>
+                  <div className="ingestion-mobile-metrics">
+                    <span>复权 {row.adjustment_kind}</span>
+                    <span>K 线 {row.bar_count.toLocaleString()}</span>
+                    <span>市场 {row.market || row.exchange || "-"}</span>
+                  </div>
+                  <small>源代码：{row.source_symbol || "-"}</small>
+                  <small>最新 K 线：{row.last_bar_time || "暂无"}</small>
+                </article>
+              ))}
+            </div>
+            <Table<MarketDataSeriesRow>
+              size="small"
+              rowKey="series_id"
+              dataSource={providerSeriesRows}
+              pagination={{ pageSize: 10, showSizeChanger: false }}
+              scroll={{ x: 1400 }}
+              columns={[
+                { title: "序列", dataIndex: "series_id", width: 90, fixed: "left" },
+                {
+                  title: "标的",
+                  width: 180,
+                  render: (_, row) => (
+                    <div className="ingestion-provider-cell">
+                      <strong>{row.instrument_symbol}</strong>
+                      <span>{row.instrument_name || row.source_symbol || row.instrument_symbol}</span>
+                    </div>
+                  ),
+                },
+                {
+                  title: "渠道",
+                  width: 180,
+                  render: (_, row) => (
+                    <div className="ingestion-provider-cell">
+                      <strong>{row.provider_name || row.provider_key}</strong>
+                      <span>{row.provider_key}</span>
+                    </div>
+                  ),
+                },
+                { title: "源代码", dataIndex: "source_symbol", width: 140 },
+                { title: "市场", dataIndex: "market", width: 100 },
+                { title: "交易所", dataIndex: "exchange", width: 100 },
+                { title: "周期", dataIndex: "interval", width: 90 },
+                { title: "复权", dataIndex: "adjustment_kind", width: 100 },
+                { title: "Session", dataIndex: "session_type", width: 100 },
+                { title: "价格类型", dataIndex: "price_type", width: 110 },
+                { title: "K线类型", dataIndex: "bar_type", width: 110 },
+                { title: "条数", dataIndex: "bar_count", width: 100, render: (value: number) => value.toLocaleString() },
+                { title: "首条时间", dataIndex: "first_bar_time", width: 180 },
+                { title: "最新时间", dataIndex: "last_bar_time", width: 180 },
+                { title: "最近入库", dataIndex: "last_ingested_at", width: 180 },
               ]}
             />
           </>

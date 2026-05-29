@@ -22,6 +22,7 @@ from strategy_studio.services.market_data import (
     fetch_instrument_coverages,
     fetch_instruments,
     fetch_market_data_stats,
+    fetch_provider_series,
     fetch_price_bars,
     fetch_sync_runs,
 )
@@ -98,6 +99,10 @@ def create_app() -> FastAPI:
     @app.get("/api/market-data/stats")
     def get_market_stats() -> dict[str, object]:
         return fetch_market_data_stats()
+
+    @app.get("/api/market-data/provider-series")
+    def get_provider_series(provider: str | None = None, limit: int = 100) -> list[dict[str, object]]:
+        return fetch_provider_series(provider_key=provider, limit=limit)
 
     @app.get("/api/market-data/ingestion-jobs/{job_id}")
     def get_ingestion_job(job_id: int) -> dict[str, object]:

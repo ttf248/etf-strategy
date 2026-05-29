@@ -162,6 +162,31 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(response.json()["detail"], "导入任务不存在。")
         mock_detail.assert_called_once_with(9999)
 
+    def test_web_api_market_data_provider_series_route(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.fetch_provider_series",
+            return_value=[
+                {
+                    "series_id": 11,
+                    "provider_key": "tdx",
+                    "provider_name": "通达信本地行情",
+                    "instrument_symbol": "SH600000",
+                    "interval": "1d",
+                    "adjustment_kind": "raw",
+                    "bar_count": 6314,
+                }
+            ],
+        ) as mock_series:
+            response = client.get("/api/market-data/provider-series?provider=tdx&limit=20")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]["provider_key"], "tdx")
+        self.assertEqual(response.json()[0]["series_id"], 11)
+        mock_series.assert_called_once_with(provider_key="tdx", limit=20)
+
     def test_web_api_market_data_sync_route_passes_provider_specific_fields(self) -> None:
         app = create_app()
         client = TestClient(app)

@@ -33,6 +33,7 @@ http://127.0.0.1:8000/docs
 - `GET /api/market-data/instruments`
 - `GET /api/market-data/coverages`
 - `GET /api/market-data/stats`
+- `GET /api/market-data/provider-series`
 - `GET /api/market-data/ingestion-jobs/{job_id}`
 - `GET /api/market-data/bars`
 - `GET /api/market-data/sync-runs`
@@ -42,6 +43,18 @@ http://127.0.0.1:8000/docs
 
 - `provider_summaries`：按 provider 聚合的多渠道摘要，包含 `series_count / bars_count / action_count / segment_count / manifest_count / latest_ingestion_at / latest_ingestion_status` 等字段，供 `/market-data` 多渠道任务面板直接渲染。
 - `recent_ingestion_jobs`：统一导入任务域的最近任务列表，覆盖 Yahoo、A 股统一补数链路、通达信原始、Tushare 公司行动和通达信前复权五类后台任务。每条记录还会附带 `summary_json`，用于前端直接展开 workflow 子步骤、文件导入摘要或其他渠道专属诊断信息。
+
+`GET /api/market-data/provider-series` 用于直接检查统一主干表里的实际序列结果，默认按最近入库时间倒序返回最近 100 条，也支持：
+
+- `provider`：可选；传 `yahoo`、`tdx`、`tushare`、`tdx_qfq`、`tdx_pipeline` 对应的底层落库渠道，传 `all` 或留空表示不过滤。
+- `limit`：可选；限制返回条数，便于前端仅展示最近一批真实落库序列。
+
+返回项当前包含：
+
+- 序列主键与 provider 信息：`series_id / provider_key / provider_name`
+- 标的与映射信息：`instrument_symbol / instrument_name / source_symbol / market / exchange`
+- 序列口径：`interval / adjustment_kind / session_type / price_type / bar_type / currency / timezone`
+- 序列状态：`bar_count / first_bar_time / last_bar_time / last_ingested_at / is_active`
 
 `GET /api/market-data/ingestion-jobs/{job_id}` 返回单个统一导入任务的完整详情，包含：
 

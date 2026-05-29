@@ -6,6 +6,7 @@ from strategy_studio.db.session import open_session
 from strategy_studio.repositories.market_data import (
     get_ingestion_job_detail,
     get_market_data_stats,
+    list_provider_series,
     list_instrument_coverages,
     list_instruments,
     list_price_bars,
@@ -16,6 +17,11 @@ from strategy_studio.repositories.market_data import (
 def fetch_market_data_stats() -> dict[str, object]:
     with open_session() as session:
         return get_market_data_stats(session)
+
+
+def fetch_provider_series(provider_key: str | None = None, limit: int = 100) -> list[dict[str, object]]:
+    with open_session() as session:
+        return list_provider_series(session, provider_key=provider_key, limit=limit)
 
 
 def fetch_ingestion_job_detail(job_id: int) -> dict[str, object] | None:

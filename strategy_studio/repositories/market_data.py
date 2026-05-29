@@ -763,6 +763,87 @@ def get_ingestion_job_detail(session: Session, job_id: int) -> dict[str, object]
     }
 
 
+def list_provider_series(
+    session: Session,
+    *,
+    provider_key: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, object]]:
+    provider_bar_stats = (
+        select(
+            MarketDataBar.series_id.label("series_id"),
+            func.count(MarketDataBar.id).label("bar_count"),
+        )
+        .group_by(MarketDataBar.series_id)
+        .subquery()
+    )
+    statement = (
+        select(
+            MarketDataSeries.id,
+            DataProvider.provider_key,
+            DataProvider.provider_name,
+            Instrument.symbol.label("instrument_symbol"),
+            Instrument.name.label("instrument_name"),
+            InstrumentAlias.source_symbol.label("source_symbol"),
+            MarketDataSeries.market,
+            MarketDataSeries.exchange,
+            MarketDataSeries.interval,
+            MarketDataSeries.adjustment_kind,
+            MarketDataSeries.session_type,
+            MarketDataSeries.price_type,
+            MarketDataSeries.bar_type,
+            MarketDataSeries.currency,
+            MarketDataSeries.timezone,
+            MarketDataSeries.first_bar_time,
+            MarketDataSeries.last_bar_time,
+            MarketDataSeries.last_ingested_at,
+            MarketDataSeries.is_active,
+            provider_bar_stats.c.bar_count,
+        )
+        .join(DataProvider, DataProvider.id == MarketDataSeries.provider_id)
+        .join(Instrument, Instrument.id == MarketDataSeries.instrument_id)
+        .outerjoin(InstrumentAlias, InstrumentAlias.id == MarketDataSeries.alias_id)
+        .outerjoin(provider_bar_stats, provider_bar_stats.c.series_id == MarketDataSeries.id)
+        .order_by(
+            MarketDataSeries.last_ingested_at.desc().nullslast(),
+            MarketDataSeries.last_bar_time.desc().nullslast(),
+            DataProvider.provider_key,
+            Instrument.symbol,
+            MarketDataSeries.interval,
+        )
+        .limit(limit)
+    )
+    if provider_key and provider_key.strip() and provider_key.strip().lower() != "all":
+        statement = statement.where(DataProvider.provider_key == provider_key.strip().lower())
+
+    rows = session.execute(statement).all()
+    return [
+        {
+            "series_id": row.id,
+            "provider_key": row.provider_key,
+            "provider_name": row.provider_name,
+            "instrument_symbol": row.instrument_symbol,
+            "instrument_name": row.instrument_name or row.instrument_symbol,
+            "source_symbol": row.source_symbol or "",
+            "market": row.market or "",
+            "exchange": row.exchange or "",
+            "interval": row.interval,
+            "adjustment_kind": row.adjustment_kind,
+            "session_type": row.session_type,
+            "price_type": row.price_type,
+            "bar_type": row.bar_type,
+            "currency": row.currency or "",
+            "timezone": row.timezone or "",
+            "bar_count": _safe_int(row.bar_count),
+            "first_bar_time": _format_timestamp(row.first_bar_time),
+            "last_bar_time": _format_timestamp(row.last_bar_time),
+            "last_ingested_at": _format_timestamp(row.last_ingested_at),
+            "is_active": bool(row.is_active),
+        }
+        for row in rows
+    ]
+
+
 def get_market_data_stats(session: Session) -> dict[str, object]:
     instrument_count = int(session.scalar(select(func.count(Instrument.id))) or 0)
     total_bars = int(session.scalar(select(func.count(PriceBar.id))) or 0)
