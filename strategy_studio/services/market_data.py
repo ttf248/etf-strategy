@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from strategy_studio.db.session import open_session
 from strategy_studio.repositories.market_data import (
+    get_symbol_diagnostics,
     list_adjustment_segments,
     list_corporate_actions,
     get_ingestion_job_detail,
@@ -25,6 +26,11 @@ def fetch_market_data_stats() -> dict[str, object]:
 def fetch_provider_series(provider_key: str | None = None, limit: int = 100) -> list[dict[str, object]]:
     with open_session() as session:
         return list_provider_series(session, provider_key=provider_key, limit=limit)
+
+
+def fetch_symbol_diagnostics(symbol: str, limit: int = 20) -> dict[str, object]:
+    with open_session() as session:
+        return get_symbol_diagnostics(session, symbol=symbol, limit=limit)
 
 
 def fetch_corporate_actions(

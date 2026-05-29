@@ -188,6 +188,30 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(response.json()[0]["series_id"], 11)
         mock_series.assert_called_once_with(provider_key="tdx", limit=20)
 
+    def test_web_api_market_data_symbol_diagnostics_route(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.fetch_symbol_diagnostics",
+            return_value={
+                "symbol": "SH600000",
+                "summary": {"series_count": 2},
+                "series_rows": [{"series_id": 11}],
+                "corporate_action_rows": [{"event_id": 21}],
+                "adjustment_segment_rows": [{"segment_id": 31}],
+                "source_file_manifest_rows": [{"manifest_id": 41}],
+                "recent_ingestion_jobs": [{"id": 51}],
+            },
+        ) as mock_diagnostics:
+            response = client.get("/api/market-data/symbol-diagnostics?symbol=sh600000&limit=12")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["symbol"], "SH600000")
+        self.assertEqual(response.json()["summary"]["series_count"], 2)
+        self.assertEqual(response.json()["source_file_manifest_rows"][0]["manifest_id"], 41)
+        mock_diagnostics.assert_called_once_with(symbol="sh600000", limit=12)
+
     def test_web_api_market_data_corporate_actions_route(self) -> None:
         app = create_app()
         client = TestClient(app)

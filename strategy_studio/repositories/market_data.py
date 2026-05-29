@@ -767,6 +767,7 @@ def list_provider_series(
     session: Session,
     *,
     provider_key: str | None = None,
+    symbol: str | None = None,
     limit: int = 100,
 ) -> list[dict[str, object]]:
     provider_bar_stats = (
@@ -815,6 +816,11 @@ def list_provider_series(
     )
     if provider_key and provider_key.strip() and provider_key.strip().lower() != "all":
         statement = statement.where(DataProvider.provider_key == provider_key.strip().lower())
+    if symbol and symbol.strip():
+        normalized_symbol = symbol.strip().upper()
+        statement = statement.where(
+            (Instrument.symbol == normalized_symbol) | (InstrumentAlias.source_symbol == normalized_symbol)
+        )
 
     rows = session.execute(statement).all()
     return [
@@ -842,6 +848,101 @@ def list_provider_series(
         }
         for row in rows
     ]
+
+
+def _list_recent_ingestion_jobs_for_symbol(
+    session: Session,
+    *,
+    symbol: str,
+    limit: int = 10,
+) -> list[dict[str, object]]:
+    normalized_symbol = symbol.strip().upper()
+    matched_item_job_ids = {
+        int(row.job_id)
+        for row in session.execute(
+            select(DataIngestionJobItem.job_id)
+            .outerjoin(Instrument, Instrument.id == DataIngestionJobItem.instrument_id)
+            .where(
+                (DataIngestionJobItem.source_symbol == normalized_symbol) | (Instrument.symbol == normalized_symbol)
+            )
+            .distinct()
+        ).all()
+    }
+
+    rows = session.execute(
+        select(DataIngestionJob, DataProvider.provider_key, DataProvider.provider_name)
+        .outerjoin(DataProvider, DataProvider.id == DataIngestionJob.provider_id)
+        .order_by(DataIngestionJob.requested_at.desc(), DataIngestionJob.id.desc())
+        .limit(max(limit * 10, 50))
+    )
+    jobs: list[dict[str, object]] = []
+    for job, provider_key, provider_name in rows:
+        target_scope = dict(job.target_scope_json or {})
+        summary_json = dict(getattr(job, "summary_json", {}) or {})
+        target_symbol = str(target_scope.get("symbol") or summary_json.get("requested_symbol") or "").strip().upper()
+        target_symbols = [str(item).strip().upper() for item in target_scope.get("target_symbols", []) if str(item).strip()]
+        if job.id not in matched_item_job_ids and target_symbol != normalized_symbol and normalized_symbol not in target_symbols:
+            continue
+        jobs.append(
+            {
+                "id": job.id,
+                "provider_key": provider_key or "",
+                "provider_name": provider_name or "",
+                "job_type": job.job_type,
+                "status": job.status,
+                "targets_total": job.targets_total,
+                "targets_completed": job.targets_completed,
+                "rows_inserted": job.rows_inserted,
+                "rows_updated": job.rows_updated,
+                "error_count": job.error_count,
+                "requested_at": _format_timestamp(job.requested_at),
+                "completed_at": _format_timestamp(job.completed_at),
+                "error_message": job.error_message,
+                "target_symbol": str(target_scope.get("symbol") or summary_json.get("requested_symbol") or ""),
+                "interval": str(target_scope.get("interval") or summary_json.get("requested_interval") or ""),
+                "requested_via": job.requested_via,
+                "summary_json": summary_json,
+            }
+        )
+        if len(jobs) >= limit:
+            break
+    return jobs
+
+
+def get_symbol_diagnostics(
+    session: Session,
+    *,
+    symbol: str,
+    limit: int = 20,
+) -> dict[str, object]:
+    normalized_symbol = symbol.strip().upper()
+    if not normalized_symbol:
+        raise ValueError("诊断标的不能为空。")
+
+    instrument = get_instrument_by_symbol(session, normalized_symbol)
+    series_rows = list_provider_series(session, symbol=normalized_symbol, limit=limit)
+    action_rows = list_corporate_actions(session, symbol=normalized_symbol, limit=limit)
+    segment_rows = list_adjustment_segments(session, symbol=normalized_symbol, limit=limit)
+    manifest_rows = list_source_file_manifests(session, symbol=normalized_symbol, limit=limit)
+    recent_jobs = _list_recent_ingestion_jobs_for_symbol(session, symbol=normalized_symbol, limit=min(limit, 12))
+
+    return {
+        "symbol": normalized_symbol,
+        "instrument_name": instrument.name if instrument is not None else normalized_symbol,
+        "exchange": instrument.exchange if instrument is not None else "",
+        "series_rows": series_rows,
+        "corporate_action_rows": action_rows,
+        "adjustment_segment_rows": segment_rows,
+        "source_file_manifest_rows": manifest_rows,
+        "recent_ingestion_jobs": recent_jobs,
+        "summary": {
+            "series_count": len(series_rows),
+            "corporate_action_count": len(action_rows),
+            "adjustment_segment_count": len(segment_rows),
+            "manifest_count": len(manifest_rows),
+            "recent_job_count": len(recent_jobs),
+        },
+    }
 
 
 def list_corporate_actions(

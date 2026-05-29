@@ -34,6 +34,7 @@ http://127.0.0.1:8000/docs
 - `GET /api/market-data/coverages`
 - `GET /api/market-data/stats`
 - `GET /api/market-data/provider-series`
+- `GET /api/market-data/symbol-diagnostics`
 - `GET /api/market-data/corporate-actions`
 - `GET /api/market-data/adjustment-segments`
 - `GET /api/market-data/source-file-manifests`
@@ -58,6 +59,21 @@ http://127.0.0.1:8000/docs
 - 标的与映射信息：`instrument_symbol / instrument_name / source_symbol / market / exchange`
 - 序列口径：`interval / adjustment_kind / session_type / price_type / bar_type / currency / timezone`
 - 序列状态：`bar_count / first_bar_time / last_bar_time / last_ingested_at / is_active`
+
+`GET /api/market-data/symbol-diagnostics` 用于围绕单个标的一次性聚合全链路排查结果，当前会把统一序列、最近公司行动、最近复权区间、最近通达信文件 manifest 和最近相关导入任务一起返回。支持：
+
+- `symbol`：必填；统一标的代码，例如 `sh600000`。
+- `limit`：可选；限制每个子列表返回条数，默认 20。
+
+返回体当前包含：
+
+- 标的概览：`symbol / instrument_name / exchange`
+- 汇总计数：`summary.series_count / summary.corporate_action_count / summary.adjustment_segment_count / summary.manifest_count / summary.recent_job_count`
+- 序列列表：`series_rows[]`
+- 公司行动列表：`corporate_action_rows[]`
+- 复权区间列表：`adjustment_segment_rows[]`
+- Manifest 列表：`source_file_manifest_rows[]`
+- 最近相关任务：`recent_ingestion_jobs[]`
 
 `GET /api/market-data/corporate-actions` 用于直接检查 `corporate_action_events` 中的实施事件，默认按 `ex_date` 倒序返回最近 100 条，也支持：
 

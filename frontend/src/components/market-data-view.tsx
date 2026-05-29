@@ -15,6 +15,7 @@ import {
   type MarketDataProviderSummary,
   type MarketDataSeriesRow,
   type MarketDataSourceFileManifestRow,
+  type MarketDataSymbolDiagnostics,
   type MarketDataStats,
 } from "@/lib/api";
 import { MetricCard, PageErrorState, PageHeader, StatusTag, ToolbarCount } from "@/components/platform-ui";
@@ -538,6 +539,9 @@ export function MarketDataView() {
   const [manifestIntervalFilter, setManifestIntervalFilter] = useState("all");
   const [sourceFileManifestRows, setSourceFileManifestRows] = useState<MarketDataSourceFileManifestRow[]>([]);
   const [manifestLoading, setManifestLoading] = useState(false);
+  const [diagnosticSymbol, setDiagnosticSymbol] = useState<string | null>(null);
+  const [symbolDiagnostics, setSymbolDiagnostics] = useState<MarketDataSymbolDiagnostics | null>(null);
+  const [symbolDiagnosticsLoading, setSymbolDiagnosticsLoading] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
 
   async function loadStatsData(showSpinner: boolean = true) {
@@ -611,6 +615,28 @@ export function MarketDataView() {
       messageApi.error(result.error.message);
     }
     setManifestLoading(false);
+  }
+
+  async function loadSymbolDiagnosticsData(symbol: string, showSpinner: boolean = true) {
+    const normalizedSymbol = symbol.trim().toUpperCase();
+    if (!normalizedSymbol) {
+      messageApi.warning("请先输入一个标的，再打开全链路诊断。");
+      return;
+    }
+    setDiagnosticSymbol(normalizedSymbol);
+    if (showSpinner) {
+      setSymbolDiagnosticsLoading(true);
+    }
+    const result = await apiFetchSafe<MarketDataSymbolDiagnostics>(
+      `/api/market-data/symbol-diagnostics?symbol=${encodeURIComponent(normalizedSymbol)}&limit=12`,
+    );
+    if (result.ok) {
+      setSymbolDiagnostics(result.data);
+    } else {
+      setSymbolDiagnostics(null);
+      messageApi.error(result.error.message);
+    }
+    setSymbolDiagnosticsLoading(false);
   }
 
   useEffect(() => {
@@ -695,6 +721,9 @@ export function MarketDataView() {
       await loadProviderSeriesData(seriesProviderFilter, false);
       await loadQfqDiagnosticsData(qfqSymbolFilter, false);
       await loadManifestData(manifestSymbolFilter, manifestIntervalFilter, false);
+      if (diagnosticSymbol) {
+        await loadSymbolDiagnosticsData(diagnosticSymbol, false);
+      }
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
     } finally {
@@ -724,6 +753,9 @@ export function MarketDataView() {
       await loadProviderSeriesData(seriesProviderFilter, false);
       await loadQfqDiagnosticsData(qfqSymbolFilter || targetSymbol, false);
       await loadManifestData(manifestSymbolFilter || targetSymbol, manifestIntervalFilter, false);
+      if (diagnosticSymbol === targetSymbol) {
+        await loadSymbolDiagnosticsData(targetSymbol, false);
+      }
       setTableKeyword(targetSymbol);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
@@ -754,6 +786,9 @@ export function MarketDataView() {
           await loadProviderSeriesData(seriesProviderFilter, false);
           await loadQfqDiagnosticsData(qfqSymbolFilter, false);
           await loadManifestData(manifestSymbolFilter, manifestIntervalFilter, false);
+          if (diagnosticSymbol) {
+            await loadSymbolDiagnosticsData(diagnosticSymbol, false);
+          }
         } catch (error) {
           messageApi.error(error instanceof Error ? error.message : "同步失败");
         } finally {
@@ -795,6 +830,9 @@ export function MarketDataView() {
       await loadProviderSeriesData(seriesProviderFilter, false);
       await loadQfqDiagnosticsData(qfqSymbolFilter || normalizedTarget || "", false);
       await loadManifestData(manifestSymbolFilter || normalizedTarget || "", manifestIntervalFilter, false);
+      if (diagnosticSymbol && (!normalizedTarget || diagnosticSymbol === normalizedTarget)) {
+        await loadSymbolDiagnosticsData(diagnosticSymbol, false);
+      }
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
     } finally {
@@ -820,6 +858,12 @@ export function MarketDataView() {
     setSelectedJobId(null);
     setSelectedJobDetail(null);
     setJobDetailLoading(false);
+  }
+
+  function closeSymbolDiagnostics() {
+    setDiagnosticSymbol(null);
+    setSymbolDiagnostics(null);
+    setSymbolDiagnosticsLoading(false);
   }
 
   const filteredRows = useMemo(() => {
@@ -1146,6 +1190,9 @@ export function MarketDataView() {
           <div className="data-check-actions">
             <Button loading={syncingSymbol} onClick={() => void syncCheckedSymbol()}>
               同步当前标的 {syncInterval}
+            </Button>
+            <Button onClick={() => void loadSymbolDiagnosticsData(checkedSymbol)}>
+              打开全链路诊断
             </Button>
             <small>若不确定补数顺序，优先按上方推荐周期执行；这里主要处理现有回测样本覆盖，其他渠道请使用下方 provider 卡片。</small>
           </div>
@@ -1818,6 +1865,197 @@ export function MarketDataView() {
                   />
                 </>
               )}
+            </Card>
+          </div>
+        )}
+      </Drawer>
+
+      <Drawer
+        title={diagnosticSymbol ? `${diagnosticSymbol} 全链路诊断` : "全链路诊断"}
+        placement="right"
+        width={860}
+        open={diagnosticSymbol !== null}
+        onClose={closeSymbolDiagnostics}
+        destroyOnClose
+      >
+        {symbolDiagnosticsLoading ? (
+          <Skeleton active paragraph={{ rows: 10 }} />
+        ) : !symbolDiagnostics ? (
+          <Empty description="暂无诊断数据" />
+        ) : (
+          <div className="page-stack">
+            <Card size="small" title="诊断概览">
+              <div className="provider-panel-metric-grid">
+                <div className="provider-panel-metric">
+                  <span>标的</span>
+                  <strong>{symbolDiagnostics.symbol}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>名称</span>
+                  <strong>{symbolDiagnostics.instrument_name || symbolDiagnostics.symbol}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>交易所</span>
+                  <strong>{symbolDiagnostics.exchange || "-"}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>统一序列</span>
+                  <strong>{symbolDiagnostics.summary.series_count}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>公司行动</span>
+                  <strong>{symbolDiagnostics.summary.corporate_action_count}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>复权区间</span>
+                  <strong>{symbolDiagnostics.summary.adjustment_segment_count}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>Manifest</span>
+                  <strong>{symbolDiagnostics.summary.manifest_count}</strong>
+                </div>
+                <div className="provider-panel-metric">
+                  <span>相关任务</span>
+                  <strong>{symbolDiagnostics.summary.recent_job_count}</strong>
+                </div>
+              </div>
+            </Card>
+
+            <Card size="small" title="最近相关任务">
+              {symbolDiagnostics.recent_ingestion_jobs.length === 0 ? (
+                <Typography.Text type="secondary">当前标的还没有匹配到最近导入任务。</Typography.Text>
+              ) : (
+                <Table<MarketDataIngestionJob>
+                  size="small"
+                  rowKey="id"
+                  dataSource={symbolDiagnostics.recent_ingestion_jobs}
+                  pagination={{ pageSize: 6, showSizeChanger: false }}
+                  scroll={{ x: 1080 }}
+                  columns={[
+                    { title: "任务", dataIndex: "id", width: 90 },
+                    {
+                      title: "渠道",
+                      width: 160,
+                      render: (_, row) => (
+                        <div className="ingestion-provider-cell">
+                          <strong>{row.provider_name || row.provider_key || "-"}</strong>
+                          <span>{row.provider_key || "-"}</span>
+                        </div>
+                      ),
+                    },
+                    { title: "类型", dataIndex: "job_type", width: 160 },
+                    { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <StatusTag value={value} label={ingestionStatusLabel(value)} /> },
+                    { title: "目标", width: 160, render: (_, row) => buildIngestionTargetLabel(row) },
+                    { title: "申请时间", dataIndex: "requested_at", width: 180 },
+                    {
+                      title: "详情",
+                      width: 100,
+                      render: (_, row) => (
+                        <Button size="small" onClick={() => void openJobDetail(row.id)}>
+                          查看任务
+                        </Button>
+                      ),
+                    },
+                  ]}
+                />
+              )}
+            </Card>
+
+            <Card size="small" title="统一序列">
+              {symbolDiagnostics.series_rows.length === 0 ? (
+                <Typography.Text type="secondary">当前标的还没有统一序列。</Typography.Text>
+              ) : (
+                <Table<MarketDataSeriesRow>
+                  size="small"
+                  rowKey="series_id"
+                  dataSource={symbolDiagnostics.series_rows}
+                  pagination={{ pageSize: 6, showSizeChanger: false }}
+                  scroll={{ x: 1160 }}
+                  columns={[
+                    { title: "序列", dataIndex: "series_id", width: 90 },
+                    { title: "渠道", dataIndex: "provider_key", width: 120 },
+                    { title: "周期", dataIndex: "interval", width: 90 },
+                    { title: "复权", dataIndex: "adjustment_kind", width: 90 },
+                    { title: "条数", dataIndex: "bar_count", width: 100, render: (value: number) => value.toLocaleString() },
+                    { title: "源代码", dataIndex: "source_symbol", width: 140 },
+                    { title: "最新时间", dataIndex: "last_bar_time", width: 180 },
+                    { title: "最近入库", dataIndex: "last_ingested_at", width: 180 },
+                  ]}
+                />
+              )}
+            </Card>
+
+            <Card size="small" title="Manifest / 公司行动 / 复权区间摘要">
+              <div className="page-stack">
+                <div>
+                  <strong>最近 Manifest</strong>
+                  {symbolDiagnostics.source_file_manifest_rows.length === 0 ? (
+                    <Typography.Text type="secondary">当前标的没有通达信文件 manifest。</Typography.Text>
+                  ) : (
+                    <Table<MarketDataSourceFileManifestRow>
+                      size="small"
+                      rowKey="manifest_id"
+                      dataSource={symbolDiagnostics.source_file_manifest_rows}
+                      pagination={{ pageSize: 4, showSizeChanger: false }}
+                      scroll={{ x: 1040 }}
+                      columns={[
+                        { title: "Manifest", dataIndex: "manifest_id", width: 90 },
+                        { title: "文件", dataIndex: "source_path", width: 280 },
+                        { title: "周期", dataIndex: "interval", width: 90 },
+                        { title: "状态", dataIndex: "status", width: 100, render: (value: string) => <StatusTag value={value} label={ingestionStatusLabel(value)} /> },
+                        { title: "模式", width: 90, render: (_, row) => String(row.payload_json.mode ?? "-") },
+                        { title: "最新 K 线", dataIndex: "last_bar_time", width: 180 },
+                      ]}
+                    />
+                  )}
+                </div>
+                <div>
+                  <strong>最近公司行动</strong>
+                  {symbolDiagnostics.corporate_action_rows.length === 0 ? (
+                    <Typography.Text type="secondary">当前标的没有公司行动事件。</Typography.Text>
+                  ) : (
+                    <Table<MarketDataCorporateActionRow>
+                      size="small"
+                      rowKey="event_id"
+                      dataSource={symbolDiagnostics.corporate_action_rows}
+                      pagination={{ pageSize: 4, showSizeChanger: false }}
+                      scroll={{ x: 1040 }}
+                      columns={[
+                        { title: "事件", dataIndex: "event_id", width: 90 },
+                        { title: "源代码", dataIndex: "source_symbol", width: 140 },
+                        { title: "除权日", dataIndex: "ex_date", width: 120 },
+                        { title: "现金分红", dataIndex: "cash_dividend", width: 110 },
+                        { title: "送股", dataIndex: "stock_bonus_ratio", width: 90 },
+                        { title: "转增", dataIndex: "stock_conversion_ratio", width: 90 },
+                        { title: "最近更新", dataIndex: "updated_at", width: 180 },
+                      ]}
+                    />
+                  )}
+                </div>
+                <div>
+                  <strong>最近复权区间</strong>
+                  {symbolDiagnostics.adjustment_segment_rows.length === 0 ? (
+                    <Typography.Text type="secondary">当前标的没有前复权公式区间。</Typography.Text>
+                  ) : (
+                    <Table<MarketDataAdjustmentSegmentRow>
+                      size="small"
+                      rowKey="segment_id"
+                      dataSource={symbolDiagnostics.adjustment_segment_rows}
+                      pagination={{ pageSize: 4, showSizeChanger: false }}
+                      scroll={{ x: 1040 }}
+                      columns={[
+                        { title: "区间", dataIndex: "segment_id", width: 90 },
+                        { title: "起始日", dataIndex: "start_date", width: 120 },
+                        { title: "结束日", dataIndex: "end_date", width: 120 },
+                        { title: "A", dataIndex: "adjust_a", width: 120, render: (value: number) => value.toFixed(8) },
+                        { title: "B", dataIndex: "adjust_b", width: 120, render: (value: number) => value.toFixed(8) },
+                        { title: "事件数", width: 90, render: (_, row) => String(row.payload_json.event_count ?? "-") },
+                        { title: "最近更新", dataIndex: "updated_at", width: 180 },
+                      ]}
+                    />
+                  )}
+                </div>
+              </div>
             </Card>
           </div>
         )}

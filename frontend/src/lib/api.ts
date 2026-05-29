@@ -158,6 +158,24 @@ export type MarketDataSourceFileManifestRow = {
   updated_at: string;
 };
 
+export type MarketDataSymbolDiagnostics = {
+  symbol: string;
+  instrument_name: string;
+  exchange: string;
+  summary: {
+    series_count: number;
+    corporate_action_count: number;
+    adjustment_segment_count: number;
+    manifest_count: number;
+    recent_job_count: number;
+  };
+  series_rows: MarketDataSeriesRow[];
+  corporate_action_rows: MarketDataCorporateActionRow[];
+  adjustment_segment_rows: MarketDataAdjustmentSegmentRow[];
+  source_file_manifest_rows: MarketDataSourceFileManifestRow[];
+  recent_ingestion_jobs: MarketDataIngestionJob[];
+};
+
 export type MarketDataStats = {
   instrument_count: number;
   total_bars: number;
