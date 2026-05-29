@@ -149,6 +149,13 @@ const tdxPipelineIntervalOptions: ProviderIntervalOption[] = [
   { label: "1d 日线链路", value: "1d" },
 ];
 
+const tdxBatchRoundOptions = [
+  { label: "1 轮", value: 1 },
+  { label: "3 轮", value: 3 },
+  { label: "5 轮", value: 5 },
+  { label: "10 轮", value: 10 },
+];
+
 const providerPanelConfigs: ProviderPanelConfig[] = [
   {
     providerKey: "yahoo",
@@ -763,6 +770,7 @@ export function MarketDataView() {
   const [syncInterval, setSyncInterval] = useState("1d");
   const [tdxSyncInterval, setTdxSyncInterval] = useState("1d");
   const [tdxPipelineSyncInterval, setTdxPipelineSyncInterval] = useState("all");
+  const [tdxBatchRounds, setTdxBatchRounds] = useState(1);
   const [batchLimit, setBatchLimit] = useState(20);
   const [syncing, setSyncing] = useState(false);
   const [syncingSymbol, setSyncingSymbol] = useState(false);
@@ -1141,6 +1149,9 @@ export function MarketDataView() {
       payload.symbol = normalizedTarget;
     } else {
       payload.limit = batchLimit;
+      if (providerKey === "tdx") {
+        payload.batch_rounds = tdxBatchRounds;
+      }
     }
 
     setSyncingActionKey(actionKey);
@@ -1619,7 +1630,7 @@ export function MarketDataView() {
         <div className="provider-overview-banner">
           <div>
             <strong>同一页直接管理 Yahoo 单周期、Yahoo 三周期链路、A 股统一补数链路、通达信原始 all/1d/1m/5m、Tushare 公司行动和通达信前复权</strong>
-            <p>当前目标标的：{checkedSymbol || "未设置"}。Yahoo 单周期使用上方当前周期；Yahoo 三周期链路固定补 1d/15m/1m；TDX 原始导入支持 `sh / sz / bj / ds` 多市场代码，并与 A 股统一补数链路在卡片内单独选择周期；其余批量任务使用这里的批量上限。</p>
+            <p>当前目标标的：{checkedSymbol || "未设置"}。Yahoo 单周期使用上方当前周期；Yahoo 三周期链路固定补 1d/15m/1m；TDX 原始导入支持 `sh / sz / bj / ds` 多市场代码，并与 A 股统一补数链路在卡片内单独选择周期；TDX 批量导入还可在卡片内额外设定连续批跑轮数；其余批量任务使用这里的批量上限。</p>
           </div>
           <Space wrap>
             <Select value={syncInterval} options={intervalOptions} onChange={setSyncInterval} style={{ width: 120 }} />
@@ -1661,6 +1672,19 @@ export function MarketDataView() {
                     onChange={provider.providerKey === "tdx" ? setTdxSyncInterval : setTdxPipelineSyncInterval}
                     style={{ width: 180 }}
                   />
+                </div>
+              ) : null}
+              {provider.providerKey === "tdx" ? (
+                <div className="provider-panel-meta">
+                  <small>连续批跑轮数（仅批量模式）</small>
+                  <Select
+                    size="small"
+                    value={tdxBatchRounds}
+                    options={tdxBatchRoundOptions}
+                    onChange={setTdxBatchRounds}
+                    style={{ width: 180 }}
+                  />
+                  <small>仅对“批量导入”生效；会按当前批量上限连续续跑，直到达到轮数上限，或当前范围已经没有待导文件。</small>
                 </div>
               ) : null}
               <div className="provider-panel-metric-grid">
@@ -1718,7 +1742,9 @@ export function MarketDataView() {
                 >
                   {provider.providerKey === "yahoo"
                     ? `${provider.batchActionLabel} ${batchLimit} 个`
-                    : provider.providerKey === "tdx" || provider.providerKey === "tdx_pipeline" || provider.providerKey === "yahoo_pipeline"
+                    : provider.providerKey === "tdx"
+                      ? `${provider.batchActionLabel} ${providerIntervalDisplay(provider.providerKey)} ${batchLimit} 项 / ${tdxBatchRounds} 轮`
+                      : provider.providerKey === "tdx_pipeline" || provider.providerKey === "yahoo_pipeline"
                       ? `${provider.batchActionLabel} ${providerIntervalDisplay(provider.providerKey)} ${batchLimit} 项`
                       : `${provider.batchActionLabel} ${batchLimit} 项`}
                 </Button>
