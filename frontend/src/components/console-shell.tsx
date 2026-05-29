@@ -9,7 +9,7 @@ import {
   MonitorOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
-import { Button, Drawer, Layout, Menu, Typography } from "antd";
+import { Button, Drawer, Grid, Layout, Menu, Typography } from "antd";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -17,6 +17,7 @@ import { apiFetch, type BacktestJob, type MarketDataStats, type ReportSummary } 
 import { strategyLabel } from "@/lib/strategy-template-config";
 
 const { Header, Sider, Content } = Layout;
+const { useBreakpoint } = Grid;
 
 type ConsoleShellProps = {
   children: ReactNode;
@@ -380,6 +381,7 @@ function buildShellGuidance(snapshot: ShellSnapshot): ShellGuidance {
 
 export function ConsoleShell({ children }: ConsoleShellProps) {
   const pathname = usePathname();
+  const screens = useBreakpoint();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<ShellSnapshot>({
     stats: null,
@@ -389,6 +391,7 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
   });
   const selectedKey = pathname.startsWith("/reports/") ? "/reports" : pathname;
   const current = routeTitles[selectedKey] ?? routeTitles["/"];
+  const showMobileNav = !screens.lg;
 
   useEffect(() => {
     let cancelled = false;
@@ -469,7 +472,7 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
       </Sider>
       <Layout className="platform-main">
         <Header className="platform-header">
-          <Button className="mobile-menu-trigger" icon={<MenuOutlined />} onClick={() => setMobileMenuOpen(true)} />
+          {showMobileNav ? <Button className="mobile-menu-trigger" icon={<MenuOutlined />} onClick={() => setMobileMenuOpen(true)} /> : null}
           <div className="platform-header-main">
             <div className="platform-header-title">
               <span className="platform-header-kicker">{current.kicker}</span>
@@ -519,16 +522,18 @@ export function ConsoleShell({ children }: ConsoleShellProps) {
           <div className="content-frame">{children}</div>
         </Content>
       </Layout>
-      <Drawer
-        title="Strategy Studio 工作台"
-        placement="left"
-        size="default"
-        open={mobileMenuOpen}
-        onClose={() => setMobileMenuOpen(false)}
-        className="mobile-nav-drawer"
-      >
-        {renderMenu()}
-      </Drawer>
+      {showMobileNav ? (
+        <Drawer
+          title="Strategy Studio 工作台"
+          placement="left"
+          size="default"
+          open={mobileMenuOpen}
+          onClose={() => setMobileMenuOpen(false)}
+          className="mobile-nav-drawer"
+        >
+          {renderMenu()}
+        </Drawer>
+      ) : null}
     </Layout>
   );
 }

@@ -159,7 +159,7 @@ a {
 }
 
 .mobile-menu-trigger {
-  display: none;
+  display: none !important;
 }
 
 .platform-header-main {
@@ -3435,7 +3435,7 @@ a {
   }
 
   .mobile-menu-trigger {
-    display: inline-flex;
+    display: inline-flex !important;
     flex: 0 0 auto;
   }
 
