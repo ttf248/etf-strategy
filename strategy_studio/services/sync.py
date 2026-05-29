@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """行情同步与原始导入服务。"""
 
+from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 import re
@@ -1335,6 +1336,11 @@ def _rebuild_tdx_qfq_market_data(
         bar_rows_updated = 0
         action_rows_used = 0
         first_error_message = ""
+        raw_frames_by_series, action_frames_by_instrument = _preload_tdx_qfq_input_frames(
+            session,
+            targets,
+            action_provider,
+        )
 
         for target in targets:
             instrument = target["instrument"]
@@ -1350,8 +1356,10 @@ def _rebuild_tdx_qfq_market_data(
             )
             session.commit()
             try:
-                raw_frame = _load_raw_market_data_frame(session, raw_series)
-                action_frame = _load_instrument_action_frame(session, instrument, action_provider)
+                raw_frame = raw_frames_by_series.get(raw_series.id)
+                if raw_frame is None or raw_frame.empty:
+                    raise ValueError(f"原始序列没有可用于前复权重算的日线数据：series_id={raw_series.id}")
+                action_frame = action_frames_by_instrument.get(instrument.id, _empty_action_frame())
                 segment_frame = build_qfq_segment_frame(raw_frame, action_frame)
                 segment_rows = segment_frame.to_dict(orient="records")
                 seg_inserted, seg_updated, seg_deleted = replace_price_adjustment_segments(
@@ -1660,6 +1668,109 @@ def _resolve_tdx_pipeline_batch_symbols(limit: int | None) -> list[str]:
         return symbols
 
 
+def _preload_tdx_qfq_input_frames(
+    session,
+    targets: list[dict[str, object]],
+    action_provider,
+) -> tuple[dict[int, pd.DataFrame], dict[int, pd.DataFrame]]:
+    """批量预加载前复权输入，避免每个标的重复走一轮 ORM 查询。"""
+    if not targets:
+        return {}, {}
+
+    ordered_series_ids: list[int] = []
+    ordered_instrument_ids: list[int] = []
+    for item in targets:
+        raw_series = item["series"]
+        instrument = item["instrument"]
+        if raw_series.id not in ordered_series_ids:
+            ordered_series_ids.append(raw_series.id)
+        if instrument.id not in ordered_instrument_ids:
+            ordered_instrument_ids.append(instrument.id)
+
+    raw_records_by_series: dict[int, list[dict[str, object]]] = defaultdict(list)
+    raw_rows = session.execute(
+        select(
+            MarketDataBar.series_id,
+            MarketDataBar.bar_time,
+            MarketDataBar.open,
+            MarketDataBar.high,
+            MarketDataBar.low,
+            MarketDataBar.close,
+            MarketDataBar.volume,
+            MarketDataBar.turnover_amount,
+        )
+        .where(MarketDataBar.series_id.in_(ordered_series_ids))
+        .order_by(MarketDataBar.series_id, MarketDataBar.bar_time)
+    ).all()
+    for row in raw_rows:
+        raw_records_by_series[int(row.series_id)].append(
+            {
+                "Date": row.bar_time,
+                "Open": row.open,
+                "High": row.high,
+                "Low": row.low,
+                "Close": row.close,
+                "Volume": row.volume,
+                "Amount": row.turnover_amount,
+            }
+        )
+
+    action_records_by_instrument: dict[int, list[dict[str, object]]] = defaultdict(list)
+    action_rows = session.execute(
+        select(
+            CorporateActionEvent.instrument_id,
+            CorporateActionEvent.ex_date,
+            CorporateActionEvent.cash_dividend,
+            CorporateActionEvent.stock_bonus_ratio,
+            CorporateActionEvent.stock_conversion_ratio,
+            CorporateActionEvent.rights_ratio,
+            CorporateActionEvent.rights_price,
+            CorporateActionEvent.status,
+        )
+        .where(
+            CorporateActionEvent.provider_id == action_provider.id,
+            CorporateActionEvent.instrument_id.in_(ordered_instrument_ids),
+        )
+        .order_by(CorporateActionEvent.instrument_id, CorporateActionEvent.ex_date, CorporateActionEvent.announce_date)
+    ).all()
+    for row in action_rows:
+        action_records_by_instrument[int(row.instrument_id)].append(
+            {
+                "ex_date": row.ex_date,
+                "cash_dividend": row.cash_dividend,
+                "stock_bonus_ratio": row.stock_bonus_ratio,
+                "stock_conversion_ratio": row.stock_conversion_ratio,
+                "rights_ratio": row.rights_ratio,
+                "rights_price": row.rights_price,
+                "status": row.status,
+            }
+        )
+
+    raw_frames_by_series = {
+        series_id: pd.DataFrame(
+            raw_records_by_series.get(series_id, []),
+            columns=["Date", "Open", "High", "Low", "Close", "Volume", "Amount"],
+        )
+        for series_id in ordered_series_ids
+    }
+    action_frames_by_instrument = {
+        instrument_id: pd.DataFrame(
+            action_records_by_instrument.get(instrument_id, []),
+            columns=[
+                "ex_date",
+                "cash_dividend",
+                "stock_bonus_ratio",
+                "stock_conversion_ratio",
+                "rights_ratio",
+                "rights_price",
+                "status",
+            ],
+        )
+        for instrument_id in ordered_instrument_ids
+    }
+    return raw_frames_by_series, action_frames_by_instrument
+
+
 def _load_raw_market_data_frame(session, series: MarketDataSeries) -> pd.DataFrame:
     rows = session.scalars(
         select(MarketDataBar)
@@ -1680,6 +1791,20 @@ def _load_raw_market_data_frame(session, series: MarketDataSeries) -> pd.DataFra
                 "Amount": row.turnover_amount,
             }
             for row in rows
+        ]
+    )
+
+
+def _empty_action_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "ex_date",
+            "cash_dividend",
+            "stock_bonus_ratio",
+            "stock_conversion_ratio",
+            "rights_ratio",
+            "rights_price",
+            "status",
         ]
     )
 

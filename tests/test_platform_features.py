@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -1184,6 +1185,248 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(result["provider"], "tdx_pipeline")
         self.assertEqual(result["symbols_count"], 2)
         self.assertEqual(result["child_ingestion_job_ids"], [111, 112, 113, 114, 115])
+
+    def test_preload_tdx_qfq_input_frames_groups_raw_bars_and_actions(self) -> None:
+        class _ExecuteResult:
+            def __init__(self, rows: list[object]) -> None:
+                self._rows = rows
+
+            def all(self) -> list[object]:
+                return list(self._rows)
+
+        class _BatchSession:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def execute(self, _statement: object) -> _ExecuteResult:
+                self.calls += 1
+                if self.calls == 1:
+                    return _ExecuteResult(
+                        [
+                            SimpleNamespace(
+                                series_id=10,
+                                bar_time=datetime(2026, 5, 28, 0, 0),
+                                open=10.0,
+                                high=11.0,
+                                low=9.0,
+                                close=10.5,
+                                volume=100,
+                                turnover_amount=1000.0,
+                            ),
+                            SimpleNamespace(
+                                series_id=11,
+                                bar_time=datetime(2026, 5, 29, 0, 0),
+                                open=20.0,
+                                high=21.0,
+                                low=19.0,
+                                close=20.5,
+                                volume=200,
+                                turnover_amount=2000.0,
+                            ),
+                        ]
+                    )
+                return _ExecuteResult(
+                    [
+                        SimpleNamespace(
+                            instrument_id=101,
+                            ex_date="2026-05-29",
+                            cash_dividend=0.5,
+                            stock_bonus_ratio=0.1,
+                            stock_conversion_ratio=0.0,
+                            rights_ratio=0.0,
+                            rights_price=0.0,
+                            status="implemented",
+                        )
+                    ]
+                )
+
+        targets = [
+            {"series": SimpleNamespace(id=10), "instrument": SimpleNamespace(id=101)},
+            {"series": SimpleNamespace(id=11), "instrument": SimpleNamespace(id=102)},
+        ]
+
+        raw_frames, action_frames = sync_service._preload_tdx_qfq_input_frames(
+            _BatchSession(),
+            targets,
+            SimpleNamespace(id=301),
+        )
+
+        self.assertEqual(sorted(raw_frames.keys()), [10, 11])
+        self.assertEqual(sorted(action_frames.keys()), [101, 102])
+        self.assertEqual(len(raw_frames[10]), 1)
+        self.assertEqual(float(raw_frames[10].iloc[0]["Close"]), 10.5)
+        self.assertEqual(len(raw_frames[11]), 1)
+        self.assertEqual(float(raw_frames[11].iloc[0]["Amount"]), 2000.0)
+        self.assertEqual(len(action_frames[101]), 1)
+        self.assertEqual(float(action_frames[101].iloc[0]["cash_dividend"]), 0.5)
+        self.assertTrue(action_frames[102].empty)
+        self.assertEqual(
+            list(action_frames[102].columns),
+            [
+                "ex_date",
+                "cash_dividend",
+                "stock_bonus_ratio",
+                "stock_conversion_ratio",
+                "rights_ratio",
+                "rights_price",
+                "status",
+            ],
+        )
+
+    def test_rebuild_tdx_qfq_market_data_uses_preloaded_frames_for_batch_targets(self) -> None:
+        session = SimpleNamespace()
+        session.commit = lambda: None
+        session.rollback = lambda: None
+        registry: dict[int, object] = {}
+        session.get = lambda _model, identity: registry.get(identity)
+
+        class _SessionContext:
+            def __enter__(self):
+                return session
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        raw_provider = SimpleNamespace(id=401, provider_key="tdx")
+        action_provider = SimpleNamespace(id=402, provider_key="tushare")
+        qfq_provider = SimpleNamespace(id=403, provider_key="tdx_qfq")
+        ingestion_job = SimpleNamespace(
+            id=501,
+            targets_total=0,
+            targets_completed=0,
+            rows_inserted=0,
+            rows_updated=0,
+            error_count=0,
+            summary_json={},
+            completed_at=None,
+            status="running",
+            error_message="",
+        )
+        registry[501] = ingestion_job
+
+        item_ids = [601, 602]
+
+        def fake_create_item(*_args, **_kwargs):
+            current_id = item_ids.pop(0)
+            item = SimpleNamespace(
+                id=current_id,
+                status="running",
+                stage="download",
+                rows_inserted=0,
+                rows_updated=0,
+                details_json={},
+                error_message="",
+                instrument_id=None,
+                series_id=None,
+            )
+            registry[current_id] = item
+            return item
+
+        targets = [
+            {
+                "series": SimpleNamespace(id=701),
+                "instrument": SimpleNamespace(id=801, symbol="SH600000", name="浦发银行", exchange="SH", timezone="Asia/Shanghai"),
+                "alias": SimpleNamespace(source_symbol="SH600000", source_name="浦发银行", market="SH", exchange="SH", security_type="stock", timezone="Asia/Shanghai"),
+            },
+            {
+                "series": SimpleNamespace(id=702),
+                "instrument": SimpleNamespace(id=802, symbol="SZ000001", name="平安银行", exchange="SZ", timezone="Asia/Shanghai"),
+                "alias": SimpleNamespace(source_symbol="SZ000001", source_name="平安银行", market="SZ", exchange="SZ", security_type="stock", timezone="Asia/Shanghai"),
+            },
+        ]
+        raw_frames = {
+            701: pd.DataFrame(
+                [
+                    {"Date": "2026-05-28", "Open": 10.0, "High": 11.0, "Low": 9.0, "Close": 10.5, "Volume": 100, "Amount": 1000.0},
+                    {"Date": "2026-05-29", "Open": 10.6, "High": 11.2, "Low": 10.1, "Close": 11.0, "Volume": 110, "Amount": 1100.0},
+                ]
+            ),
+            702: pd.DataFrame(
+                [
+                    {"Date": "2026-05-28", "Open": 20.0, "High": 21.0, "Low": 19.5, "Close": 20.2, "Volume": 200, "Amount": 2000.0},
+                    {"Date": "2026-05-29", "Open": 20.3, "High": 21.1, "Low": 20.0, "Close": 20.8, "Volume": 210, "Amount": 2100.0},
+                ]
+            ),
+        }
+        action_frames = {
+            801: pd.DataFrame(
+                [
+                    {
+                        "ex_date": "2026-05-29",
+                        "cash_dividend": 0.5,
+                        "stock_bonus_ratio": 0.0,
+                        "stock_conversion_ratio": 0.0,
+                        "rights_ratio": 0.0,
+                        "rights_price": 0.0,
+                        "status": "implemented",
+                    }
+                ]
+            ),
+            802: pd.DataFrame(columns=["ex_date", "cash_dividend", "stock_bonus_ratio", "stock_conversion_ratio", "rights_ratio", "rights_price", "status"]),
+        }
+        qfq_series_ids = [901, 902]
+
+        def fake_get_or_create_market_data_series(*_args, **_kwargs):
+            return SimpleNamespace(id=qfq_series_ids.pop(0), metadata_json={})
+
+        with (
+            patch("strategy_studio.services.sync.open_session", return_value=_SessionContext()),
+            patch("strategy_studio.services.sync.ensure_data_provider", side_effect=[raw_provider, action_provider, qfq_provider]),
+            patch("strategy_studio.services.sync._resolve_tdx_qfq_targets", return_value=targets),
+            patch("strategy_studio.services.sync.create_data_ingestion_job", return_value=ingestion_job),
+            patch("strategy_studio.services.sync.create_data_ingestion_job_item", side_effect=fake_create_item),
+            patch(
+                "strategy_studio.services.sync._preload_tdx_qfq_input_frames",
+                return_value=(raw_frames, action_frames),
+            ) as mock_preload,
+            patch(
+                "strategy_studio.services.sync.build_qfq_segment_frame",
+                return_value=pd.DataFrame(
+                    [
+                        {
+                            "start_date": "2026-05-28",
+                            "end_date": "2026-05-29",
+                            "adjust_a": 1.0,
+                            "adjust_b": 0.0,
+                            "status": "ready",
+                            "payload_json": {"source": "test"},
+                        }
+                    ]
+                ),
+            ),
+            patch(
+                "strategy_studio.services.sync.apply_qfq_segment_frame",
+                side_effect=lambda raw_frame, _segment_frame: raw_frame.assign(AdjustA=1.0, AdjustB=0.0),
+            ),
+            patch("strategy_studio.services.sync.replace_price_adjustment_segments", return_value=(1, 0, 0)),
+            patch("strategy_studio.services.sync.get_or_create_instrument_alias", side_effect=lambda *_args, **kwargs: kwargs["instrument"]),
+            patch("strategy_studio.services.sync.get_or_create_market_data_series", side_effect=fake_get_or_create_market_data_series),
+            patch("strategy_studio.services.sync.upsert_market_data_frame", side_effect=lambda _session, _series, frame: (len(frame), 0)),
+            patch("strategy_studio.services.sync._load_raw_market_data_frame") as mock_load_raw,
+            patch("strategy_studio.services.sync._load_instrument_action_frame") as mock_load_actions,
+        ):
+            result = sync_service._rebuild_tdx_qfq_market_data(
+                symbol=None,
+                interval="1d",
+                force=True,
+                limit=2,
+            )
+
+        mock_preload.assert_called_once_with(session, targets, action_provider)
+        mock_load_raw.assert_not_called()
+        mock_load_actions.assert_not_called()
+        self.assertEqual(result["provider"], "tdx_qfq")
+        self.assertEqual(result["symbols_count"], 2)
+        self.assertEqual(result["bars_inserted"], 4)
+        self.assertEqual(result["bars_updated"], 0)
+        self.assertEqual(result["segment_rows_inserted"], 2)
+        self.assertEqual(result["action_rows_used"], 1)
+        self.assertEqual(result["status"], "succeeded")
+        self.assertEqual(ingestion_job.targets_total, 2)
+        self.assertEqual(ingestion_job.targets_completed, 2)
+        self.assertEqual(ingestion_job.rows_inserted, 4)
+        self.assertEqual(ingestion_job.error_count, 0)
+        self.assertEqual(ingestion_job.status, "succeeded")
 
 
 class StrategyTemplateServiceTests(unittest.TestCase):
