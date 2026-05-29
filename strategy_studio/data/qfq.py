@@ -3,12 +3,21 @@ from __future__ import annotations
 """前复权公式区间与复权日线计算。"""
 
 from datetime import date, timedelta
+import hashlib
 
 import numpy as np
 import pandas as pd
 
 
 PRICE_COLUMNS = ("Open", "High", "Low", "Close")
+ACTION_NUMERIC_COLUMNS = (
+    "cash_dividend",
+    "stock_bonus_ratio",
+    "stock_conversion_ratio",
+    "rights_ratio",
+    "rights_price",
+)
+ACTION_DATE_COLUMNS = ("announce_date", "record_date", "ex_date", "pay_date", "end_date")
 SEGMENT_COLUMNS = [
     "start_date",
     "end_date",
@@ -53,6 +62,7 @@ def build_qfq_segment_frame(
     event_dates = grouped["ex_date"].tolist()
     event_a = grouped["event_a"].to_numpy(dtype="float64")
     event_b = grouped["event_b"].to_numpy(dtype="float64")
+    suffix_source_hash = _build_suffix_source_hashes(grouped)
     suffix_a, suffix_b = _build_suffix_affine_parameters(event_a, event_b)
 
     rows: list[dict[str, object]] = []
@@ -72,6 +82,7 @@ def build_qfq_segment_frame(
                     "source": "corporate_action_cn_exact",
                     "reason": "国内除权除息参考价仿射递推",
                     "event_count": int(len(event_dates) - index),
+                    "source_hash": suffix_source_hash[index],
                 },
             }
         )
@@ -106,8 +117,10 @@ def apply_qfq_segment_frame(
     adjust_a = normalized_segments["adjust_a"].to_numpy(dtype="float64")[positions]
     adjust_b = normalized_segments["adjust_b"].to_numpy(dtype="float64")[positions]
     adjusted = normalized_raw.copy()
-    for column in PRICE_COLUMNS:
-        adjusted[column] = pd.to_numeric(adjusted[column], errors="coerce") * adjust_a + adjust_b
+    # 价格列统一走 NumPy 广播，避免对千万级 K 线逐列反复触发 pandas 对齐开销。
+    price_matrix = adjusted.loc[:, PRICE_COLUMNS].apply(pd.to_numeric, errors="coerce").to_numpy(dtype="float64", copy=False)
+    adjusted_prices = price_matrix * adjust_a[:, np.newaxis] + adjust_b[:, np.newaxis]
+    adjusted.loc[:, PRICE_COLUMNS] = adjusted_prices
     adjusted["AdjustA"] = adjust_a
     adjusted["AdjustB"] = adjust_b
     return adjusted[["Date", "Open", "High", "Low", "Close", "Volume", "Amount", "AdjustA", "AdjustB"]]
@@ -172,21 +185,16 @@ def _match_segment_positions_linear(
 
 def _group_actions_by_ex_date(action_frame: pd.DataFrame) -> pd.DataFrame:
     if action_frame.empty:
-        return pd.DataFrame(columns=["ex_date", "event_a", "event_b"])
+        return pd.DataFrame(columns=["ex_date", "event_a", "event_b", "source_hash"])
     normalized = action_frame.copy()
     normalized["ex_date"] = pd.to_datetime(normalized["ex_date"], errors="coerce").dt.date
     normalized = normalized.dropna(subset=["ex_date"]).reset_index(drop=True)
     if normalized.empty:
-        return pd.DataFrame(columns=["ex_date", "event_a", "event_b"])
+        return pd.DataFrame(columns=["ex_date", "event_a", "event_b", "source_hash"])
 
-    for column in (
-        "cash_dividend",
-        "stock_bonus_ratio",
-        "stock_conversion_ratio",
-        "rights_ratio",
-        "rights_price",
-    ):
+    for column in ACTION_NUMERIC_COLUMNS:
         normalized[column] = pd.to_numeric(normalized.get(column, 0.0), errors="coerce").fillna(0.0)
+    normalized["_source_payload"] = _build_action_payload_series(normalized)
 
     grouped = (
         normalized.groupby("ex_date", as_index=False)
@@ -196,32 +204,29 @@ def _group_actions_by_ex_date(action_frame: pd.DataFrame) -> pd.DataFrame:
             stock_conversion_ratio=("stock_conversion_ratio", "sum"),
             rights_ratio=("rights_ratio", "sum"),
             rights_price=("rights_price", "max"),
+            source_hash=("_source_payload", _hash_payload_group),
         )
         .sort_values("ex_date")
         .reset_index(drop=True)
     )
 
-    unsupported: list[str] = []
-    event_a_values: list[float] = []
-    event_b_values: list[float] = []
-    for row in grouped.to_dict(orient="records"):
-        rights_ratio = float(row["rights_ratio"])
-        rights_price = float(row["rights_price"])
-        if rights_ratio > 0 and rights_price <= 0:
-            unsupported.append(f"{_date_to_key(row['ex_date'])}:缺少配股价或配股比例")
-            continue
-        denominator = 1.0 + float(row["stock_bonus_ratio"]) + float(row["stock_conversion_ratio"]) + rights_ratio
-        if denominator <= 0:
-            unsupported.append(f"{_date_to_key(row['ex_date'])}:股份变动比例异常")
-            continue
-        event_a_values.append(1.0 / denominator)
-        event_b_values.append((-float(row["cash_dividend"]) + rights_price * rights_ratio) / denominator)
+    rights_ratio = grouped["rights_ratio"].to_numpy(dtype="float64")
+    rights_price = grouped["rights_price"].to_numpy(dtype="float64")
+    denominator = 1.0 + grouped["stock_bonus_ratio"].to_numpy(dtype="float64")
+    denominator += grouped["stock_conversion_ratio"].to_numpy(dtype="float64") + rights_ratio
+    missing_rights_price = (rights_ratio > 0.0) & (rights_price <= 0.0)
+    invalid_denominator = denominator <= 0.0
 
+    unsupported: list[str] = []
+    for index in np.where(missing_rights_price)[0]:
+        unsupported.append(f"{_date_to_key(grouped.iloc[index]['ex_date'])}:缺少配股价或配股比例")
+    for index in np.where(invalid_denominator)[0]:
+        unsupported.append(f"{_date_to_key(grouped.iloc[index]['ex_date'])}:股份变动比例异常")
     if unsupported:
         raise UnsupportedCorporateActionError(";".join(unsupported))
-    grouped["event_a"] = event_a_values
-    grouped["event_b"] = event_b_values
-    return grouped[["ex_date", "event_a", "event_b"]]
+    grouped["event_a"] = 1.0 / denominator
+    grouped["event_b"] = (-grouped["cash_dividend"].to_numpy(dtype="float64") + rights_price * rights_ratio) / denominator
+    return grouped[["ex_date", "event_a", "event_b", "source_hash"]]
 
 
 def _build_suffix_affine_parameters(
@@ -234,6 +239,72 @@ def _build_suffix_affine_parameters(
         suffix_a[index] = event_a[index] * suffix_a[index + 1]
         suffix_b[index] = suffix_a[index + 1] * event_b[index] + suffix_b[index + 1]
     return suffix_a, suffix_b
+
+
+def _build_suffix_source_hashes(grouped: pd.DataFrame) -> list[str]:
+    if grouped.empty:
+        return ["empty"]
+    source_hashes = grouped["source_hash"].fillna("").astype(str).tolist()
+    event_dates = grouped["ex_date"].tolist()
+    event_a = grouped["event_a"].to_numpy(dtype="float64")
+    event_b = grouped["event_b"].to_numpy(dtype="float64")
+    suffix_payloads = [""] * (len(source_hashes) + 1)
+    suffix_hashes = ["empty"] * (len(source_hashes) + 1)
+    for index in range(len(source_hashes) - 1, -1, -1):
+        current_payload = "|".join(
+            (
+                _date_to_key(event_dates[index]),
+                source_hashes[index],
+                _format_float_token(event_a[index]),
+                _format_float_token(event_b[index]),
+            )
+        )
+        suffix_payloads[index] = current_payload if not suffix_payloads[index + 1] else f"{current_payload}\n{suffix_payloads[index + 1]}"
+        suffix_hashes[index] = _hash_text(suffix_payloads[index])
+    return suffix_hashes
+
+
+def _build_action_payload_series(frame: pd.DataFrame) -> pd.Series:
+    payload = _string_series(frame, "action_type").str.strip().str.lower()
+    for column in ACTION_DATE_COLUMNS:
+        payload = payload + "|" + _date_series(frame, column)
+    for column in ACTION_NUMERIC_COLUMNS:
+        payload = payload + "|" + _numeric_series(frame, column)
+    return payload
+
+
+def _string_series(frame: pd.DataFrame, column: str) -> pd.Series:
+    if column not in frame.columns:
+        return pd.Series("", index=frame.index, dtype="object")
+    return frame[column].fillna("").astype(str)
+
+
+def _date_series(frame: pd.DataFrame, column: str) -> pd.Series:
+    if column not in frame.columns:
+        return pd.Series("", index=frame.index, dtype="object")
+    values = pd.to_datetime(frame[column], errors="coerce")
+    text = values.dt.strftime("%Y-%m-%d")
+    return text.fillna("")
+
+
+def _numeric_series(frame: pd.DataFrame, column: str) -> pd.Series:
+    values = pd.to_numeric(frame.get(column, 0.0), errors="coerce").fillna(0.0)
+    return values.map(_format_float_token)
+
+
+def _hash_payload_group(values: pd.Series) -> str:
+    ordered_values = sorted(str(value) for value in values if str(value))
+    if not ordered_values:
+        return "empty"
+    return _hash_text("\n".join(ordered_values))
+
+
+def _hash_text(value: str) -> str:
+    return hashlib.sha1(value.encode("utf-8")).hexdigest()
+
+
+def _format_float_token(value: float) -> str:
+    return format(float(value), ".15g")
 
 
 def _date_to_key(value: date) -> str:

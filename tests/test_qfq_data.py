@@ -55,7 +55,11 @@ class QfqDataTests(unittest.TestCase):
         actions = pd.DataFrame(
             [
                 {
+                    "action_type": "dividend",
+                    "announce_date": "2024-01-01",
+                    "record_date": "2024-01-02",
                     "ex_date": "2024-01-03",
+                    "pay_date": "2024-01-05",
                     "cash_dividend": 1.0,
                     "stock_bonus_ratio": 0.0,
                     "stock_conversion_ratio": 0.0,
@@ -63,7 +67,11 @@ class QfqDataTests(unittest.TestCase):
                     "rights_price": 0.0,
                 },
                 {
+                    "action_type": "dividend",
+                    "announce_date": "2024-01-02",
+                    "record_date": "2024-01-03",
                     "ex_date": "2024-01-04",
+                    "pay_date": "2024-01-08",
                     "cash_dividend": 0.0,
                     "stock_bonus_ratio": 1.0,
                     "stock_conversion_ratio": 0.0,
@@ -88,6 +96,10 @@ class QfqDataTests(unittest.TestCase):
         self.assertEqual(str(segments.iloc[2]["end_date"]), "2024-01-04")
         self.assertAlmostEqual(float(segments.iloc[2]["adjust_a"]), 1.0)
         self.assertAlmostEqual(float(segments.iloc[2]["adjust_b"]), 0.0)
+        self.assertEqual(segments.iloc[0]["payload_json"]["event_count"], 2)
+        self.assertRegex(segments.iloc[0]["payload_json"]["source_hash"], r"^[0-9a-f]{40}$")
+        self.assertRegex(segments.iloc[1]["payload_json"]["source_hash"], r"^[0-9a-f]{40}$")
+        self.assertEqual(segments.iloc[2]["payload_json"]["source_hash"], "empty")
 
     def test_apply_qfq_segment_frame_merges_same_day_actions(self) -> None:
         actions = pd.DataFrame(
@@ -119,6 +131,45 @@ class QfqDataTests(unittest.TestCase):
         self.assertAlmostEqual(float(adjusted.iloc[0]["AdjustB"]), -1.0 / 1.3)
         self.assertAlmostEqual(float(adjusted.iloc[1]["Close"]), 9.0)
         self.assertAlmostEqual(float(adjusted.iloc[2]["Close"]), 8.0)
+
+    def test_build_qfq_segment_frame_supports_rights_issue_affine_parameters(self) -> None:
+        actions = pd.DataFrame(
+            [
+                {
+                    "ex_date": "2024-01-03",
+                    "cash_dividend": 0.0,
+                    "stock_bonus_ratio": 0.0,
+                    "stock_conversion_ratio": 0.0,
+                    "rights_ratio": 0.2,
+                    "rights_price": 5.0,
+                }
+            ]
+        )
+
+        segments = build_qfq_segment_frame(build_raw_frame(), actions)
+        adjusted = apply_qfq_segment_frame(build_raw_frame(), segments)
+
+        self.assertAlmostEqual(float(segments.iloc[0]["adjust_a"]), 1.0 / 1.2)
+        self.assertAlmostEqual(float(segments.iloc[0]["adjust_b"]), 1.0 / 1.2)
+        self.assertAlmostEqual(float(adjusted.iloc[0]["Close"]), 10.0 / 1.2 + 1.0 / 1.2)
+        self.assertAlmostEqual(float(adjusted.iloc[1]["Close"]), 9.0)
+
+    def test_build_qfq_segment_frame_rejects_rights_issue_without_price(self) -> None:
+        actions = pd.DataFrame(
+            [
+                {
+                    "ex_date": "2024-01-03",
+                    "cash_dividend": 0.0,
+                    "stock_bonus_ratio": 0.0,
+                    "stock_conversion_ratio": 0.0,
+                    "rights_ratio": 0.2,
+                    "rights_price": 0.0,
+                }
+            ]
+        )
+
+        with self.assertRaisesRegex(ValueError, "缺少配股价或配股比例"):
+            build_qfq_segment_frame(build_raw_frame(), actions)
 
     def test_apply_qfq_segment_frame_raises_when_segment_has_gap(self) -> None:
         segments = pd.DataFrame(
