@@ -1527,6 +1527,7 @@ class PlatformFeatureTests(unittest.TestCase):
                             rights_ratio=0.0,
                             rights_price=0.0,
                             status="implemented",
+                            updated_at=datetime(2026, 5, 29, 9, 0),
                         )
                     ]
                 )
@@ -1536,7 +1537,7 @@ class PlatformFeatureTests(unittest.TestCase):
             {"series": SimpleNamespace(id=11), "instrument": SimpleNamespace(id=102)},
         ]
 
-        raw_frames, action_frames = sync_service._preload_tdx_qfq_input_frames(
+        raw_frames, action_frames, action_updated = sync_service._preload_tdx_qfq_input_frames(
             _BatchSession(),
             targets,
             SimpleNamespace(id=301),
@@ -1551,6 +1552,8 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(len(action_frames[101]), 1)
         self.assertEqual(float(action_frames[101].iloc[0]["cash_dividend"]), 0.5)
         self.assertTrue(action_frames[102].empty)
+        self.assertIsNotNone(action_updated[101])
+        self.assertIsNone(action_updated[102])
         self.assertEqual(
             list(action_frames[102].columns),
             [
@@ -1820,7 +1823,7 @@ class PlatformFeatureTests(unittest.TestCase):
             patch("strategy_studio.services.sync.create_data_ingestion_job_item", side_effect=fake_create_item),
             patch(
                 "strategy_studio.services.sync._preload_tdx_qfq_input_frames",
-                return_value=(raw_frames, action_frames),
+                return_value=(raw_frames, action_frames, {801: datetime(2026, 5, 29, 0, 0), 802: None}),
             ) as mock_preload,
             patch(
                 "strategy_studio.services.sync._preload_tdx_qfq_output_entities",
@@ -2006,7 +2009,7 @@ class PlatformFeatureTests(unittest.TestCase):
             patch("strategy_studio.services.sync.create_data_ingestion_job_item", side_effect=fake_create_item),
             patch(
                 "strategy_studio.services.sync._preload_tdx_qfq_input_frames",
-                return_value=(raw_frames, action_frames),
+                return_value=(raw_frames, action_frames, {811: None, 812: None}),
             ),
             patch(
                 "strategy_studio.services.sync._preload_tdx_qfq_output_entities",
@@ -2064,6 +2067,165 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertIn("timing_json", succeeded_item.details_json)
         self.assertIn("bar_upsert_ms", succeeded_item.details_json["timing_json"])
         self.assertEqual(session.commit_calls, 4)
+
+    def test_rebuild_tdx_qfq_market_data_skips_up_to_date_series_when_not_forced(self) -> None:
+        registry: dict[int, object] = {}
+
+        class _NestedContext:
+            def __enter__(self):
+                return None
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        class _SessionDouble:
+            def __init__(self) -> None:
+                self.commit_calls = 0
+
+            def commit(self) -> None:
+                self.commit_calls += 1
+
+            def rollback(self) -> None:
+                return None
+
+            def get(self, _model, identity):
+                return registry.get(identity)
+
+            def begin_nested(self):
+                return _NestedContext()
+
+        session = _SessionDouble()
+
+        class _SessionContext:
+            def __enter__(self):
+                return session
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        raw_provider = SimpleNamespace(id=421, provider_key="tdx")
+        action_provider = SimpleNamespace(id=422, provider_key="tushare")
+        qfq_provider = SimpleNamespace(id=423, provider_key="tdx_qfq")
+        ingestion_job = SimpleNamespace(
+            id=521,
+            targets_total=0,
+            targets_completed=0,
+            rows_inserted=0,
+            rows_updated=0,
+            error_count=0,
+            summary_json={},
+            completed_at=None,
+            status="running",
+            error_message="",
+        )
+        registry[521] = ingestion_job
+
+        def fake_create_item(*_args, **_kwargs):
+            item = SimpleNamespace(
+                id=621,
+                status="running",
+                stage="download",
+                rows_inserted=0,
+                rows_updated=0,
+                details_json={},
+                error_message="",
+                instrument_id=None,
+                series_id=None,
+            )
+            registry[621] = item
+            return item
+
+        raw_last_ingested_at = datetime(2026, 5, 29, 9, 0)
+        qfq_last_ingested_at = datetime(2026, 5, 29, 10, 0)
+        targets = [
+            {
+                "series": SimpleNamespace(id=721, last_ingested_at=raw_last_ingested_at),
+                "instrument": SimpleNamespace(id=821, symbol="SH600000", name="浦发银行", exchange="SH", timezone="Asia/Shanghai"),
+                "alias": SimpleNamespace(source_symbol="SH600000", source_name="浦发银行", market="SH", exchange="SH", security_type="stock", timezone="Asia/Shanghai"),
+            }
+        ]
+        raw_frames = {
+            721: pd.DataFrame(
+                [
+                    {"Date": "2026-05-28", "Open": 10.0, "High": 11.0, "Low": 9.0, "Close": 10.5, "Volume": 100, "Amount": 1000.0},
+                    {"Date": "2026-05-29", "Open": 10.6, "High": 11.2, "Low": 10.1, "Close": 11.0, "Volume": 110, "Amount": 1100.0},
+                ]
+            ),
+        }
+        action_frames = {
+            821: pd.DataFrame(columns=["ex_date", "cash_dividend", "stock_bonus_ratio", "stock_conversion_ratio", "rights_ratio", "rights_price", "status"]),
+        }
+        preloaded_qfq_aliases = {
+            "SH600000": SimpleNamespace(
+                id=931,
+                instrument_id=821,
+                source_symbol="SH600000",
+                source_name="浦发银行",
+                market="SH",
+                exchange="SH",
+                security_type="stock",
+                timezone="Asia/Shanghai",
+                is_primary=True,
+            )
+        }
+        preloaded_qfq_series = {
+            (931, "1d", "qfq", "regular", "trade"): SimpleNamespace(
+                id=932,
+                alias_id=931,
+                instrument_id=821,
+                market="SH",
+                exchange="SH",
+                bar_type="time",
+                timezone="Asia/Shanghai",
+                is_active=True,
+                last_ingested_at=qfq_last_ingested_at,
+                metadata_json={
+                    "raw_provider_key": "tdx",
+                    "raw_series_id": 721,
+                    "action_provider_key": "tushare",
+                },
+            )
+        }
+
+        with (
+            patch("strategy_studio.services.sync.open_session", return_value=_SessionContext()),
+            patch("strategy_studio.services.sync.ensure_data_provider", side_effect=[raw_provider, action_provider, qfq_provider]),
+            patch("strategy_studio.services.sync._resolve_tdx_qfq_targets", return_value=targets),
+            patch("strategy_studio.services.sync.create_data_ingestion_job", return_value=ingestion_job),
+            patch("strategy_studio.services.sync.create_data_ingestion_job_item", side_effect=fake_create_item),
+            patch(
+                "strategy_studio.services.sync._preload_tdx_qfq_input_frames",
+                return_value=(raw_frames, action_frames, {821: qfq_last_ingested_at}),
+            ),
+            patch(
+                "strategy_studio.services.sync._preload_tdx_qfq_output_entities",
+                return_value=(preloaded_qfq_aliases, preloaded_qfq_series),
+            ),
+            patch("strategy_studio.services.sync.build_qfq_segment_frame", side_effect=AssertionError("最新序列不应重建区间")),
+            patch("strategy_studio.services.sync.replace_price_adjustment_segments", side_effect=AssertionError("最新序列不应重写区间")),
+            patch("strategy_studio.services.sync.apply_qfq_segment_frame", side_effect=AssertionError("最新序列不应重算前复权")),
+            patch("strategy_studio.services.sync.upsert_market_data_frame", side_effect=AssertionError("最新序列不应重写 K 线")),
+        ):
+            result = sync_service._rebuild_tdx_qfq_market_data(
+                symbol=None,
+                interval="1d",
+                force=False,
+                limit=1,
+            )
+
+        skipped_item = registry[621]
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["symbols_skipped"], 1)
+        self.assertEqual(result["bars_updated"], 0)
+        self.assertEqual(ingestion_job.targets_total, 1)
+        self.assertEqual(ingestion_job.targets_completed, 1)
+        self.assertEqual(ingestion_job.status, "skipped")
+        self.assertEqual(ingestion_job.summary_json["symbols_skipped"], 1)
+        self.assertEqual(skipped_item.status, "skipped")
+        self.assertEqual(skipped_item.stage, "completed")
+        self.assertEqual(skipped_item.series_id, 932)
+        self.assertEqual(skipped_item.details_json["reason"], "qfq_series_up_to_date")
+        self.assertIn("timing_json", skipped_item.details_json)
 
 
 class StrategyTemplateServiceTests(unittest.TestCase):

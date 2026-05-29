@@ -1499,6 +1499,7 @@ def _sync_tushare_corporate_actions(
         session.commit()
 
         succeeded_symbols = 0
+        skipped_symbols = 0
         failed_symbols = 0
         rows_inserted = 0
         rows_updated = 0
@@ -1716,6 +1717,7 @@ def _rebuild_tdx_qfq_market_data(
         session.commit()
 
         succeeded_symbols = 0
+        skipped_symbols = 0
         failed_symbols = 0
         segment_rows_inserted = 0
         segment_rows_updated = 0
@@ -1727,7 +1729,7 @@ def _rebuild_tdx_qfq_market_data(
         cancelled = False
         cancel_message = ""
         preload_input_started_at = perf_counter()
-        raw_frames_by_series, action_frames_by_instrument = _preload_tdx_qfq_input_frames(
+        raw_frames_by_series, action_frames_by_instrument, action_updated_at_by_instrument = _preload_tdx_qfq_input_frames(
             session,
             targets,
             action_provider,
@@ -1790,6 +1792,39 @@ def _rebuild_tdx_qfq_market_data(
                     if raw_frame is None or raw_frame.empty:
                         raise ValueError(f"原始序列没有可用于前复权重算的日线数据：series_id={raw_series.id}")
                     action_frame = action_frames_by_instrument.get(instrument.id, _empty_action_frame())
+                    action_last_updated_at = action_updated_at_by_instrument.get(instrument.id)
+                    stage_started_at = perf_counter()
+                    qfq_source_symbol = str(raw_alias.source_symbol or "").strip().upper()
+                    qfq_alias = qfq_aliases_by_symbol.get(qfq_source_symbol)
+                    qfq_series = None
+                    if qfq_alias is not None:
+                        qfq_series = qfq_series_by_scope.get(_tdx_qfq_series_scope_key(qfq_alias.id, interval=interval))
+                    item_timing_json["output_prepare_ms"] = _elapsed_ms(stage_started_at)
+                    if _can_skip_tdx_qfq_rebuild(
+                        force=force,
+                        raw_provider=raw_provider,
+                        action_provider=action_provider,
+                        raw_series=raw_series,
+                        qfq_series=qfq_series,
+                        action_last_updated_at=action_last_updated_at,
+                    ):
+                        item_timing_json["total_elapsed_ms"] = _elapsed_ms(item_started_at)
+                        item.status = "skipped"
+                        item.stage = "completed"
+                        item.instrument_id = instrument.id
+                        item.series_id = qfq_series.id if qfq_series is not None else None
+                        item.details_json = {
+                            "provider_key": provider.provider_key,
+                            "raw_series_id": raw_series.id,
+                            "reason": "qfq_series_up_to_date",
+                            "timing_json": dict(item_timing_json),
+                        }
+                        skipped_symbols += 1
+                        processed_symbol_timing_ms += item_timing_json.get("total_elapsed_ms", 0)
+                        ingestion_job.targets_completed = succeeded_symbols + skipped_symbols
+                        ingestion_job.error_count = failed_symbols
+                        pending_targets_since_commit += 1
+                        continue
                     stage_started_at = perf_counter()
                     segment_frame = build_qfq_segment_frame(raw_frame, action_frame)
                     item_timing_json["segment_build_ms"] = _elapsed_ms(stage_started_at)
@@ -1807,9 +1842,6 @@ def _rebuild_tdx_qfq_market_data(
                     stage_started_at = perf_counter()
                     adjusted_frame = apply_qfq_segment_frame(raw_frame, segment_frame)
                     item_timing_json["segment_apply_ms"] = _elapsed_ms(stage_started_at)
-                    stage_started_at = perf_counter()
-                    qfq_source_symbol = str(raw_alias.source_symbol or "").strip().upper()
-                    qfq_alias = qfq_aliases_by_symbol.get(qfq_source_symbol)
                     if qfq_alias is None:
                         qfq_alias = get_or_create_instrument_alias(
                             session,
@@ -1857,7 +1889,6 @@ def _rebuild_tdx_qfq_market_data(
                         qfq_series.bar_type = "time"
                         qfq_series.timezone = raw_alias.timezone or instrument.timezone
                         qfq_series.is_active = True
-                    item_timing_json["output_prepare_ms"] = _elapsed_ms(stage_started_at)
                     stage_started_at = perf_counter()
                     bars_inserted, bars_updated = upsert_market_data_frame(session, qfq_series, adjusted_frame)
                     item_timing_json["bar_upsert_ms"] = _elapsed_ms(stage_started_at)
@@ -1895,7 +1926,7 @@ def _rebuild_tdx_qfq_market_data(
                 succeeded_symbol_timing_ms += item_timing_json.get("total_elapsed_ms", 0)
                 for key in timing_totals_ms:
                     timing_totals_ms[key] += item_timing_json.get(key, 0)
-                ingestion_job.targets_completed = succeeded_symbols
+                ingestion_job.targets_completed = succeeded_symbols + skipped_symbols
                 ingestion_job.error_count = failed_symbols
                 pending_targets_since_commit += 1
             except Exception as exc:
@@ -1915,7 +1946,7 @@ def _rebuild_tdx_qfq_market_data(
                     "raw_series_id": raw_series.id,
                     "timing_json": dict(item_timing_json),
                 }
-                ingestion_job.targets_completed = succeeded_symbols
+                ingestion_job.targets_completed = succeeded_symbols + skipped_symbols
                 ingestion_job.error_count = failed_symbols
                 pending_targets_since_commit += 1
                 commit_batch_progress()
@@ -1928,7 +1959,7 @@ def _rebuild_tdx_qfq_market_data(
         ingestion_job.rows_inserted = bar_rows_inserted
         ingestion_job.rows_updated = bar_rows_updated
         ingestion_job.completed_at = datetime.now(UTC)
-        processed_symbols = succeeded_symbols + failed_symbols
+        processed_symbols = succeeded_symbols + skipped_symbols + failed_symbols
         timing_summary_json = {
             "commit_every": TDX_QFQ_COMMIT_EVERY,
             "processed_symbols": processed_symbols,
@@ -1949,6 +1980,7 @@ def _rebuild_tdx_qfq_market_data(
             "provider_key": provider.provider_key,
             "symbols_total": len(targets),
             "symbols_succeeded": succeeded_symbols,
+            "symbols_skipped": skipped_symbols,
             "symbols_failed": failed_symbols,
             "segment_rows_inserted": segment_rows_inserted,
             "segment_rows_updated": segment_rows_updated,
@@ -1975,6 +2007,8 @@ def _rebuild_tdx_qfq_market_data(
                 if first_error_message
                 else f"本次通达信前复权日线重算有 {failed_symbols} 个标的失败。"
             )
+        elif skipped_symbols == len(targets):
+            ingestion_job.status = "skipped"
         else:
             ingestion_job.status = "succeeded"
         session.commit()
@@ -1984,6 +2018,7 @@ def _rebuild_tdx_qfq_market_data(
             "ingestion_job_id": ingestion_job.id,
             "interval": interval,
             "symbols_count": len(targets),
+            "symbols_skipped": skipped_symbols,
             "bars_inserted": bar_rows_inserted,
             "bars_updated": bar_rows_updated,
             "segment_rows_inserted": segment_rows_inserted,
@@ -2173,10 +2208,10 @@ def _preload_tdx_qfq_input_frames(
     session,
     targets: list[dict[str, object]],
     action_provider,
-) -> tuple[dict[int, pd.DataFrame], dict[int, pd.DataFrame]]:
+) -> tuple[dict[int, pd.DataFrame], dict[int, pd.DataFrame], dict[int, datetime | None]]:
     """批量预加载前复权输入，避免每个标的重复走一轮 ORM 查询。"""
     if not targets:
-        return {}, {}
+        return {}, {}, {}
 
     ordered_series_ids: list[int] = []
     ordered_instrument_ids: list[int] = []
@@ -2217,6 +2252,7 @@ def _preload_tdx_qfq_input_frames(
         )
 
     action_records_by_instrument: dict[int, list[dict[str, object]]] = defaultdict(list)
+    action_updated_at_by_instrument: dict[int, datetime | None] = {instrument_id: None for instrument_id in ordered_instrument_ids}
     action_rows = session.execute(
         select(
             CorporateActionEvent.instrument_id,
@@ -2227,6 +2263,7 @@ def _preload_tdx_qfq_input_frames(
             CorporateActionEvent.rights_ratio,
             CorporateActionEvent.rights_price,
             CorporateActionEvent.status,
+            CorporateActionEvent.updated_at,
         )
         .where(
             CorporateActionEvent.provider_id == action_provider.id,
@@ -2235,6 +2272,9 @@ def _preload_tdx_qfq_input_frames(
         .order_by(CorporateActionEvent.instrument_id, CorporateActionEvent.ex_date, CorporateActionEvent.announce_date)
     ).all()
     for row in action_rows:
+        current_updated_at = action_updated_at_by_instrument.get(int(row.instrument_id))
+        if current_updated_at is None or (row.updated_at is not None and row.updated_at > current_updated_at):
+            action_updated_at_by_instrument[int(row.instrument_id)] = row.updated_at
         action_records_by_instrument[int(row.instrument_id)].append(
             {
                 "ex_date": row.ex_date,
@@ -2269,7 +2309,7 @@ def _preload_tdx_qfq_input_frames(
         )
         for instrument_id in ordered_instrument_ids
     }
-    return raw_frames_by_series, action_frames_by_instrument
+    return raw_frames_by_series, action_frames_by_instrument, action_updated_at_by_instrument
 
 
 def _tdx_qfq_series_scope_key(
@@ -2345,6 +2385,35 @@ def _preload_tdx_qfq_output_entities(
 
 def _elapsed_ms(started_at: float) -> int:
     return max(0, int(round((perf_counter() - started_at) * 1000)))
+
+
+def _can_skip_tdx_qfq_rebuild(
+    *,
+    force: bool,
+    raw_provider,
+    action_provider,
+    raw_series,
+    qfq_series,
+    action_last_updated_at: datetime | None,
+) -> bool:
+    if force or qfq_series is None or raw_series is None:
+        return False
+    qfq_last_ingested_at = getattr(qfq_series, "last_ingested_at", None)
+    raw_last_ingested_at = getattr(raw_series, "last_ingested_at", None)
+    if qfq_last_ingested_at is None or raw_last_ingested_at is None:
+        return False
+    metadata_json = dict(getattr(qfq_series, "metadata_json", {}) or {})
+    if str(metadata_json.get("raw_provider_key") or "") != str(raw_provider.provider_key):
+        return False
+    if int(metadata_json.get("raw_series_id") or 0) != int(raw_series.id):
+        return False
+    if str(metadata_json.get("action_provider_key") or "") != str(action_provider.provider_key):
+        return False
+    if raw_last_ingested_at > qfq_last_ingested_at:
+        return False
+    if action_last_updated_at is not None and action_last_updated_at > qfq_last_ingested_at:
+        return False
+    return True
 
 
 def _load_raw_market_data_frame(session, series: MarketDataSeries) -> pd.DataFrame:
