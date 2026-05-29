@@ -268,6 +268,37 @@ export type PlatformStatus = {
   api: { status: string; host: string; port: number; base_url: string };
   frontend: { status: string; host: string; port: number; base_url: string };
   database: { status: string; url: string; error?: string };
+  market_data_runtime: {
+    yahoo: {
+      status: string;
+      proxy_configured: boolean;
+      proxy_source: string;
+      default_symbol_set: string;
+      workflow_intervals: string[];
+    };
+    tdx: {
+      status: string;
+      config_path: string;
+      config_exists: boolean;
+      vipdoc_path: string;
+      vipdoc_exists: boolean;
+      path_source: string;
+      market_roots: string[];
+      supports_intervals: string[];
+      error_message: string;
+    };
+    tushare: {
+      status: string;
+      config_path: string;
+      config_exists: boolean;
+      token_present: boolean;
+      token_source: string;
+      rate_limit_per_minute: number;
+      timeout_seconds: number;
+      retries: number;
+      error_message: string;
+    };
+  };
   heartbeats: Array<{
     service_name: string;
     status: string;

@@ -45,6 +45,15 @@ type CapacityGuide = {
   description: string;
 };
 
+type MarketDataRuntimeGuide = {
+  key: string;
+  title: string;
+  status: string;
+  value: string;
+  description: string;
+  detail: string;
+};
+
 function readHeartbeatNumber(
   heartbeat: PlatformStatus["heartbeats"][number] | undefined,
   key: string,
@@ -167,6 +176,58 @@ function buildFailureGuide(failedJobs: number, unhealthyServices: string[]): Cap
     value: "当前没有失败压力",
     description: "没有服务异常，也没有失败任务压力，通常无需继续停留在维护页。",
   };
+}
+
+function formatRuntimeSource(value: string): string {
+  if (value === "env") {
+    return "环境变量";
+  }
+  if (value === "config_file") {
+    return "外部配置文件";
+  }
+  if (value === "platform_settings") {
+    return "平台默认设置";
+  }
+  if (value === "none") {
+    return "未显式配置";
+  }
+  return "未配置";
+}
+
+function buildMarketDataRuntimeGuides(status: PlatformStatus): MarketDataRuntimeGuide[] {
+  const yahoo = status.market_data_runtime.yahoo;
+  const tdx = status.market_data_runtime.tdx;
+  const tushare = status.market_data_runtime.tushare;
+  return [
+    {
+      key: "yahoo",
+      title: "Yahoo 链路",
+      status: yahoo.status,
+      value: yahoo.proxy_configured ? "已准备代理/直连策略" : "未显式配置代理",
+      description: `默认样本池：${yahoo.default_symbol_set}；可直接串行补齐 ${yahoo.workflow_intervals.join(" / ")}。`,
+      detail: yahoo.proxy_configured ? `代理来源：${formatRuntimeSource(yahoo.proxy_source)}` : "当前按直连模式工作，若网络受限需再补代理配置。",
+    },
+    {
+      key: "tdx",
+      title: "通达信原始行情",
+      status: tdx.status,
+      value: tdx.vipdoc_exists ? "已解析到可访问 vipdoc" : "未解析到 vipdoc",
+      description: tdx.vipdoc_path ? `vipdoc：${tdx.vipdoc_path}` : "当前还没有可用于原始导入的 vipdoc 根目录。",
+      detail: tdx.vipdoc_exists
+        ? `来源：${formatRuntimeSource(tdx.path_source)}；市场目录：${tdx.market_roots.length > 0 ? tdx.market_roots.join(" / ") : "未识别"}；支持 ${tdx.supports_intervals.join(" / ")}。`
+        : `来源：${formatRuntimeSource(tdx.path_source)}；配置文件：${tdx.config_path}；${tdx.error_message || "需要补齐 TDX 路径配置。"} `,
+    },
+    {
+      key: "tushare",
+      title: "Tushare 公司行动",
+      status: tushare.status,
+      value: tushare.token_present ? "Token 已就绪" : "Token 未配置",
+      description: `限速 ${tushare.rate_limit_per_minute}/分钟，超时 ${tushare.timeout_seconds}s，重试 ${tushare.retries} 次。`,
+      detail: tushare.token_present
+        ? `来源：${formatRuntimeSource(tushare.token_source)}；配置文件：${tushare.config_path}。`
+        : `配置文件：${tushare.config_path}；${tushare.error_message || "需要补齐 Tushare token。"} `,
+    },
+  ];
 }
 
 export function PlatformStatusView() {
@@ -302,6 +363,7 @@ export function PlatformStatusView() {
     buildPerJobBudgetGuide(workerHeartbeat),
     buildFailureGuide(failedJobs, unhealthyServices),
   ];
+  const runtimeGuides = buildMarketDataRuntimeGuides(status);
 
   return (
     <div className="page-stack">
@@ -379,6 +441,26 @@ export function PlatformStatusView() {
                 ? `当前配置了 ${status.sync_schedule.length} 条同步计划。只有数据更新异常时，才需要继续查看下方调度表。`
                 : "若只是回测执行，不一定需要定时同步服务；只有行情自动更新异常时，再重点排查它。"}
             </p>
+          </div>
+        </div>
+      </Card>
+
+      <Card size="small" className="section-card maintenance-capacity-card">
+        <div className="maintenance-capacity-main">
+          <strong>数据源配置与通道准备</strong>
+          <p>这里用于确认平台当前是否具备触发 Yahoo、通达信和 Tushare 链路的前置条件，避免等任务失败后再回头猜是数据库、路径还是凭据问题。</p>
+          <div className="maintenance-capacity-grid">
+            {runtimeGuides.map((item) => (
+              <article key={item.key} className="maintenance-capacity-guide-card">
+                <Space size={8}>
+                  <span>{item.title}</span>
+                  <StatusTag value={item.status} />
+                </Space>
+                <strong>{item.value}</strong>
+                <p>{item.description}</p>
+                <p>{item.detail}</p>
+              </article>
+            ))}
           </div>
         </div>
       </Card>

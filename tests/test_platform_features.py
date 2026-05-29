@@ -17,6 +17,7 @@ from strategy_studio.services.templates import build_seed_templates, normalize_p
 from strategy_studio.strategy.sampling import DeclineWindow
 from strategy_studio.web.app import create_app
 import strategy_studio.data.market_rules as market_rules
+import strategy_studio.services.platform as platform_service
 import strategy_studio.services.sync as sync_service
 
 
@@ -752,6 +753,37 @@ class PlatformFeatureTests(unittest.TestCase):
             "api": {"status": "ok", "host": "127.0.0.1", "port": 8000, "base_url": "http://127.0.0.1:8000"},
             "frontend": {"status": "ok", "host": "127.0.0.1", "port": 3000, "base_url": "http://127.0.0.1:3000"},
             "database": {"status": "ok", "url": "postgresql+psycopg://postgres:***@localhost:5432/etf_strategy"},
+            "market_data_runtime": {
+                "yahoo": {
+                    "status": "ok",
+                    "proxy_configured": False,
+                    "proxy_source": "none",
+                    "default_symbol_set": "yahoo_global_active_100",
+                    "workflow_intervals": ["1d", "15m", "1m"],
+                },
+                "tdx": {
+                    "status": "ok",
+                    "config_path": "F:/trade/tdx/config.local.yaml",
+                    "config_exists": True,
+                    "vipdoc_path": "G:/new_tdx64/vipdoc",
+                    "vipdoc_exists": True,
+                    "path_source": "config_file",
+                    "market_roots": ["sh", "sz", "bj"],
+                    "supports_intervals": ["1d", "1m", "5m", "all"],
+                    "error_message": "",
+                },
+                "tushare": {
+                    "status": "ok",
+                    "config_path": "F:/trade/tdx/config.local.yaml",
+                    "config_exists": True,
+                    "token_present": True,
+                    "token_source": "config_file",
+                    "rate_limit_per_minute": 450,
+                    "timeout_seconds": 15.0,
+                    "retries": 3,
+                    "error_message": "",
+                },
+            },
             "heartbeats": [],
             "queue": {"queued": 0, "running": 0, "succeeded": 1, "failed": 0},
             "process_control_enabled": False,
@@ -771,11 +803,61 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(processes_response.status_code, 200)
         self.assertEqual(logs_response.status_code, 200)
         self.assertEqual(status_response.json()["api"]["status"], "ok")
+        self.assertEqual(status_response.json()["market_data_runtime"]["tdx"]["vipdoc_path"], "G:/new_tdx64/vipdoc")
         self.assertEqual(processes_response.json()[0]["service_name"], "api")
         self.assertEqual(logs_response.json()["lines"], ["api started"])
         mock_status.assert_called_once()
         mock_processes.assert_called_once()
         mock_logs.assert_called_once_with(service="api", limit=10)
+
+    def test_fetch_platform_status_includes_market_data_runtime(self) -> None:
+        fake_settings = SimpleNamespace(api_host="127.0.0.1", api_port=8000, frontend_host="127.0.0.1", frontend_port=3000)
+        runtime_payload = {
+            "yahoo": {
+                "status": "ok",
+                "proxy_configured": False,
+                "proxy_source": "none",
+                "default_symbol_set": "yahoo_global_active_100",
+                "workflow_intervals": ["1d", "15m", "1m"],
+            },
+            "tdx": {
+                "status": "ok",
+                "config_path": "F:/trade/tdx/config.local.yaml",
+                "config_exists": True,
+                "vipdoc_path": "G:/new_tdx64/vipdoc",
+                "vipdoc_exists": True,
+                "path_source": "config_file",
+                "market_roots": ["sh", "sz", "bj"],
+                "supports_intervals": ["1d", "1m", "5m", "all"],
+                "error_message": "",
+            },
+            "tushare": {
+                "status": "ok",
+                "config_path": "F:/trade/tdx/config.local.yaml",
+                "config_exists": True,
+                "token_present": True,
+                "token_source": "config_file",
+                "rate_limit_per_minute": 450,
+                "timeout_seconds": 15.0,
+                "retries": 3,
+                "error_message": "",
+            },
+        }
+
+        with (
+            patch("strategy_studio.services.platform.load_platform_settings", return_value=fake_settings),
+            patch("strategy_studio.services.platform._tcp_available", side_effect=[True, False]),
+            patch("strategy_studio.services.platform._database_status", return_value={"status": "ok", "url": "postgresql+psycopg://postgres:***@localhost:5432/etf_strategy"}),
+            patch("strategy_studio.services.platform._market_data_runtime_status", return_value=runtime_payload),
+            patch("strategy_studio.services.platform._heartbeat_payload", return_value=[]),
+            patch("strategy_studio.services.platform._queue_stats", return_value={"queued": 0, "running": 0, "failed": 0}),
+        ):
+            payload = platform_service.fetch_platform_status()
+
+        self.assertEqual(payload["api"]["status"], "ok")
+        self.assertEqual(payload["frontend"]["status"], "down")
+        self.assertEqual(payload["market_data_runtime"]["tdx"]["vipdoc_path"], "G:/new_tdx64/vipdoc")
+        self.assertTrue(payload["market_data_runtime"]["tushare"]["token_present"])
 
     def test_heartbeat_missing_table_does_not_break_runtime_loop(self) -> None:
         missing_table_error = Exception("psycopg.errors.UndefinedTable: relation platform_heartbeats does not exist")

@@ -3,6 +3,7 @@ from __future__ import annotations
 """平台控制面服务。"""
 
 import os
+import re
 import socket
 import subprocess
 from datetime import UTC, datetime
@@ -13,6 +14,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
+from strategy_studio.data.tushare import load_tushare_client_settings
 from strategy_studio.db.session import open_session
 from strategy_studio.db.settings import load_platform_settings
 from strategy_studio.repositories.backtests import count_backtest_jobs_by_status
@@ -176,6 +178,101 @@ def _database_status() -> dict[str, object]:
     return fetch_database_diagnostics()
 
 
+def _read_tdx_vipdoc_from_config(config_path: Path) -> str:
+    """从外部 yaml 文本里提取通达信 vipdoc 路径。"""
+    if not config_path.exists():
+        return ""
+    try:
+        content = config_path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    match = re.search(r"(?m)^vipdoc:\s*(.+?)\s*$", content)
+    if match is None:
+        return ""
+    return match.group(1).strip().strip("'\"")
+
+
+def _resolve_market_roots(vipdoc_path: Path) -> list[str]:
+    """只看 vipdoc 第一层市场目录，避免状态页每次递归全量扫描。"""
+    try:
+        return sorted(item.name.lower() for item in vipdoc_path.iterdir() if item.is_dir())
+    except OSError:
+        return []
+
+
+def _build_yahoo_runtime_payload() -> dict[str, object]:
+    proxy = os.getenv("STRATEGY_STUDIO_PROXY", "").strip()
+    return {
+        "status": "ok",
+        "proxy_configured": bool(proxy),
+        "proxy_source": "env" if proxy else "none",
+        "default_symbol_set": "yahoo_global_active_100",
+        "workflow_intervals": ["1d", "15m", "1m"],
+    }
+
+
+def _build_tdx_runtime_payload() -> dict[str, object]:
+    settings = load_platform_settings()
+    config_path = Path(settings.tdx_config_path).expanduser()
+    env_vipdoc = os.getenv("STRATEGY_STUDIO_TDX_VIPDOC", "").strip()
+    config_vipdoc = _read_tdx_vipdoc_from_config(config_path)
+    resolved_text = env_vipdoc or config_vipdoc
+    resolved_path = Path(resolved_text).expanduser().resolve() if resolved_text else None
+    vipdoc_exists = bool(resolved_path and resolved_path.exists())
+    if env_vipdoc:
+        path_source = "env"
+    elif config_vipdoc:
+        path_source = "config_file"
+    else:
+        path_source = "missing"
+    return {
+        "status": "ok" if vipdoc_exists else "misconfigured",
+        "config_path": str(config_path),
+        "config_exists": config_path.exists(),
+        "vipdoc_path": str(resolved_path) if resolved_path is not None else "",
+        "vipdoc_exists": vipdoc_exists,
+        "path_source": path_source,
+        "market_roots": _resolve_market_roots(resolved_path) if resolved_path and vipdoc_exists else [],
+        "supports_intervals": ["1d", "1m", "5m", "all"],
+        "error_message": "" if vipdoc_exists else "未解析到可访问的通达信 vipdoc 目录。",
+    }
+
+
+def _build_tushare_runtime_payload() -> dict[str, object]:
+    settings = load_platform_settings()
+    client_settings = load_tushare_client_settings()
+    config_path = Path(client_settings.config_path).expanduser()
+    env_token = os.getenv("STRATEGY_STUDIO_TUSHARE_TOKEN", "").strip()
+    if env_token:
+        token_source = "env"
+    elif settings.tushare_token.strip():
+        token_source = "platform_settings"
+    elif client_settings.token:
+        token_source = "config_file"
+    else:
+        token_source = "missing"
+    return {
+        "status": "ok" if client_settings.token else "misconfigured",
+        "config_path": str(config_path),
+        "config_exists": config_path.exists(),
+        "token_present": bool(client_settings.token),
+        "token_source": token_source,
+        "rate_limit_per_minute": client_settings.rate_limit_per_minute,
+        "timeout_seconds": client_settings.timeout_seconds,
+        "retries": client_settings.retries,
+        "error_message": "" if client_settings.token else "未配置 Tushare token。",
+    }
+
+
+def _market_data_runtime_status() -> dict[str, object]:
+    """汇总多数据源运行前提，供维护页直接判断配置是否到位。"""
+    return {
+        "yahoo": _build_yahoo_runtime_payload(),
+        "tdx": _build_tdx_runtime_payload(),
+        "tushare": _build_tushare_runtime_payload(),
+    }
+
+
 def _heartbeat_payload() -> list[dict[str, object]]:
     now = datetime.now(UTC)
     try:
@@ -226,6 +323,7 @@ def fetch_platform_status() -> dict[str, object]:
             "base_url": f"http://{settings.frontend_host}:{settings.frontend_port}",
         },
         "database": _database_status(),
+        "market_data_runtime": _market_data_runtime_status(),
         "heartbeats": _heartbeat_payload(),
         "queue": _queue_stats(),
         "process_control_enabled": os.getenv("STRATEGY_STUDIO_ENABLE_PROCESS_CONTROL", "").lower() in {"1", "true", "yes"},
