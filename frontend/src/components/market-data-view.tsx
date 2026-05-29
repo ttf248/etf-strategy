@@ -78,6 +78,11 @@ const tdxIntervalOptions: ProviderIntervalOption[] = [
   { label: "5m 原始分钟", value: "5m" },
 ];
 
+const tdxPipelineIntervalOptions: ProviderIntervalOption[] = [
+  { label: "all 原始+事件+前复权", value: "all" },
+  { label: "1d 日线链路", value: "1d" },
+];
+
 const providerPanelConfigs: ProviderPanelConfig[] = [
   {
     providerKey: "yahoo",
@@ -98,6 +103,16 @@ const providerPanelConfigs: ProviderPanelConfig[] = [
     batchActionLabel: "批量导入",
     symbolHint: "示例：SH600000、SZ000001",
     currentIntervalLabel: "支持 all / 1d / 1m / 5m",
+  },
+  {
+    providerKey: "tdx_pipeline",
+    fallbackName: "A 股统一补数链路",
+    title: "A 股统一补数链路",
+    description: "串行执行通达信原始导入、Tushare 公司行动抓取和通达信前复权重算。适合一次性把 A 股样本补到“原始数据 + 公司行动 + 前复权”的可复算状态。",
+    currentActionLabel: "执行当前标的一键链路",
+    batchActionLabel: "批量执行一键链路",
+    symbolHint: "示例：SH600000、SZ000001",
+    currentIntervalLabel: "支持 all / 1d",
   },
   {
     providerKey: "tushare",
@@ -128,7 +143,7 @@ function normalizeProviderSymbol(providerKey: string, rawSymbol: string): string
   }
   const dottedMatch = normalized.match(/^(\d{6})\.(SH|SZ|BJ)$/);
   const prefixedMatch = normalized.match(/^(SH|SZ|BJ)(\d{6})$/);
-  if (providerKey === "tdx" || providerKey === "tdx_qfq") {
+  if (providerKey === "tdx" || providerKey === "tdx_qfq" || providerKey === "tdx_pipeline") {
     if (dottedMatch) {
       return `${dottedMatch[2].toLowerCase()}${dottedMatch[1]}`;
     }
@@ -392,6 +407,7 @@ export function MarketDataView() {
   const [interval, setInterval] = useState<string | undefined>(undefined);
   const [syncInterval, setSyncInterval] = useState("1d");
   const [tdxSyncInterval, setTdxSyncInterval] = useState("1d");
+  const [tdxPipelineSyncInterval, setTdxPipelineSyncInterval] = useState("all");
   const [batchLimit, setBatchLimit] = useState(20);
   const [syncing, setSyncing] = useState(false);
   const [syncingSymbol, setSyncingSymbol] = useState(false);
@@ -423,11 +439,23 @@ export function MarketDataView() {
   }
 
   function providerIntervalValue(providerKey: string) {
-    return providerKey === "tdx" ? tdxSyncInterval : "1d";
+    if (providerKey === "tdx") {
+      return tdxSyncInterval;
+    }
+    if (providerKey === "tdx_pipeline") {
+      return tdxPipelineSyncInterval;
+    }
+    return "1d";
   }
 
   function providerIntervalDisplay(providerKey: string) {
-    return providerKey === "tdx" ? tdxSyncInterval : providerKey === "yahoo" ? syncInterval : "1d";
+    if (providerKey === "tdx") {
+      return tdxSyncInterval;
+    }
+    if (providerKey === "tdx_pipeline") {
+      return tdxPipelineSyncInterval;
+    }
+    return providerKey === "yahoo" ? syncInterval : "1d";
   }
 
   async function syncAll() {
@@ -801,14 +829,14 @@ export function MarketDataView() {
       <PageHeader
         eyebrow="数据准备"
         title="多渠道数据准备"
-        description="先设定当前目标标的，再决定是补 Yahoo 回测样本、导入通达信原始 all/1d/1m/5m、抓取 Tushare 公司行动，还是重算前复权。"
+        description="先设定当前目标标的，再决定是补 Yahoo 回测样本、执行 A 股统一补数链路、导入通达信原始 all/1d/1m/5m、抓取 Tushare 公司行动，还是单独重算前复权。"
       />
 
       <Card size="small" className="section-card data-check-card">
         <div className="data-check-main">
           <Typography.Title level={4}>设定当前目标标的</Typography.Title>
           <Typography.Paragraph>
-            下方多渠道卡片会复用这里的标的代码。当前覆盖检查仍主要围绕可直接回测的样本覆盖，A 股原始 all/1d/1m/5m、公司行动和前复权状态请看后面的多渠道任务面板。
+            下方多渠道卡片会复用这里的标的代码。当前覆盖检查仍主要围绕可直接回测的样本覆盖，A 股统一补数链路、原始 all/1d/1m/5m、公司行动和前复权状态请看后面的多渠道任务面板。
           </Typography.Paragraph>
           <Space.Compact className="data-check-input">
             <Input
@@ -855,8 +883,8 @@ export function MarketDataView() {
       <Card size="small" title="多渠道任务面板" className="section-card">
         <div className="provider-overview-banner">
           <div>
-            <strong>同一页直接管理 Yahoo、通达信原始 all/1d/1m/5m、Tushare 公司行动和通达信前复权</strong>
-            <p>当前目标标的：{checkedSymbol || "未设置"}。Yahoo 使用上方当前周期；TDX 在卡片内单独选择 `all / 1d / 1m / 5m`；其余批量任务使用这里的批量上限。</p>
+            <strong>同一页直接管理 Yahoo、A 股统一补数链路、通达信原始 all/1d/1m/5m、Tushare 公司行动和通达信前复权</strong>
+            <p>当前目标标的：{checkedSymbol || "未设置"}。Yahoo 使用上方当前周期；TDX 与统一补数链路在卡片内单独选择周期；其余批量任务使用这里的批量上限。</p>
           </div>
           <Space wrap>
             <Select value={syncInterval} options={intervalOptions} onChange={setSyncInterval} style={{ width: 120 }} />
@@ -883,17 +911,19 @@ export function MarketDataView() {
                 <small>
                   {provider.providerKey === "tdx"
                     ? `当前选择：${tdxSyncInterval}（${provider.currentIntervalLabel}）`
+                    : provider.providerKey === "tdx_pipeline"
+                      ? `当前选择：${tdxPipelineSyncInterval}（${provider.currentIntervalLabel}）`
                     : provider.currentIntervalLabel}
                 </small>
               </div>
-              {provider.providerKey === "tdx" ? (
+              {provider.providerKey === "tdx" || provider.providerKey === "tdx_pipeline" ? (
                 <div className="provider-panel-meta">
                   <small>导入周期</small>
                   <Select
                     size="small"
-                    value={tdxSyncInterval}
-                    options={tdxIntervalOptions}
-                    onChange={setTdxSyncInterval}
+                    value={provider.providerKey === "tdx" ? tdxSyncInterval : tdxPipelineSyncInterval}
+                    options={provider.providerKey === "tdx" ? tdxIntervalOptions : tdxPipelineIntervalOptions}
+                    onChange={provider.providerKey === "tdx" ? setTdxSyncInterval : setTdxPipelineSyncInterval}
                     style={{ width: 180 }}
                   />
                 </div>
@@ -942,8 +972,8 @@ export function MarketDataView() {
                 >
                   {provider.providerKey === "yahoo"
                     ? `${provider.currentActionLabel} ${syncInterval}`
-                    : provider.providerKey === "tdx"
-                      ? `${provider.currentActionLabel} ${tdxSyncInterval}`
+                    : provider.providerKey === "tdx" || provider.providerKey === "tdx_pipeline"
+                      ? `${provider.currentActionLabel} ${providerIntervalDisplay(provider.providerKey)}`
                       : provider.currentActionLabel}
                 </Button>
                 <Button
@@ -953,8 +983,8 @@ export function MarketDataView() {
                 >
                   {provider.providerKey === "yahoo"
                     ? `${provider.batchActionLabel} ${batchLimit} 个`
-                    : provider.providerKey === "tdx"
-                      ? `${provider.batchActionLabel} ${tdxSyncInterval} ${batchLimit} 项`
+                    : provider.providerKey === "tdx" || provider.providerKey === "tdx_pipeline"
+                      ? `${provider.batchActionLabel} ${providerIntervalDisplay(provider.providerKey)} ${batchLimit} 项`
                       : `${provider.batchActionLabel} ${batchLimit} 项`}
                 </Button>
               </div>
@@ -966,7 +996,7 @@ export function MarketDataView() {
       <Card size="small" title="最近导入任务" className="section-card">
         <div className="provider-overview-banner compact">
           <div>
-            <strong>统一任务域会同时记录 Yahoo、TDX、Tushare 和前复权重算</strong>
+            <strong>统一任务域会同时记录 Yahoo、A 股统一补数链路、TDX、Tushare 和前复权重算</strong>
             <p>这里优先看最近一次批量或单标的导入是否成功，再决定是否深入排查某个 provider。</p>
           </div>
         </div>
@@ -1210,12 +1240,12 @@ export function MarketDataView() {
       <Card size="small" title="回测样本覆盖高级明细" className="section-card">
         <div className="data-library-banner">
           <strong>这里只有现有回测主流程直接使用的覆盖明细</strong>
-          <p>上方多渠道任务面板负责 Yahoo、TDX、Tushare 和前复权任务状态；这里继续保留面向回测样本的完整覆盖表，适合筛选可直接跑策略的标的。</p>
+          <p>上方多渠道任务面板负责 Yahoo、A 股统一补数链路、TDX、Tushare 和前复权任务状态；这里继续保留面向回测样本的完整覆盖表，适合筛选可直接跑策略的标的。</p>
         </div>
         <div className="data-maintenance-banner">
           <div>
             <strong>高级补数：这里只处理当前回测样本的 Yahoo 全量同步</strong>
-            <p>如果当前只需建立单标的研究样本，通常无需执行这里的操作。A 股原始 all/1d/1m/5m、公司行动和前复权批量任务请使用上方 provider 卡片。</p>
+            <p>如果当前只需建立单标的研究样本，通常无需执行这里的操作。A 股统一补数链路、原始 all/1d/1m/5m、公司行动和前复权批量任务请使用上方 provider 卡片。</p>
           </div>
           <Space wrap>
             <Select value={syncInterval} options={intervalOptions} onChange={setSyncInterval} style={{ width: 120 }} />

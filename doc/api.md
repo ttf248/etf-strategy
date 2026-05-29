@@ -40,23 +40,23 @@ http://127.0.0.1:8000/docs
 这些接口用于查询标的、行情覆盖、统计信息、K 线数据、同步历史，以及手动触发行情同步。其中 `GET /api/market-data/stats` 当前除了保留旧 `coverages / recent_sync_runs` 外，还会返回：
 
 - `provider_summaries`：按 provider 聚合的多渠道摘要，包含 `series_count / bars_count / action_count / segment_count / manifest_count / latest_ingestion_at / latest_ingestion_status` 等字段，供 `/market-data` 多渠道任务面板直接渲染。
-- `recent_ingestion_jobs`：统一导入任务域的最近任务列表，覆盖 Yahoo、通达信原始、Tushare 公司行动和通达信前复权四类后台任务。
+- `recent_ingestion_jobs`：统一导入任务域的最近任务列表，覆盖 Yahoo、A 股统一补数链路、通达信原始、Tushare 公司行动和通达信前复权五类后台任务。
 
 `POST /api/market-data/sync` 支持字段：
 
-- `symbol`：可选；`provider=yahoo` 为空时同步数据库中已知标的；`provider=tushare` 和 `provider=tdx_qfq` 当前建议显式传单个标的。
+- `symbol`：可选；`provider=yahoo` 为空时同步数据库中已知标的；`provider=tushare`、`provider=tdx_qfq` 和 `provider=tdx_pipeline` 当前建议显式传单个标的。
 - `symbol_set`：可选；当前主要给 `provider=yahoo` 使用，例如 `yahoo_global_active_100`。
-- `provider`：默认 `yahoo`；也可传 `tdx`、`tushare`、`tdx_qfq`。
-- `interval`：默认 `1d`；`provider=tdx` 还支持 `all`，表示顺序导入 `1d / 1m / 5m`。
+- `provider`：默认 `yahoo`；也可传 `tdx`、`tdx_pipeline`、`tushare`、`tdx_qfq`。
+- `interval`：默认 `1d`；`provider=tdx` 还支持 `all`，表示顺序导入 `1d / 1m / 5m`；`provider=tdx_pipeline` 支持 `1d` 或 `all`，分别对应“日线链路”和“全周期原始导入 + 公司行动 + 前复权”。
 - `proxy`：可选代理。
 - `period`：分钟线窗口，例如 `60d` 或 `7d`。
-- `vipdoc_path`：通达信 `vipdoc` 根目录；仅 `provider=tdx` 时使用。
-- `force`：是否忽略文件 manifest 强制重建；仅 `provider=tdx` 时使用。
-- `limit`：`provider=yahoo` 时限制 `symbol_set` 或已知标的数量；`provider=tdx` 时限制本次扫描到的 `1d / 1m / 5m` 文件数量；若 `interval=all`，当前按每个 TDX 周期各自套用同一个 `limit`；`provider=tushare` 或 `provider=tdx_qfq` 时限制抓取股票数。当前 `provider=tushare` 未传 `symbol` 时必须提供 `limit`，避免误触发全市场全量抓取。
+- `vipdoc_path`：通达信 `vipdoc` 根目录；`provider=tdx` 和 `provider=tdx_pipeline` 会使用它解析本地原始行情。
+- `force`：是否忽略文件 manifest 强制重建；`provider=tdx` 和 `provider=tdx_pipeline` 时生效。
+- `limit`：`provider=yahoo` 时限制 `symbol_set` 或已知标的数量；`provider=tdx` 时限制本次扫描到的 `1d / 1m / 5m` 文件数量；若 `interval=all`，当前按每个 TDX 周期各自套用同一个 `limit`；`provider=tushare`、`provider=tdx_qfq` 或 `provider=tdx_pipeline` 时限制抓取股票数。当前 `provider=tushare` 未传 `symbol` 时必须提供 `limit`，避免误触发全市场全量抓取。
 
-当前返回体除了旧版 `run_id / bars_inserted / bars_updated`，还会附带统一任务域的 `ingestion_job_id / series_bars_inserted / series_bars_updated`。其中 `provider=tushare` 会把“事件条数”复用到 `bars_inserted / bars_updated` 字段，并额外返回 `events_deleted / fetched_rows / implemented_rows`；`provider=tdx_qfq` 会额外返回 `segment_rows_inserted / segment_rows_updated / segment_rows_deleted / action_rows_used`，便于前端后续切换到多数据源任务面板。
+当前返回体除了旧版 `run_id / bars_inserted / bars_updated`，还会附带统一任务域的 `ingestion_job_id / series_bars_inserted / series_bars_updated`。其中 `provider=tushare` 会把“事件条数”复用到 `bars_inserted / bars_updated` 字段，并额外返回 `events_deleted / fetched_rows / implemented_rows`；`provider=tdx_qfq` 会额外返回 `segment_rows_inserted / segment_rows_updated / segment_rows_deleted / action_rows_used`；`provider=tdx_pipeline` 会返回 workflow 总任务 `ingestion_job_id`、子任务 `child_ingestion_job_ids` / `ingestion_job_ids` 以及逐步骤的 `workflow_results`，便于前端直接展示统一链路状态。
 
-当前 `provider=yahoo` 已支持通过 `symbol_set=yahoo_global_active_100` 导入内置 100 个全球高活跃样本；若同步失败，返回体会附带 `status` 和统一任务 `error_message`。`provider=tdx` 当前支持原始 `1d / 1m / 5m` 导入，分别对应 `.day`、`.lc1/.1`、`.lc5/.5` 文件，并共用同一套 `source_file_manifests` 增量状态；若传 `interval=all`，服务会顺序编排三个 TDX 周期，并在返回体中给出聚合统计与子任务 `ingestion_job_ids`；`provider=tushare` 只支持 `dividend` 公司行动抓取，并且只把已有 `ex_date` 的实施事件写入 `corporate_action_events`；`provider=tdx_qfq` 只支持基于数据库中现有的通达信原始 `1d` 日线和 Tushare 公司行动重算前复权 `1d` 日线。
+当前 `provider=yahoo` 已支持通过 `symbol_set=yahoo_global_active_100` 导入内置 100 个全球高活跃样本；若同步失败，返回体会附带 `status` 和统一任务 `error_message`。`provider=tdx` 当前支持原始 `1d / 1m / 5m` 导入，分别对应 `.day`、`.lc1/.1`、`.lc5/.5` 文件，并共用同一套 `source_file_manifests` 增量状态；若传 `interval=all`，服务会顺序编排三个 TDX 周期，并在返回体中给出聚合统计与子任务 `ingestion_job_ids`。`provider=tdx_pipeline` 会再向上封装一层 workflow：`interval=1d` 时执行 `tdx 1d -> tushare -> tdx_qfq 1d`，`interval=all` 时执行 `tdx all -> tushare -> tdx_qfq 1d`，并把 workflow 自身与所有子任务都记入统一任务域；`provider=tushare` 只支持 `dividend` 公司行动抓取，并且只把已有 `ex_date` 的实施事件写入 `corporate_action_events`；`provider=tdx_qfq` 只支持基于数据库中现有的通达信原始 `1d` 日线和 Tushare 公司行动重算前复权 `1d` 日线。
 
 ## Backtests
 

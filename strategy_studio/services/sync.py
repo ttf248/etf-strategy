@@ -62,6 +62,7 @@ from strategy_studio.repositories.market_data import (
 from strategy_studio.symbols import SymbolSpec, get_symbol_set, resolve_symbol_spec
 
 TDX_IMPORT_INTERVALS = ("1d", "1m", "5m")
+TDX_PIPELINE_INTERVALS = ("1d", "all")
 
 
 def sync_market_data(
@@ -82,6 +83,7 @@ def sync_market_data(
     - `tdx`：导入通达信原始 `1d / 1m / 5m` 文件，写入统一序列表与文件 manifest。
     - `tushare`：抓取 Tushare dividend 实施事件，写入 `corporate_action_events`。
     - `tdx_qfq`：基于通达信原始日线和 Tushare 公司行动重建前复权日线。
+    - `tdx_pipeline`：串行执行 A 股原始导入、公司行动抓取和前复权重算。
     """
     normalized_provider = provider.strip().lower()
     if normalized_provider == "yahoo":
@@ -105,7 +107,320 @@ def sync_market_data(
         return _sync_tushare_corporate_actions(symbol=symbol, limit=limit, force=force)
     if normalized_provider == "tdx_qfq":
         return _rebuild_tdx_qfq_market_data(symbol=symbol, interval=interval, force=force, limit=limit)
+    if normalized_provider == "tdx_pipeline":
+        return _run_tdx_pipeline_workflow(
+            symbol=symbol,
+            interval=interval,
+            vipdoc_path=vipdoc_path,
+            force=force,
+            limit=limit,
+        )
     raise ValueError(f"不支持的数据渠道：{provider}")
+
+
+def _run_tdx_pipeline_workflow(
+    *,
+    symbol: str | None,
+    interval: str,
+    vipdoc_path: str | None,
+    force: bool,
+    limit: int | None,
+) -> dict[str, object]:
+    normalized_interval = interval.strip().lower()
+    if normalized_interval not in TDX_PIPELINE_INTERVALS:
+        raise ValueError("当前 A 股统一补数链路只支持 1d 或 all。")
+
+    normalized_symbol = (symbol or "").strip().lower()
+    requested_target = normalized_symbol.upper() or "ALL"
+    steps = [
+        {
+            "key": "tdx_raw",
+            "label": "通达信原始导入",
+            "provider": "tdx",
+            "interval": normalized_interval,
+        },
+        {
+            "key": "tushare_actions",
+            "label": "Tushare 公司行动抓取",
+            "provider": "tushare",
+            "interval": "corp_actions",
+        },
+        {
+            "key": "tdx_qfq",
+            "label": "通达信前复权重算",
+            "provider": "tdx_qfq",
+            "interval": "1d",
+        },
+    ]
+
+    with open_session() as session:
+        provider = ensure_data_provider(
+            session,
+            provider_key="tdx_pipeline",
+            provider_name="A 股统一补数链路",
+            provider_type="workflow",
+            transport="orchestration",
+            timezone="Asia/Shanghai",
+            config_json={
+                "depends_on": ["tdx", "tushare", "tdx_qfq"],
+                "supports_intervals": list(TDX_PIPELINE_INTERVALS),
+                "pipeline_steps": [step["provider"] for step in steps],
+            },
+            status="active",
+        )
+        ingestion_job = create_data_ingestion_job(
+            session,
+            provider=provider,
+            job_type="tdx_pipeline_workflow",
+            requested_via="manual",
+            target_scope_json={
+                "symbol": normalized_symbol,
+                "interval": normalized_interval,
+                "vipdoc_path": (vipdoc_path or "").strip(),
+                "limit": limit or 0,
+            },
+            options_json={"force": force},
+        )
+        ingestion_job.targets_total = len(steps)
+
+        step_items: dict[str, object] = {}
+        for step in steps:
+            item = create_data_ingestion_job_item(
+                session,
+                ingestion_job,
+                item_key=f"{step['key']}:{requested_target}:{normalized_interval}",
+                source_symbol=requested_target,
+                interval=step["interval"],
+                provider=provider,
+            )
+            item.details_json = {
+                "provider_key": provider.provider_key,
+                "step": step["key"],
+                "step_label": step["label"],
+                "child_provider": step["provider"],
+            }
+            step_items[step["key"]] = item
+        session.commit()
+
+        bars_inserted_total = 0
+        bars_updated_total = 0
+        child_ingestion_job_ids: list[int] = []
+        workflow_results: list[dict[str, object]] = []
+        step_statuses: list[str] = []
+        blocked = False
+        blocked_by = ""
+        blocked_message = ""
+        first_error_message = ""
+
+        for step in steps:
+            item = step_items[step["key"]]
+            if blocked:
+                item.status = "skipped"
+                item.stage = "completed"
+                item.error_message = ""
+                item.details_json = {
+                    **dict(item.details_json or {}),
+                    "status": "skipped",
+                    "reason": "upstream_failed",
+                    "blocked_by": blocked_by,
+                    "blocked_message": blocked_message,
+                }
+                ingestion_job.targets_completed += 1
+                workflow_results.append(
+                    {
+                        "step": step["key"],
+                        "step_label": step["label"],
+                        "provider": step["provider"],
+                        "interval": step["interval"],
+                        "status": "skipped",
+                        "error_message": blocked_message,
+                        "blocked_by": blocked_by,
+                    }
+                )
+                step_statuses.append("skipped")
+                session.commit()
+                continue
+
+            try:
+                if step["key"] == "tdx_raw":
+                    result = _sync_tdx_market_data(
+                        symbol=normalized_symbol or None,
+                        interval=normalized_interval,
+                        vipdoc_path=vipdoc_path,
+                        force=force,
+                        limit=limit,
+                    )
+                elif step["key"] == "tushare_actions":
+                    result = _sync_tushare_corporate_actions(
+                        symbol=normalized_symbol or None,
+                        limit=limit,
+                        force=force,
+                    )
+                else:
+                    result = _rebuild_tdx_qfq_market_data(
+                        symbol=normalized_symbol or None,
+                        interval="1d",
+                        force=force,
+                        limit=limit,
+                    )
+
+                child_ids = _collect_child_ingestion_job_ids(result)
+                for child_id in child_ids:
+                    if child_id not in child_ingestion_job_ids:
+                        child_ingestion_job_ids.append(child_id)
+
+                status = str(result.get("status") or "completed")
+                error_message = str(result.get("error_message") or "")
+                bars_inserted = int(result.get("bars_inserted") or 0)
+                bars_updated = int(result.get("bars_updated") or 0)
+                bars_inserted_total += bars_inserted
+                bars_updated_total += bars_updated
+
+                item.status = status
+                item.stage = "failed" if status == "failed" else "completed"
+                item.rows_inserted = bars_inserted
+                item.rows_updated = bars_updated
+                item.error_message = error_message if status in {"failed", "partially_failed"} else ""
+                item.details_json = {
+                    **dict(item.details_json or {}),
+                    "status": status,
+                    "requested_interval": step["interval"],
+                    "result_interval": str(result.get("interval") or step["interval"]),
+                    "symbols_count": int(result.get("symbols_count") or 0),
+                    "child_ingestion_job_ids": child_ids,
+                }
+                ingestion_job.targets_completed += 1
+                workflow_results.append(
+                    {
+                        "step": step["key"],
+                        "step_label": step["label"],
+                        "provider": step["provider"],
+                        "interval": str(result.get("interval") or step["interval"]),
+                        "symbols_count": int(result.get("symbols_count") or 0),
+                        "bars_inserted": bars_inserted,
+                        "bars_updated": bars_updated,
+                        "status": status,
+                        "error_message": error_message,
+                        "child_ingestion_job_ids": child_ids,
+                    }
+                )
+                step_statuses.append(status)
+                if status == "failed":
+                    blocked = True
+                    blocked_by = step["key"]
+                    blocked_message = error_message or f"{step['label']}失败。"
+                    if not first_error_message:
+                        first_error_message = blocked_message
+                elif status == "partially_failed" and error_message and not first_error_message:
+                    first_error_message = error_message
+                session.commit()
+            except Exception as exc:
+                session.rollback()
+                error_message = str(exc)
+                item = session.get(type(item), item.id)
+                ingestion_job = session.get(type(ingestion_job), ingestion_job.id)
+                if item is not None:
+                    item.status = "failed"
+                    item.stage = "failed"
+                    item.error_message = error_message
+                    item.details_json = {
+                        **dict(item.details_json or {}),
+                        "status": "failed",
+                        "requested_interval": step["interval"],
+                    }
+                if ingestion_job is not None:
+                    ingestion_job.targets_completed += 1
+                workflow_results.append(
+                    {
+                        "step": step["key"],
+                        "step_label": step["label"],
+                        "provider": step["provider"],
+                        "interval": step["interval"],
+                        "status": "failed",
+                        "error_message": error_message,
+                        "child_ingestion_job_ids": [],
+                    }
+                )
+                step_statuses.append("failed")
+                blocked = True
+                blocked_by = step["key"]
+                blocked_message = error_message
+                if not first_error_message:
+                    first_error_message = error_message
+                session.commit()
+
+        ingestion_job = session.get(type(ingestion_job), ingestion_job.id)
+        if ingestion_job is None:
+            raise RuntimeError("统一补数 workflow 任务记录丢失。")
+
+        ingestion_job.rows_inserted = bars_inserted_total
+        ingestion_job.rows_updated = bars_updated_total
+        ingestion_job.completed_at = datetime.now(UTC)
+        ingestion_job.error_count = sum(1 for status in step_statuses if status in {"failed", "partially_failed"})
+        ingestion_job.summary_json = {
+            "provider_key": provider.provider_key,
+            "requested_symbol": requested_target if normalized_symbol else "",
+            "requested_interval": normalized_interval,
+            "child_ingestion_job_ids": child_ingestion_job_ids,
+            "workflow_results": workflow_results,
+            "bars_inserted": bars_inserted_total,
+            "bars_updated": bars_updated_total,
+        }
+        if any(status == "failed" for status in step_statuses):
+            ingestion_job.status = "failed"
+            ingestion_job.error_message = (
+                f"A 股统一补数链路执行失败。首个错误：{first_error_message}"
+                if first_error_message
+                else "A 股统一补数链路执行失败。"
+            )
+        elif any(status == "partially_failed" for status in step_statuses):
+            ingestion_job.status = "partially_failed"
+            ingestion_job.error_message = (
+                f"A 股统一补数链路部分失败。首个错误：{first_error_message}"
+                if first_error_message
+                else "A 股统一补数链路部分失败。"
+            )
+        else:
+            ingestion_job.status = "succeeded"
+        session.commit()
+
+        return {
+            "provider": provider.provider_key,
+            "ingestion_job_id": ingestion_job.id,
+            "ingestion_job_ids": child_ingestion_job_ids,
+            "child_ingestion_job_ids": child_ingestion_job_ids,
+            "interval": normalized_interval,
+            "symbols_count": _select_tdx_pipeline_symbols_count(workflow_results),
+            "bars_inserted": bars_inserted_total,
+            "bars_updated": bars_updated_total,
+            "series_bars_inserted": bars_inserted_total,
+            "series_bars_updated": bars_updated_total,
+            "workflow_results": workflow_results,
+            "error_message": ingestion_job.error_message,
+            "status": ingestion_job.status,
+        }
+
+
+def _collect_child_ingestion_job_ids(result: dict[str, object]) -> list[int]:
+    collected: list[int] = []
+    direct_job_id = result.get("ingestion_job_id")
+    if direct_job_id:
+        collected.append(int(direct_job_id))
+    for raw_value in result.get("ingestion_job_ids") or []:
+        current_id = int(raw_value)
+        if current_id not in collected:
+            collected.append(current_id)
+    return collected
+
+
+def _select_tdx_pipeline_symbols_count(workflow_results: list[dict[str, object]]) -> int:
+    for provider_key in ("tdx_qfq", "tushare", "tdx"):
+        for item in workflow_results:
+            if str(item.get("provider") or "") != provider_key:
+                continue
+            if int(item.get("symbols_count") or 0) > 0:
+                return int(item.get("symbols_count") or 0)
+    return 0
 
 
 def _sync_yahoo_market_data(

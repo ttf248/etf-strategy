@@ -83,20 +83,23 @@ class RepoContractTests(unittest.TestCase):
     def test_vscode_launch_contains_platform_entries(self) -> None:
         launch_payload = json.loads((REPO_ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))
         configurations = launch_payload.get("configurations", [])
-        self.assertEqual(len(configurations), 4)
         config_names = {config["name"] for config in configurations}
-        self.assertEqual(config_names, {"启动 API 服务", "启动回测 Worker", "启动行情 Scheduler", "启动前端 Dev Server"})
+        required_names = {"启动 API 服务", "启动回测 Worker", "启动行情 Scheduler", "启动前端 Dev Server", "执行 A 股统一补数链路"}
+        self.assertTrue(required_names.issubset(config_names))
         python_configs = [config for config in configurations if config["type"] == "debugpy"]
-        self.assertEqual(len(python_configs), 3)
+        self.assertGreaterEqual(len(python_configs), 4)
         for config in python_configs:
             self.assertEqual(config["program"], "${workspaceFolder}/main.py")
             self.assertEqual(config["cwd"], "${workspaceFolder}")
-            self.assertIn(config["args"][0], {"api", "worker", "scheduler"})
+            self.assertIn(config["args"][0], {"api", "worker", "scheduler", "sync-now"})
             self.assertEqual(config["console"], "integratedTerminal")
             self.assertEqual(config["env"]["PYTHONUTF8"], "1")
             self.assertEqual(config["env"]["PYTHONIOENCODING"], "utf-8")
         api_config = next(config for config in configurations if config["name"] == "启动 API 服务")
         self.assertIn("--replace-existing", api_config["args"])
+        pipeline_config = next(config for config in configurations if config["name"] == "执行 A 股统一补数链路")
+        self.assertEqual(pipeline_config["args"][:3], ["sync-now", "--provider", "tdx_pipeline"])
+        self.assertIn("--interval", pipeline_config["args"])
         frontend_config = next(config for config in configurations if config["name"] == "启动前端 Dev Server")
         self.assertEqual(frontend_config["type"], "node-terminal")
         self.assertEqual(frontend_config["cwd"], "${workspaceFolder}/frontend")

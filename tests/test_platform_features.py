@@ -33,6 +33,7 @@ class PlatformFeatureTests(unittest.TestCase):
         yahoo_set_args = parser.parse_args(["sync-now", "--provider", "yahoo", "--symbol-set", "yahoo_global_active_100", "--interval", "15m", "--limit", "100"])
         tushare_args = parser.parse_args(["sync-now", "--provider", "tushare", "--symbol", "600000.SH", "--limit", "2"])
         qfq_args = parser.parse_args(["sync-now", "--provider", "tdx_qfq", "--symbol", "sh600000", "--interval", "1d", "--limit", "2"])
+        pipeline_args = parser.parse_args(["sync-now", "--provider", "tdx_pipeline", "--symbol", "sh600000", "--interval", "all", "--force", "--limit", "2"])
         api_args = parser.parse_args(["api", "--host", "127.0.0.1", "--port", "8000"])
         replace_args = parser.parse_args(["api", "--replace-existing"])
         worker_args = parser.parse_args(["worker", "--poll-interval", "3", "--max-concurrent-jobs", "2", "--max-optimization-workers", "4"])
@@ -60,6 +61,10 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(qfq_args.provider, "tdx_qfq")
         self.assertEqual(qfq_args.symbol, "sh600000")
         self.assertEqual(qfq_args.limit, 2)
+        self.assertEqual(pipeline_args.provider, "tdx_pipeline")
+        self.assertEqual(pipeline_args.interval, "all")
+        self.assertTrue(pipeline_args.force)
+        self.assertEqual(pipeline_args.limit, 2)
         self.assertFalse(hasattr(init_args, "with_migration"))
         self.assertEqual(api_args.command, "api")
         self.assertEqual(api_args.host, "127.0.0.1")
@@ -285,6 +290,48 @@ class PlatformFeatureTests(unittest.TestCase):
             provider="tdx_qfq",
             vipdoc_path=None,
             force=False,
+            limit=1,
+        )
+
+    def test_web_api_market_data_sync_route_supports_tdx_pipeline_provider(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.sync_market_data",
+            return_value={
+                "provider": "tdx_pipeline",
+                "ingestion_job_id": 15,
+                "child_ingestion_job_ids": [21, 22, 23, 24, 25],
+                "symbols_count": 1,
+                "bars_inserted": 305,
+                "bars_updated": 2,
+                "status": "succeeded",
+            },
+        ) as mock_sync:
+            response = client.post(
+                "/api/market-data/sync",
+                json={
+                    "provider": "tdx_pipeline",
+                    "symbol": "sh600000",
+                    "interval": "all",
+                    "vipdoc_path": "G:/new_tdx64/vipdoc",
+                    "force": True,
+                    "limit": 1,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["provider"], "tdx_pipeline")
+        mock_sync.assert_called_once_with(
+            symbol="sh600000",
+            symbol_set=None,
+            interval="all",
+            proxy=None,
+            period=None,
+            provider="tdx_pipeline",
+            vipdoc_path="G:/new_tdx64/vipdoc",
+            force=True,
             limit=1,
         )
 
@@ -820,6 +867,149 @@ class PlatformFeatureTests(unittest.TestCase):
             limit=2,
             force=True,
         )
+
+    def test_sync_market_data_dispatches_tdx_pipeline_provider(self) -> None:
+        with patch(
+            "strategy_studio.services.sync._run_tdx_pipeline_workflow",
+            return_value={
+                "provider": "tdx_pipeline",
+                "ingestion_job_id": 19,
+                "child_ingestion_job_ids": [41, 42, 43],
+                "symbols_count": 1,
+                "bars_inserted": 320,
+                "bars_updated": 4,
+                "status": "succeeded",
+            },
+        ) as mock_pipeline:
+            result = sync_market_data(
+                symbol="sh600000",
+                interval="all",
+                proxy=None,
+                provider="tdx_pipeline",
+                vipdoc_path="G:/new_tdx64/vipdoc",
+                limit=2,
+                force=True,
+            )
+
+        self.assertEqual(result["provider"], "tdx_pipeline")
+        mock_pipeline.assert_called_once_with(
+            symbol="sh600000",
+            interval="all",
+            vipdoc_path="G:/new_tdx64/vipdoc",
+            force=True,
+            limit=2,
+        )
+
+    def test_tdx_pipeline_workflow_aggregates_child_provider_results(self) -> None:
+        session = SimpleNamespace()
+        session.commit = lambda: None
+        session.rollback = lambda: None
+        registry: dict[int, object] = {}
+        session.get = lambda _model, identity: registry.get(identity)
+
+        class _SessionContext:
+            def __enter__(self):
+                return session
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        provider = SimpleNamespace(id=301, provider_key="tdx_pipeline")
+        ingestion_job = SimpleNamespace(
+            id=401,
+            targets_total=0,
+            targets_completed=0,
+            rows_inserted=0,
+            rows_updated=0,
+            error_count=0,
+            summary_json={},
+            completed_at=None,
+            status="running",
+            error_message="",
+        )
+        registry[401] = ingestion_job
+
+        item_ids = [501, 502, 503]
+
+        def fake_create_item(*_args, **_kwargs):
+            current_id = item_ids.pop(0)
+            item = SimpleNamespace(
+                id=current_id,
+                status="running",
+                stage="download",
+                rows_inserted=0,
+                rows_updated=0,
+                details_json={},
+                error_message="",
+            )
+            registry[current_id] = item
+            return item
+
+        with (
+            patch("strategy_studio.services.sync.open_session", return_value=_SessionContext()),
+            patch("strategy_studio.services.sync.ensure_data_provider", return_value=provider),
+            patch("strategy_studio.services.sync.create_data_ingestion_job", return_value=ingestion_job),
+            patch("strategy_studio.services.sync.create_data_ingestion_job_item", side_effect=fake_create_item),
+            patch(
+                "strategy_studio.services.sync._sync_tdx_market_data",
+                return_value={
+                    "provider": "tdx",
+                    "interval": "all",
+                    "symbols_count": 3,
+                    "bars_inserted": 600,
+                    "bars_updated": 10,
+                    "ingestion_job_ids": [91, 92, 93],
+                    "status": "succeeded",
+                },
+            ),
+            patch(
+                "strategy_studio.services.sync._sync_tushare_corporate_actions",
+                return_value={
+                    "provider": "tushare",
+                    "interval": "corp_actions",
+                    "symbols_count": 1,
+                    "bars_inserted": 5,
+                    "bars_updated": 0,
+                    "ingestion_job_id": 94,
+                    "status": "succeeded",
+                },
+            ),
+            patch(
+                "strategy_studio.services.sync._rebuild_tdx_qfq_market_data",
+                return_value={
+                    "provider": "tdx_qfq",
+                    "interval": "1d",
+                    "symbols_count": 1,
+                    "bars_inserted": 200,
+                    "bars_updated": 1,
+                    "ingestion_job_id": 95,
+                    "status": "succeeded",
+                },
+            ),
+        ):
+            result = sync_service._run_tdx_pipeline_workflow(
+                symbol="sh600000",
+                interval="all",
+                vipdoc_path="G:/new_tdx64/vipdoc",
+                force=True,
+                limit=2,
+            )
+
+        self.assertEqual(result["provider"], "tdx_pipeline")
+        self.assertEqual(result["ingestion_job_id"], 401)
+        self.assertEqual(result["child_ingestion_job_ids"], [91, 92, 93, 94, 95])
+        self.assertEqual(result["ingestion_job_ids"], [91, 92, 93, 94, 95])
+        self.assertEqual(result["bars_inserted"], 805)
+        self.assertEqual(result["bars_updated"], 11)
+        self.assertEqual(result["symbols_count"], 1)
+        self.assertEqual(result["status"], "succeeded")
+        self.assertEqual(ingestion_job.targets_total, 3)
+        self.assertEqual(ingestion_job.targets_completed, 3)
+        self.assertEqual(ingestion_job.rows_inserted, 805)
+        self.assertEqual(ingestion_job.rows_updated, 11)
+        self.assertEqual(ingestion_job.error_count, 0)
+        self.assertEqual(ingestion_job.status, "succeeded")
+        self.assertEqual(len(result["workflow_results"]), 3)
 
 
 class StrategyTemplateServiceTests(unittest.TestCase):
