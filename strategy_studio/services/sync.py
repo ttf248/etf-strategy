@@ -1764,7 +1764,14 @@ def _rebuild_tdx_qfq_market_data(
                 qfq_series=qfq_series,
                 action_last_updated_at=action_updated_at_by_instrument.get(instrument.id),
             )
-            if not target["skip_ready"]:
+            target["force_cache_skip_ready"] = force and _can_force_skip_tdx_qfq_rebuild(
+                raw_provider=raw_provider,
+                action_provider=action_provider,
+                raw_series=raw_series,
+                qfq_series=qfq_series,
+                action_last_updated_at=action_updated_at_by_instrument.get(instrument.id),
+            )
+            if not target["skip_ready"] and not target["force_cache_skip_ready"]:
                 pending_targets.append(target)
 
         preload_input_ms = 0
@@ -1843,6 +1850,36 @@ def _rebuild_tdx_qfq_market_data(
                         }
                         skipped_symbols += 1
                         processed_symbol_timing_ms += item_timing_json.get("total_elapsed_ms", 0)
+                        ingestion_job.targets_completed = succeeded_symbols + skipped_symbols
+                        ingestion_job.error_count = failed_symbols
+                        pending_targets_since_commit += 1
+                        continue
+                    if bool(target.get("force_cache_skip_ready")):
+                        item_timing_json["segment_build_ms"] = 0
+                        item_timing_json["segment_replace_ms"] = 0
+                        item_timing_json["segment_apply_ms"] = 0
+                        item_timing_json["bar_upsert_ms"] = 0
+                        item_timing_json["total_elapsed_ms"] = _elapsed_ms(item_started_at)
+                        item.status = "succeeded"
+                        item.stage = "completed"
+                        item.instrument_id = instrument.id
+                        item.series_id = qfq_series.id if qfq_series is not None else None
+                        item.details_json = {
+                            "provider_key": provider.provider_key,
+                            "raw_series_id": raw_series.id,
+                            "reason": "qfq_force_cache_hit",
+                            "segment_rows": 0,
+                            "segment_rows_inserted": 0,
+                            "segment_rows_updated": 0,
+                            "segment_rows_deleted": 0,
+                            "action_rows_used": 0,
+                            "segment_replace_skipped": True,
+                            "bar_upsert_skipped": True,
+                            "timing_json": dict(item_timing_json),
+                        }
+                        succeeded_symbols += 1
+                        processed_symbol_timing_ms += item_timing_json.get("total_elapsed_ms", 0)
+                        succeeded_symbol_timing_ms += item_timing_json.get("total_elapsed_ms", 0)
                         ingestion_job.targets_completed = succeeded_symbols + skipped_symbols
                         ingestion_job.error_count = failed_symbols
                         pending_targets_since_commit += 1
@@ -2538,6 +2575,31 @@ def _can_skip_tdx_qfq_rebuild(
     if action_last_updated_at is not None and action_last_updated_at > qfq_last_ingested_at:
         return False
     return True
+
+
+def _can_force_skip_tdx_qfq_rebuild(
+    *,
+    raw_provider,
+    action_provider,
+    raw_series,
+    qfq_series,
+    action_last_updated_at: datetime | None,
+) -> bool:
+    """重复 `--force` 时，若上游输入未变且三类摘要已落库，则直接复用既有结果。"""
+    if not _can_skip_tdx_qfq_rebuild(
+        force=False,
+        raw_provider=raw_provider,
+        action_provider=action_provider,
+        raw_series=raw_series,
+        qfq_series=qfq_series,
+        action_last_updated_at=action_last_updated_at,
+    ):
+        return False
+    metadata_json = dict(getattr(qfq_series, "metadata_json", {}) or {})
+    return all(
+        str(metadata_json.get(key) or "")
+        for key in ("raw_frame_digest", "segment_frame_digest", "adjusted_frame_digest")
+    )
 
 
 def _load_raw_market_data_frame(session, series: MarketDataSeries) -> pd.DataFrame:

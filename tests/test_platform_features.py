@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import datetime
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -2413,6 +2413,158 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(succeeded_item.status, "succeeded")
         self.assertTrue(succeeded_item.details_json["segment_replace_skipped"])
         self.assertTrue(succeeded_item.details_json["bar_upsert_skipped"])
+        self.assertEqual(succeeded_item.details_json["timing_json"]["segment_replace_ms"], 0)
+        self.assertEqual(succeeded_item.details_json["timing_json"]["segment_apply_ms"], 0)
+        self.assertEqual(succeeded_item.details_json["timing_json"]["bar_upsert_ms"], 0)
+
+    def test_rebuild_tdx_qfq_market_data_force_cache_hit_skips_input_preload(self) -> None:
+        registry: dict[int, object] = {}
+
+        class _NestedContext:
+            def __enter__(self):
+                return None
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        class _SessionDouble:
+            def __init__(self) -> None:
+                self.commit_calls = 0
+
+            def commit(self) -> None:
+                self.commit_calls += 1
+
+            def rollback(self) -> None:
+                return None
+
+            def get(self, _model, identity):
+                return registry.get(identity)
+
+            def begin_nested(self):
+                return _NestedContext()
+
+        session = _SessionDouble()
+
+        class _SessionContext:
+            def __enter__(self):
+                return session
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        raw_last_ingested_at = datetime(2026, 5, 29, 9, 0, tzinfo=UTC)
+        qfq_last_ingested_at = datetime(2026, 5, 29, 9, 30, tzinfo=UTC)
+        raw_provider = SimpleNamespace(id=541, provider_key="tdx")
+        action_provider = SimpleNamespace(id=542, provider_key="tushare")
+        qfq_provider = SimpleNamespace(id=543, provider_key="tdx_qfq")
+        ingestion_job = SimpleNamespace(
+            id=641,
+            targets_total=0,
+            targets_completed=0,
+            rows_inserted=0,
+            rows_updated=0,
+            error_count=0,
+            summary_json={},
+            completed_at=None,
+            status="running",
+            error_message="",
+        )
+        registry[641] = ingestion_job
+
+        def fake_create_item(*_args, **_kwargs):
+            item = SimpleNamespace(
+                id=741,
+                status="running",
+                stage="download",
+                rows_inserted=0,
+                rows_updated=0,
+                details_json={},
+                error_message="",
+                instrument_id=None,
+                series_id=None,
+            )
+            registry[741] = item
+            return item
+
+        targets = [
+            {
+                "series": SimpleNamespace(id=841, last_ingested_at=raw_last_ingested_at),
+                "instrument": SimpleNamespace(id=941, symbol="SH600000", name="浦发银行", exchange="SH", timezone="Asia/Shanghai"),
+                "alias": SimpleNamespace(source_symbol="SH600000", source_name="浦发银行", market="SH", exchange="SH", security_type="stock", timezone="Asia/Shanghai"),
+            }
+        ]
+        preloaded_qfq_aliases = {
+            "SH600000": SimpleNamespace(
+                id=1041,
+                instrument_id=941,
+                source_symbol="SH600000",
+                source_name="浦发银行",
+                market="SH",
+                exchange="SH",
+                security_type="stock",
+                timezone="Asia/Shanghai",
+                is_primary=True,
+            )
+        }
+        preloaded_qfq_series = {
+            (1041, "1d", "qfq", "regular", "trade"): SimpleNamespace(
+                id=1042,
+                alias_id=1041,
+                instrument_id=941,
+                market="SH",
+                exchange="SH",
+                bar_type="time",
+                timezone="Asia/Shanghai",
+                is_active=True,
+                last_ingested_at=qfq_last_ingested_at,
+                metadata_json={
+                    "raw_provider_key": "tdx",
+                    "raw_series_id": 841,
+                    "action_provider_key": "tushare",
+                    "raw_frame_digest": "rawdigest",
+                    "segment_frame_digest": "segmentdigest",
+                    "adjusted_frame_digest": "adjusteddigest",
+                },
+            )
+        }
+
+        with (
+            patch("strategy_studio.services.sync.open_session", return_value=_SessionContext()),
+            patch("strategy_studio.services.sync.ensure_data_provider", side_effect=[raw_provider, action_provider, qfq_provider]),
+            patch("strategy_studio.services.sync._resolve_tdx_qfq_targets", return_value=targets),
+            patch("strategy_studio.services.sync.create_data_ingestion_job", return_value=ingestion_job),
+            patch("strategy_studio.services.sync.create_data_ingestion_job_item", side_effect=fake_create_item),
+            patch("strategy_studio.services.sync._preload_tdx_qfq_action_updated_at", return_value={941: raw_last_ingested_at}),
+            patch("strategy_studio.services.sync._preload_tdx_qfq_input_frames", side_effect=AssertionError("force 缓存命中时不应预加载原始输入")),
+            patch("strategy_studio.services.sync._preload_tdx_qfq_output_entities", return_value=(preloaded_qfq_aliases, preloaded_qfq_series)),
+            patch("strategy_studio.services.sync.build_qfq_segment_frame", side_effect=AssertionError("force 缓存命中时不应重建区间")),
+            patch("strategy_studio.services.sync.replace_price_adjustment_segments", side_effect=AssertionError("force 缓存命中时不应重写区间")),
+            patch("strategy_studio.services.sync.apply_qfq_segment_frame", side_effect=AssertionError("force 缓存命中时不应重算前复权")),
+            patch("strategy_studio.services.sync.upsert_market_data_frame", side_effect=AssertionError("force 缓存命中时不应重写 K 线")),
+        ):
+            result = sync_service._rebuild_tdx_qfq_market_data(
+                symbol=None,
+                interval="1d",
+                force=True,
+                limit=1,
+            )
+
+        succeeded_item = registry[741]
+        self.assertEqual(result["status"], "succeeded")
+        self.assertEqual(result["bars_inserted"], 0)
+        self.assertEqual(result["bars_updated"], 0)
+        self.assertEqual(result["segment_rows_inserted"], 0)
+        self.assertEqual(result["segment_rows_updated"], 0)
+        self.assertEqual(result["segment_rows_deleted"], 0)
+        self.assertEqual(result["action_rows_used"], 0)
+        self.assertEqual(ingestion_job.summary_json["timing_json"]["preload_input_ms"], 0)
+        self.assertEqual(ingestion_job.summary_json["timing_json"]["segment_build_ms"], 0)
+        self.assertEqual(succeeded_item.status, "succeeded")
+        self.assertEqual(succeeded_item.series_id, 1042)
+        self.assertEqual(succeeded_item.details_json["reason"], "qfq_force_cache_hit")
+        self.assertTrue(succeeded_item.details_json["segment_replace_skipped"])
+        self.assertTrue(succeeded_item.details_json["bar_upsert_skipped"])
+        self.assertEqual(succeeded_item.details_json["timing_json"]["segment_build_ms"], 0)
         self.assertEqual(succeeded_item.details_json["timing_json"]["segment_replace_ms"], 0)
         self.assertEqual(succeeded_item.details_json["timing_json"]["segment_apply_ms"], 0)
         self.assertEqual(succeeded_item.details_json["timing_json"]["bar_upsert_ms"], 0)
