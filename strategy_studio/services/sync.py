@@ -61,6 +61,8 @@ from strategy_studio.repositories.market_data import (
 )
 from strategy_studio.symbols import SymbolSpec, get_symbol_set, resolve_symbol_spec
 
+TDX_IMPORT_INTERVALS = ("1d", "1m", "5m")
+
 
 def sync_market_data(
     symbol: str | None,
@@ -311,6 +313,127 @@ def _sync_tdx_market_data(
     force: bool,
     limit: int | None,
 ) -> dict[str, object]:
+    normalized_interval = interval.strip().lower()
+    if normalized_interval != "all":
+        return _sync_tdx_single_interval_market_data(
+            symbol=symbol,
+            interval=normalized_interval,
+            vipdoc_path=vipdoc_path,
+            force=force,
+            limit=limit,
+            allow_empty=False,
+        )
+
+    interval_results: list[dict[str, object]] = []
+    skipped_intervals: list[str] = []
+    failed_intervals: list[str] = []
+    first_error_message = ""
+    for current_interval in TDX_IMPORT_INTERVALS:
+        try:
+            result = _sync_tdx_single_interval_market_data(
+                symbol=symbol,
+                interval=current_interval,
+                vipdoc_path=vipdoc_path,
+                force=force,
+                limit=limit,
+                allow_empty=True,
+            )
+        except Exception as exc:
+            if not first_error_message:
+                first_error_message = str(exc)
+            failed_intervals.append(current_interval)
+            continue
+        interval_results.append(result)
+        if result.get("status") == "skipped" and int(result.get("symbols_count") or 0) == 0:
+            skipped_intervals.append(current_interval)
+
+    effective_results = [item for item in interval_results if int(item.get("symbols_count") or 0) > 0]
+    if not effective_results:
+        raise ValueError(
+            f"在通达信 vipdoc 中没有找到可导入的 1d / 1m / 5m 文件："
+            f"symbol={symbol or 'ALL'} vipdoc={_resolve_tdx_vipdoc_path(vipdoc_path)}"
+        )
+
+    statuses = [str(item.get("status") or "") for item in effective_results]
+    child_failed_intervals = [
+        str(item.get("interval") or "")
+        for item in effective_results
+        if str(item.get("status") or "") in {"failed", "partially_failed"}
+    ]
+    inserted_total = sum(int(item.get("bars_inserted") or 0) for item in effective_results)
+    updated_total = sum(int(item.get("bars_updated") or 0) for item in effective_results)
+    series_inserted_total = sum(int(item.get("series_bars_inserted") or 0) for item in effective_results)
+    series_updated_total = sum(int(item.get("series_bars_updated") or 0) for item in effective_results)
+    files_imported_total = sum(int(item.get("files_imported") or 0) for item in effective_results)
+    files_skipped_total = sum(int(item.get("files_skipped") or 0) for item in effective_results)
+    files_failed_total = sum(int(item.get("files_failed") or 0) for item in effective_results)
+    symbols_count_total = sum(int(item.get("symbols_count") or 0) for item in effective_results)
+
+    status = "completed"
+    if (failed_intervals or child_failed_intervals) and all(item == "failed" for item in statuses):
+        status = "failed"
+    elif failed_intervals or child_failed_intervals or any(item == "partially_failed" for item in statuses):
+        status = "partially_failed"
+    elif any(item == "succeeded" for item in statuses):
+        status = "succeeded"
+
+    error_message = ""
+    if failed_intervals or child_failed_intervals:
+        interval_labels = [*failed_intervals, *[item for item in child_failed_intervals if item not in failed_intervals]]
+        first_child_error = next(
+            (
+                str(item.get("error_message") or "")
+                for item in effective_results
+                if str(item.get("status") or "") in {"failed", "partially_failed"} and str(item.get("error_message") or "").strip()
+            ),
+            "",
+        )
+        error_message = (
+            f"通达信 all 周期导入中以下周期失败：{', '.join(interval_labels)}。"
+            f"{' 首个错误：' + (first_error_message or first_child_error) if (first_error_message or first_child_error) else ''}"
+        )
+
+    return {
+        "provider": "tdx",
+        "interval": "all",
+        "symbols_count": symbols_count_total,
+        "bars_inserted": inserted_total,
+        "bars_updated": updated_total,
+        "series_bars_inserted": series_inserted_total,
+        "series_bars_updated": series_updated_total,
+        "files_imported": files_imported_total,
+        "files_skipped": files_skipped_total,
+        "files_failed": files_failed_total,
+        "ingestion_job_ids": [int(item["ingestion_job_id"]) for item in effective_results if item.get("ingestion_job_id")],
+        "interval_results": [
+            {
+                "interval": str(item.get("interval") or ""),
+                "symbols_count": int(item.get("symbols_count") or 0),
+                "bars_inserted": int(item.get("bars_inserted") or 0),
+                "bars_updated": int(item.get("bars_updated") or 0),
+                "files_imported": int(item.get("files_imported") or 0),
+                "files_skipped": int(item.get("files_skipped") or 0),
+                "files_failed": int(item.get("files_failed") or 0),
+                "status": str(item.get("status") or ""),
+            }
+            for item in interval_results
+        ],
+        "skipped_intervals": skipped_intervals,
+        "error_message": error_message,
+        "status": status,
+        "vipdoc_path": str(_resolve_tdx_vipdoc_path(vipdoc_path)),
+    }
+
+
+def _sync_tdx_single_interval_market_data(
+    *,
+    symbol: str | None,
+    interval: str,
+    vipdoc_path: str | None,
+    force: bool,
+    limit: int | None,
+    allow_empty: bool,
+) -> dict[str, object]:
     tdx_period = interval_to_period(interval)
     file_kind = file_kind_for_interval(interval)
     vipdoc = _resolve_tdx_vipdoc_path(vipdoc_path)
@@ -319,6 +442,22 @@ def _sync_tdx_market_data(
 
     source_files = iter_tdx_files(vipdoc, interval=interval, symbol=symbol, limit=limit)
     if not source_files:
+        if allow_empty:
+            return {
+                "provider": "tdx",
+                "interval": interval,
+                "symbols_count": 0,
+                "bars_inserted": 0,
+                "bars_updated": 0,
+                "series_bars_inserted": 0,
+                "series_bars_updated": 0,
+                "files_imported": 0,
+                "files_skipped": 0,
+                "files_failed": 0,
+                "error_message": "",
+                "status": "skipped",
+                "vipdoc_path": str(vipdoc),
+            }
         suffixes = ",".join(sorted(suffixes_for_interval(interval)))
         raise ValueError(
             f"在 vipdoc 中没有找到可导入的通达信 {interval} 文件："

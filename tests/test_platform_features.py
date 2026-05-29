@@ -16,6 +16,7 @@ from strategy_studio.services.templates import build_seed_templates, normalize_p
 from strategy_studio.strategy.sampling import DeclineWindow
 from strategy_studio.web.app import create_app
 import strategy_studio.data.market_rules as market_rules
+import strategy_studio.services.sync as sync_service
 
 
 class PlatformFeatureTests(unittest.TestCase):
@@ -28,6 +29,7 @@ class PlatformFeatureTests(unittest.TestCase):
         check_db_args = parser.parse_args(["check-db", "--json"])
         sync_args = parser.parse_args(["sync-now", "--provider", "tdx", "--symbol", "sh600000", "--interval", "1d", "--force", "--limit", "3"])
         sync_minute_args = parser.parse_args(["sync-now", "--provider", "tdx", "--symbol", "sh600000", "--interval", "1m", "--limit", "1"])
+        sync_all_args = parser.parse_args(["sync-now", "--provider", "tdx", "--interval", "all", "--limit", "2"])
         yahoo_set_args = parser.parse_args(["sync-now", "--provider", "yahoo", "--symbol-set", "yahoo_global_active_100", "--interval", "15m", "--limit", "100"])
         tushare_args = parser.parse_args(["sync-now", "--provider", "tushare", "--symbol", "600000.SH", "--limit", "2"])
         qfq_args = parser.parse_args(["sync-now", "--provider", "tdx_qfq", "--symbol", "sh600000", "--interval", "1d", "--limit", "2"])
@@ -46,6 +48,9 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(sync_minute_args.provider, "tdx")
         self.assertEqual(sync_minute_args.interval, "1m")
         self.assertEqual(sync_minute_args.limit, 1)
+        self.assertEqual(sync_all_args.provider, "tdx")
+        self.assertEqual(sync_all_args.interval, "all")
+        self.assertEqual(sync_all_args.limit, 2)
         self.assertEqual(yahoo_set_args.provider, "yahoo")
         self.assertEqual(yahoo_set_args.symbol_set, "yahoo_global_active_100")
         self.assertEqual(yahoo_set_args.limit, 100)
@@ -185,6 +190,38 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=False,
             limit=1,
+        )
+
+    def test_web_api_market_data_sync_route_supports_tdx_all_interval(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.sync_market_data",
+            return_value={"provider": "tdx", "ingestion_job_ids": [31, 32, 33], "symbols_count": 3, "bars_inserted": 960, "bars_updated": 15, "status": "succeeded"},
+        ) as mock_sync:
+            response = client.post(
+                "/api/market-data/sync",
+                json={
+                    "provider": "tdx",
+                    "interval": "all",
+                    "vipdoc_path": "G:/new_tdx64/vipdoc",
+                    "limit": 2,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["provider"], "tdx")
+        mock_sync.assert_called_once_with(
+            symbol=None,
+            symbol_set=None,
+            interval="all",
+            proxy=None,
+            period=None,
+            provider="tdx",
+            vipdoc_path="G:/new_tdx64/vipdoc",
+            force=False,
+            limit=2,
         )
 
     def test_web_api_market_data_sync_route_supports_tushare_provider(self) -> None:
@@ -677,6 +714,69 @@ class PlatformFeatureTests(unittest.TestCase):
             force=False,
             limit=1,
         )
+
+    def test_sync_market_data_dispatches_tdx_all_provider(self) -> None:
+        with patch(
+            "strategy_studio.services.sync._sync_tdx_market_data",
+            return_value={"provider": "tdx", "ingestion_job_ids": [41, 42, 43], "symbols_count": 3, "bars_inserted": 960, "bars_updated": 15, "status": "succeeded"},
+        ) as mock_tdx:
+            result = sync_market_data(
+                symbol=None,
+                interval="all",
+                proxy=None,
+                provider="tdx",
+                vipdoc_path="G:/new_tdx64/vipdoc",
+                force=True,
+                limit=2,
+            )
+
+        self.assertEqual(result["provider"], "tdx")
+        mock_tdx.assert_called_once_with(
+            symbol=None,
+            interval="all",
+            vipdoc_path="G:/new_tdx64/vipdoc",
+            force=True,
+            limit=2,
+        )
+
+    def test_tdx_all_interval_orchestrates_supported_intervals(self) -> None:
+        observed_calls: list[tuple[str, bool]] = []
+
+        def fake_single_interval(**kwargs):
+            observed_calls.append((kwargs["interval"], kwargs["allow_empty"]))
+            return {
+                "provider": "tdx",
+                "interval": kwargs["interval"],
+                "symbols_count": 1,
+                "bars_inserted": {"1d": 10, "1m": 20, "5m": 30}[kwargs["interval"]],
+                "bars_updated": 0,
+                "series_bars_inserted": {"1d": 10, "1m": 20, "5m": 30}[kwargs["interval"]],
+                "series_bars_updated": 0,
+                "files_imported": 1,
+                "files_skipped": 0,
+                "files_failed": 0,
+                "ingestion_job_id": {"1d": 101, "1m": 102, "5m": 103}[kwargs["interval"]],
+                "error_message": "",
+                "status": "succeeded",
+                "vipdoc_path": "G:/new_tdx64/vipdoc",
+            }
+
+        with patch("strategy_studio.services.sync._sync_tdx_single_interval_market_data", side_effect=fake_single_interval):
+            result = sync_service._sync_tdx_market_data(
+                symbol="sh600000",
+                interval="all",
+                vipdoc_path="G:/new_tdx64/vipdoc",
+                force=True,
+                limit=2,
+            )
+
+        self.assertEqual(observed_calls, [("1d", True), ("1m", True), ("5m", True)])
+        self.assertEqual(result["provider"], "tdx")
+        self.assertEqual(result["interval"], "all")
+        self.assertEqual(result["bars_inserted"], 60)
+        self.assertEqual(result["files_imported"], 3)
+        self.assertEqual(result["ingestion_job_ids"], [101, 102, 103])
+        self.assertEqual(result["status"], "succeeded")
 
     def test_sync_market_data_dispatches_tushare_provider(self) -> None:
         with patch(
