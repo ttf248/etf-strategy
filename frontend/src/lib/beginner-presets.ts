@@ -7,6 +7,8 @@ export type BeginnerPreset = {
   strategyKind: string;
   reason: string;
   availableIntervals: string[];
+  marketDataProvider?: string;
+  marketDataAdjustmentKind?: string;
 };
 
 export type BacktestLaunchPreset = {
@@ -23,6 +25,8 @@ type GroupedCoverage = {
   name: string;
   availableIntervals: Set<string>;
   totalBars: number;
+  marketDataProviderByInterval: Map<string, string>;
+  marketDataAdjustmentKindByInterval: Map<string, string>;
 };
 
 const intervalRank: Record<string, number> = { "15m": 0, "1d": 1, "1m": 2 };
@@ -80,10 +84,18 @@ export function buildBeginnerPresets(coverages: MarketCoverage[]): BeginnerPrese
         name: item.name || item.symbol,
         availableIntervals: new Set<string>(),
         totalBars: 0,
+        marketDataProviderByInterval: new Map<string, string>(),
+        marketDataAdjustmentKindByInterval: new Map<string, string>(),
       };
     current.name = current.name || item.name || item.symbol;
     current.availableIntervals.add(item.interval);
     current.totalBars += item.bar_count;
+    if (item.market_data_provider) {
+      current.marketDataProviderByInterval.set(item.interval, item.market_data_provider);
+    }
+    if (item.market_data_adjustment_kind) {
+      current.marketDataAdjustmentKindByInterval.set(item.interval, item.market_data_adjustment_kind);
+    }
     grouped.set(item.symbol, current);
   }
 
@@ -102,6 +114,8 @@ export function buildBeginnerPresets(coverages: MarketCoverage[]): BeginnerPrese
         availableIntervals: Array.from(item.availableIntervals).sort(
           (left, right) => (intervalRank[left] ?? 99) - (intervalRank[right] ?? 99),
         ),
+        marketDataProvider: item.marketDataProviderByInterval.get(interval),
+        marketDataAdjustmentKind: item.marketDataAdjustmentKindByInterval.get(interval),
       };
     });
 }
@@ -111,6 +125,8 @@ export function buildBacktestPresetHref(preset: BeginnerPreset): string {
     symbol: preset.symbol,
     interval: preset.interval,
     strategyKind: preset.strategyKind,
+    marketDataProvider: preset.marketDataProvider,
+    marketDataAdjustmentKind: preset.marketDataAdjustmentKind,
   });
 }
 

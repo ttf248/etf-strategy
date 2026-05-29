@@ -394,7 +394,8 @@ export function DashboardView() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [partialError, setPartialError] = useState<string | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
-  const beginnerPresets = useMemo(() => (stats ? buildBeginnerPresets(stats.coverages) : []), [stats]);
+  const backtestCoverages = useMemo(() => stats?.backtest_coverages ?? stats?.coverages ?? [], [stats]);
+  const beginnerPresets = useMemo(() => buildBeginnerPresets(backtestCoverages), [backtestCoverages]);
 
   const loadDashboardSnapshot = useCallback(async (showSpinner: boolean = true) => {
     if (showSpinner) {
@@ -516,7 +517,7 @@ export function DashboardView() {
       })
     : null;
   const startRecommendation = buildStartRecommendation({
-    instrumentCount: stats.instrument_count,
+    instrumentCount: stats.backtest_instrument_count,
     presetCount: beginnerPresets.length,
     latestSucceededReportId,
     rerunHref: latestSucceededRerunHref,
@@ -564,8 +565,8 @@ export function DashboardView() {
         </div>
         <div className="readiness-card">
           <span className="readiness-label">当前研究状态</span>
-          <strong>{stats.instrument_count > 0 ? "可直接进入主流程" : "需先补齐关键覆盖"}</strong>
-          <span>{stats.instrument_count.toLocaleString()} 个标的，{stats.total_bars.toLocaleString()} 条 K 线</span>
+          <strong>{stats.backtest_instrument_count > 0 ? "可直接进入主流程" : "需先补齐关键覆盖"}</strong>
+          <span>{stats.backtest_instrument_count.toLocaleString()} 个标的，{stats.backtest_total_bars.toLocaleString()} 条 K 线</span>
         </div>
       </section>
 
@@ -796,9 +797,9 @@ export function DashboardView() {
       </Card>
 
       <div className="summary-grid">
-        <MetricCard label="可回测标的" value={stats.instrument_count} note="已准备好的标的" />
-        <MetricCard label="行情记录" value={stats.total_bars.toLocaleString()} note="用于回测的 K 线" />
-        <MetricCard label="可用周期" value={stats.by_interval.map((item) => item.interval).join(" / ") || "-"} note={`${stats.by_interval.length} 类周期`} />
+        <MetricCard label="可回测标的" value={stats.backtest_instrument_count} note="已准备好且能直接进入主流程的标的" />
+        <MetricCard label="行情记录" value={stats.backtest_total_bars.toLocaleString()} note="当前自动回测口径会读取的 K 线" />
+        <MetricCard label="可用周期" value={stats.backtest_by_interval.map((item) => item.interval).join(" / ") || "-"} note={`${stats.backtest_by_interval.length} 类周期`} />
         <MetricCard label="数据最近更新" value={latestSyncStatus} note={latestSync?.completed_at ?? latestSync?.interval ?? "还没有更新记录"} />
       </div>
 

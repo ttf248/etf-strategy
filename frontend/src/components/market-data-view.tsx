@@ -742,6 +742,7 @@ export function MarketDataView() {
   const [symbolDiagnostics, setSymbolDiagnostics] = useState<MarketDataSymbolDiagnostics | null>(null);
   const [symbolDiagnosticsLoading, setSymbolDiagnosticsLoading] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
+  const backtestCoverages = useMemo(() => stats?.backtest_coverages ?? stats?.coverages ?? [], [stats]);
 
   async function loadStatsData(showSpinner: boolean = true) {
     if (showSpinner) {
@@ -1203,7 +1204,7 @@ export function MarketDataView() {
     });
   }, [stats, tableKeyword, interval]);
 
-  const beginnerPresets = useMemo(() => (stats ? buildBeginnerPresets(stats.coverages) : []), [stats]);
+  const beginnerPresets = useMemo(() => buildBeginnerPresets(backtestCoverages), [backtestCoverages]);
   const providerPanels = useMemo<ProviderPanelModel[]>(() => {
     if (!stats) {
       return [];
@@ -2884,12 +2885,12 @@ export function MarketDataView() {
       ) : null}
 
       <div className="summary-grid">
-        <MetricCard label="可回测标的" value={stats.instrument_count} note="当前仍以 Yahoo 覆盖为主" />
-        <MetricCard label="回测 K 线" value={stats.total_bars.toLocaleString()} note="当前主流程直接读取的行情表" />
+        <MetricCard label="可回测标的" value={stats.backtest_instrument_count} note="当前主流程可以直接读取的标的" />
+        <MetricCard label="回测 K 线" value={stats.backtest_total_bars.toLocaleString()} note="旧表 + 唯一统一序列组成的可回测口径" />
         <MetricCard label="统一 K 线" value={unifiedBarsCount.toLocaleString()} note={`${activeProviderCount}/${providerPanels.length} 个渠道已产生数据痕迹`} />
         <MetricCard label="公司行动事件" value={corporateActionCount.toLocaleString()} note="Tushare 实施事件总量" />
         <MetricCard label="前复权区间" value={adjustmentSegmentCount.toLocaleString()} note="通达信前复权公式区间" />
-        {stats.by_interval.map((item) => (
+        {stats.backtest_by_interval.map((item) => (
           <MetricCard key={item.interval} label={`${item.interval} 覆盖`} value={item.bar_count.toLocaleString()} note="当前可直接回测的样本周期" />
         ))}
       </div>

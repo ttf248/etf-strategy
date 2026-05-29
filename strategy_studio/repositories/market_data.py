@@ -841,6 +841,90 @@ def list_instrument_coverages(session: Session) -> list[dict[str, object]]:
     ]
 
 
+def list_backtest_coverages(session: Session) -> list[dict[str, object]]:
+    """返回当前可直接进入回测主路径的覆盖。
+
+    选择规则与回测读取层保持一致：
+    1. 旧 `price_bars` 命中时优先使用旧表。
+    2. 否则尝试统一主干表；若同一标的/周期只存在唯一可用序列，则可直接进入主路径。
+    3. 多条候选统一序列会被视为歧义，不进入自动推荐与首页主路径统计。
+    """
+
+    legacy_coverages = list_instrument_coverages(session)
+    selected_by_key: dict[tuple[str, str], dict[str, object]] = {}
+    for row in legacy_coverages:
+        key = (str(row["symbol"]), str(row["interval"]))
+        selected_by_key[key] = {
+            **row,
+            "market_data_provider": "yahoo",
+            "market_data_adjustment_kind": "raw",
+            "backtest_source_kind": "legacy_price_bars",
+        }
+
+    unified_bar_stats = (
+        select(
+            MarketDataBar.series_id.label("series_id"),
+            func.count(MarketDataBar.id).label("bar_count"),
+        )
+        .group_by(MarketDataBar.series_id)
+        .subquery()
+    )
+    unified_rows = session.execute(
+        select(
+            MarketDataSeries.id.label("series_id"),
+            Instrument.symbol.label("symbol"),
+            Instrument.name.label("name"),
+            Instrument.exchange.label("exchange"),
+            DataProvider.provider_key.label("provider_key"),
+            MarketDataSeries.interval.label("interval"),
+            MarketDataSeries.adjustment_kind.label("adjustment_kind"),
+            unified_bar_stats.c.bar_count.label("bar_count"),
+            MarketDataSeries.first_bar_time.label("start_time"),
+            MarketDataSeries.last_bar_time.label("end_time"),
+            MarketDataSeries.last_ingested_at.label("last_ingested_at"),
+        )
+        .join(Instrument, Instrument.id == MarketDataSeries.instrument_id)
+        .join(DataProvider, DataProvider.id == MarketDataSeries.provider_id)
+        .join(unified_bar_stats, unified_bar_stats.c.series_id == MarketDataSeries.id)
+        .where(MarketDataSeries.is_active.is_(True))
+        .where(DataProvider.provider_key.in_(("yahoo", "tdx", "tdx_qfq")))
+        .order_by(
+            Instrument.symbol,
+            MarketDataSeries.interval,
+            DataProvider.provider_key,
+            MarketDataSeries.adjustment_kind,
+        )
+    ).all()
+
+    unified_candidates_by_key: dict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
+    for row in unified_rows:
+        key = (str(row.symbol), str(row.interval))
+        if key in selected_by_key:
+            continue
+        unified_candidates_by_key[key].append(
+            {
+                "symbol": row.symbol,
+                "name": row.name,
+                "exchange": row.exchange,
+                "interval": row.interval,
+                "bar_count": _safe_int(row.bar_count),
+                "start_time": _format_timestamp(row.start_time),
+                "end_time": _format_timestamp(row.end_time),
+                "last_ingested_at": _format_timestamp(row.last_ingested_at),
+                "market_data_provider": row.provider_key,
+                "market_data_adjustment_kind": row.adjustment_kind,
+                "backtest_source_kind": "market_data_series",
+                "series_id": _safe_int(row.series_id),
+            }
+        )
+
+    for key, candidates in unified_candidates_by_key.items():
+        if len(candidates) == 1:
+            selected_by_key[key] = candidates[0]
+
+    return sorted(selected_by_key.values(), key=lambda item: (str(item["symbol"]), str(item["interval"])))
+
+
 def list_instruments(session: Session) -> list[dict[str, object]]:
     coverage_rows = list_instrument_coverages(session)
     grouped: dict[str, dict[str, object]] = {}
@@ -1390,6 +1474,16 @@ def get_market_data_stats(session: Session) -> dict[str, object]:
     )
     by_interval = [{"interval": row.interval, "bar_count": int(row.bar_count)} for row in interval_rows]
     coverages = list_instrument_coverages(session)
+    backtest_coverages = list_backtest_coverages(session)
+    backtest_instrument_count = len({str(item["symbol"]) for item in backtest_coverages})
+    backtest_total_bars = sum(_safe_int(item.get("bar_count")) for item in backtest_coverages)
+    backtest_interval_totals: dict[str, int] = defaultdict(int)
+    for item in backtest_coverages:
+        backtest_interval_totals[str(item["interval"])] += _safe_int(item.get("bar_count"))
+    backtest_by_interval = [
+        {"interval": interval, "bar_count": bar_count}
+        for interval, bar_count in sorted(backtest_interval_totals.items())
+    ]
     latest_sync = session.scalars(select(DataSyncRun).order_by(DataSyncRun.started_at.desc()).limit(10)).all()
     provider_series_stats = (
         select(
@@ -1536,6 +1630,10 @@ def get_market_data_stats(session: Session) -> dict[str, object]:
         "total_bars": total_bars,
         "by_interval": by_interval,
         "coverages": coverages,
+        "backtest_instrument_count": backtest_instrument_count,
+        "backtest_total_bars": backtest_total_bars,
+        "backtest_by_interval": backtest_by_interval,
+        "backtest_coverages": backtest_coverages,
         "provider_summaries": provider_summaries,
         "recent_ingestion_jobs": recent_ingestion_jobs,
         "recent_sync_runs": [

@@ -473,6 +473,7 @@ export function BacktestsView() {
   const selectedMarketDataAdjustmentKind = Form.useWatch("market_data_adjustment_kind", form) as string | undefined;
   const selectedJobsValue = Form.useWatch("jobs", form);
   const selectedValidationRatioValue = Form.useWatch("validation_ratio", form);
+  const backtestCoverages = useMemo(() => stats?.backtest_coverages ?? stats?.coverages ?? [], [stats]);
 
   const filteredTemplates = useMemo(
     () => templates.filter((item) => item.is_active && item.strategy_kind === selectedStrategy && item.interval === selectedInterval),
@@ -480,7 +481,7 @@ export function BacktestsView() {
   );
   const selectedTemplate = filteredTemplates.find((item) => item.id === selectedTemplateId) ?? null;
   const recommendedTemplate = filteredTemplates.find((item) => item.is_default) ?? filteredTemplates[0] ?? null;
-  const beginnerPresets = useMemo(() => (stats ? buildBeginnerPresets(stats.coverages) : []), [stats]);
+  const beginnerPresets = useMemo(() => buildBeginnerPresets(backtestCoverages), [backtestCoverages]);
   const runningJobs = useMemo(() => jobs.filter((item) => item.status === "running"), [jobs]);
   const queuedJobs = useMemo(() => jobs.filter((item) => item.status === "queued"), [jobs]);
   const failedJobs = useMemo(() => jobs.filter((item) => item.status === "failed"), [jobs]);

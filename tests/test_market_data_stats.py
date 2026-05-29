@@ -151,11 +151,32 @@ class MarketDataStatsTests(unittest.TestCase):
                     "last_ingested_at": "2026-05-29 12:30:00+00:00",
                 }
             ],
+        ), patch(
+            "strategy_studio.repositories.market_data.list_backtest_coverages",
+            return_value=[
+                {
+                    "symbol": "1810.HK",
+                    "name": "XIAOMI-W",
+                    "exchange": "HK",
+                    "interval": "1d",
+                    "bar_count": 80,
+                    "start_time": "2025-01-01 00:00:00",
+                    "end_time": "2026-05-28 00:00:00",
+                    "last_ingested_at": "2026-05-29 12:30:00+00:00",
+                    "market_data_provider": "yahoo",
+                    "market_data_adjustment_kind": "raw",
+                    "backtest_source_kind": "legacy_price_bars",
+                }
+            ],
         ):
             stats = get_market_data_stats(session)
 
         self.assertEqual(stats["instrument_count"], 3)
         self.assertEqual(stats["total_bars"], 120)
+        self.assertEqual(stats["backtest_instrument_count"], 1)
+        self.assertEqual(stats["backtest_total_bars"], 80)
+        self.assertEqual(stats["backtest_by_interval"], [{"interval": "1d", "bar_count": 80}])
+        self.assertEqual(stats["backtest_coverages"][0]["market_data_provider"], "yahoo")
         self.assertEqual(len(stats["provider_summaries"]), 2)
         self.assertEqual(stats["provider_summaries"][0]["provider_key"], "tdx_qfq")
         self.assertEqual(stats["provider_summaries"][0]["bars_count"], 6314)
@@ -231,10 +252,14 @@ class MarketDataStatsTests(unittest.TestCase):
             scalars_results=[[]],
         )
 
-        with patch("strategy_studio.repositories.market_data.list_instrument_coverages", return_value=[]):
+        with (
+            patch("strategy_studio.repositories.market_data.list_instrument_coverages", return_value=[]),
+            patch("strategy_studio.repositories.market_data.list_backtest_coverages", return_value=[]),
+        ):
             stats = get_market_data_stats(session)
 
         self.assertEqual(len(stats["recent_ingestion_jobs"]), 1)
+        self.assertEqual(stats["backtest_coverages"], [])
         job = stats["recent_ingestion_jobs"][0]
         self.assertEqual(job["provider_key"], "tdx_pipeline")
         self.assertEqual(job["target_symbol"], "SH600000")

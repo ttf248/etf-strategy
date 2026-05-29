@@ -7,6 +7,9 @@ export type MarketCoverage = {
   start_time: string;
   end_time: string;
   last_ingested_at: string;
+  market_data_provider?: string;
+  market_data_adjustment_kind?: string;
+  backtest_source_kind?: string;
 };
 
 export type MarketDataProviderSummary = {
@@ -229,6 +232,10 @@ export type MarketDataStats = {
   total_bars: number;
   by_interval: Array<{ interval: string; bar_count: number }>;
   coverages: MarketCoverage[];
+  backtest_instrument_count: number;
+  backtest_total_bars: number;
+  backtest_by_interval: Array<{ interval: string; bar_count: number }>;
+  backtest_coverages: MarketCoverage[];
   provider_summaries: MarketDataProviderSummary[];
   recent_ingestion_jobs: MarketDataIngestionJob[];
   recent_sync_runs: Array<Record<string, unknown>>;

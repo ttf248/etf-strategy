@@ -55,8 +55,15 @@ http://127.0.0.1:8000/docs
 
 这些接口用于查询标的、行情覆盖、统计信息、导入任务详情、K 线数据、同步历史，以及手动触发行情同步。其中 `GET /api/market-data/stats` 当前除了保留旧 `coverages / recent_sync_runs` 外，还会返回：
 
+- `backtest_coverages / backtest_instrument_count / backtest_total_bars / backtest_by_interval`：面向自动回测主路径的覆盖统计。选择规则与 Worker 读取链路保持一致：若旧 `price_bars` 已覆盖，则优先沿用旧表；否则只在统一主干表 `market_data_series + market_data_bars` 中同标的同周期存在唯一可用序列时，才把该序列纳入首页、推荐样本和默认回测候选。若同一标的同周期同时存在多条统一序列候选，则不会进入自动推荐，调用方应改为显式指定 `market_data_provider / market_data_adjustment_kind`。
 - `provider_summaries`：按 provider 聚合的多渠道摘要，包含 `series_count / bars_count / action_count / segment_count / manifest_count / latest_ingestion_at / latest_ingestion_status` 等字段，供 `/market-data` 多渠道任务面板直接渲染。
 - `recent_ingestion_jobs`：统一导入任务域的最近任务列表，覆盖 Yahoo 单周期、Yahoo 三周期链路、A 股统一补数链路、通达信原始、Tushare 公司行动和通达信前复权六类后台任务。每条记录还会附带 `summary_json`，用于前端直接展开 workflow 子步骤、文件导入摘要或其他渠道专属诊断信息。
+
+`backtest_coverages[]` 的单条记录在旧覆盖字段基础上还会附带：
+
+- `market_data_provider`：当前自动回测口径最终选中的 provider，例如 `yahoo`、`tdx`、`tdx_qfq`。
+- `market_data_adjustment_kind`：当前序列的复权口径，例如 `raw`、`qfq`。
+- `backtest_source_kind`：当前候选来自旧 `legacy_price_bars`，还是统一主干表 `market_data_series`。
 
 `GET /api/market-data/provider-series` 用于直接检查统一主干表里的实际序列结果，默认按最近入库时间倒序返回最近 100 条，也支持：
 

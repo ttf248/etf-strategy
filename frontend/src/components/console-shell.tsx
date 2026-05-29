@@ -170,7 +170,7 @@ function buildShellGuidance(snapshot: ShellSnapshot): ShellGuidance {
 
   const sortedJobs = [...snapshot.jobs].sort((left, right) => right.id - left.id);
   const sortedReports = [...snapshot.reports].sort((left, right) => right.id - left.id);
-  const instrumentCount = snapshot.stats?.instrument_count ?? 0;
+  const instrumentCount = snapshot.stats?.backtest_instrument_count ?? snapshot.stats?.instrument_count ?? 0;
   const latestRunningJob = sortedJobs.find((item) => item.status === "running") ?? null;
   const latestQueuedJob = sortedJobs.find((item) => item.status === "queued") ?? null;
   const latestFailedJob = sortedJobs.find((item) => item.status === "failed") ?? null;
