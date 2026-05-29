@@ -22,7 +22,7 @@ Backtest  Yahoo Sync
 
 - 前端负责控制台交互，包括平台总控、行情统计、回测提交、模板管理和历史报告查看。
 - FastAPI 负责 JSON API、任务入队、报告查询、同步触发和平台状态聚合，是前端统一访问后端能力的门面。
-- PostgreSQL 是平台主存储，保存行情、同步记录、回测任务、报告、交易流水和参数模板。
+- PostgreSQL 是平台主存储，保存行情、同步记录、回测任务、报告、交易流水和参数模板；当前已同时预留 `data_providers`、`market_data_series`、`market_data_bars`、`corporate_action_events`、`price_adjustment_segments` 和统一的 `data_ingestion_jobs`，为后续多数据源扩展提供基础结构。
 - Worker 常驻轮询数据库中的回测任务，执行完成后写回报告数据。
 - Scheduler 按固定时间从 Yahoo 同步行情。
 - CLI 仍保留，但只负责数据库同步、数据库回测和平台运维命令。
@@ -67,7 +67,7 @@ Backtest  Yahoo Sync
 
 Windows 开发环境可以使用 `.vscode/launch.json` 或 `scripts/start_platform_windows.bat` 一键拉起。
 
-Worker 和 Scheduler 会写入 `platform_heartbeats` 心跳记录，前端平台总控页据此判断常驻进程是否可见。Web 进程控制默认关闭；只有设置 `STRATEGY_STUDIO_ENABLE_PROCESS_CONTROL=true` 后，相关接口才允许进入后续受控操作。
+Worker 和 Scheduler 会写入 `platform_heartbeats` 心跳记录，前端平台总控页据此判断常驻进程是否可见。平台同时提供 `check-db` 命令和 `/api/platform/database-check`，用于确认业务库是否存在、迁移是否到头。Web 进程控制默认关闭；只有设置 `STRATEGY_STUDIO_ENABLE_PROCESS_CONTROL=true` 后，相关接口才允许进入后续受控操作。
 
 ## 数据存储原则
 

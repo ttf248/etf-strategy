@@ -4,7 +4,7 @@
 
 ## 行情进入系统
 
-行情有一种正式来源：
+当前自动同步主链路只有一种正式在线来源：
 
 - Yahoo 同步：通过 `sync-now`、Scheduler 或前端同步按钮触发。
 
@@ -24,6 +24,18 @@ instruments + price_bars
 ```
 
 `price_bars` 使用 `instrument_id + interval + bar_time` 唯一约束，重复导入会更新已有 K 线，不会生成重复记录。
+
+为后续接入通达信和 Tushare，数据库已预留多数据源基础结构：
+
+- `data_providers`：渠道注册。
+- `instrument_aliases`：同一标的在不同渠道中的代码映射。
+- `market_data_series` / `market_data_bars`：统一 K 线事实表。
+- `corporate_action_events`：公司行动事实表。
+- `price_adjustment_segments`：前复权公式区间。
+- `source_file_manifests`：文件型来源的增量状态。
+- `data_ingestion_jobs` / `data_ingestion_job_items`：统一后台任务状态。
+
+这些表当前主要承担结构准备职责；正式导入链路仍会在后续子任务中逐步接入。
 
 ## 同步记录
 

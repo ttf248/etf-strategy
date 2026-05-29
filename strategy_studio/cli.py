@@ -20,6 +20,7 @@ from strategy_studio.logging_utils import configure_logging
 from strategy_studio.platform_cli import (
     add_platform_subcommands,
     handle_api,
+    handle_check_db,
     handle_init_db,
     handle_scheduler,
     handle_sync_now,
@@ -306,6 +307,7 @@ def main(argv: list[str] | None = None) -> int:
         "run": handle_run,
         "batch": handle_batch,
         "init-db": handle_init_db,
+        "check-db": handle_check_db,
         "sync-now": handle_sync_now,
         "api": handle_api,
         "worker": handle_worker,

@@ -10,7 +10,8 @@
             "console": "integratedTerminal",
             "env": {
                 "PYTHONUTF8": "1",
-                "PYTHONIOENCODING": "utf-8"
+                "PYTHONIOENCODING": "utf-8",
+                "STRATEGY_STUDIO_DATABASE_URL": "postgresql+psycopg://postgres:tian@localhost:5432/etf_strategy"
             },
             "args": [
                 "api",
@@ -30,7 +31,8 @@
             "console": "integratedTerminal",
             "env": {
                 "PYTHONUTF8": "1",
-                "PYTHONIOENCODING": "utf-8"
+                "PYTHONIOENCODING": "utf-8",
+                "STRATEGY_STUDIO_DATABASE_URL": "postgresql+psycopg://postgres:tian@localhost:5432/etf_strategy"
             },
             "args": [
                 "worker",
@@ -47,7 +49,8 @@
             "console": "integratedTerminal",
             "env": {
                 "PYTHONUTF8": "1",
-                "PYTHONIOENCODING": "utf-8"
+                "PYTHONIOENCODING": "utf-8",
+                "STRATEGY_STUDIO_DATABASE_URL": "postgresql+psycopg://postgres:tian@localhost:5432/etf_strategy"
             },
             "args": [
                 "scheduler"

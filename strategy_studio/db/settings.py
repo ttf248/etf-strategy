@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 
 
-DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres:tian@localhost:5432/strategy_studio"
+DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres:tian@localhost:5432/etf_strategy"
 DEFAULT_ADMIN_DATABASE = "postgres"
 DEFAULT_API_HOST = "127.0.0.1"
 DEFAULT_API_PORT = 8000

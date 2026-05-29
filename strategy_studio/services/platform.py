@@ -6,8 +6,11 @@ import os
 import socket
 import subprocess
 from datetime import UTC, datetime
+from pathlib import Path
 
-from sqlalchemy import text
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 from strategy_studio.db.session import open_session
@@ -60,6 +63,108 @@ def _safe_database_url() -> str:
     return url.render_as_string(hide_password=True)
 
 
+def _expected_alembic_head() -> str | None:
+    """读取当前代码声明的 Alembic 目标版本，便于诊断数据库是否滞后。"""
+    try:
+        config = Config(str(Path("alembic.ini").resolve()))
+        return ScriptDirectory.from_config(config).get_current_head()
+    except Exception:
+        return None
+
+
+def fetch_database_diagnostics() -> dict[str, object]:
+    """返回数据库连通性、建库状态与迁移状态。
+
+    这里把“服务能否访问 PostgreSQL”和“业务库是否存在/是否完成迁移”拆开输出，
+    避免只给一个 failed，让运维无法判断是实例未启动、数据库名配置错误，还是迁移未跟上。
+    """
+    settings = load_platform_settings()
+    target_url = make_url(settings.database.url)
+    database_name = target_url.database or ""
+    result: dict[str, object] = {
+        "status": "failed",
+        "url": target_url.render_as_string(hide_password=True),
+        "configured_database": database_name,
+        "admin_database": settings.database.admin_database,
+        "database_exists": None,
+        "alembic_head": _expected_alembic_head(),
+    }
+    try:
+        with open_session() as session:
+            current_database = session.execute(text("SELECT current_database()")).scalar()
+            table_count = session.execute(
+                text(
+                    """
+                    SELECT count(*)
+                    FROM information_schema.tables
+                    WHERE table_schema='public'
+                    """
+                )
+            ).scalar()
+            table_preview = session.execute(
+                text(
+                    """
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_schema='public'
+                    ORDER BY table_name
+                    LIMIT 20
+                    """
+                )
+            ).scalars().all()
+            try:
+                alembic_revision = session.execute(text("SELECT version_num FROM alembic_version")).scalar()
+            except Exception:
+                alembic_revision = None
+
+        expected_head = result.get("alembic_head")
+        if alembic_revision is None:
+            migration_state = "uninitialized"
+        elif expected_head and alembic_revision != expected_head:
+            migration_state = "outdated"
+        else:
+            migration_state = "head"
+        result.update(
+            {
+                "status": "ok",
+                "database_exists": True,
+                "current_database": current_database,
+                "table_count": int(table_count or 0),
+                "table_preview": table_preview,
+                "alembic_revision": alembic_revision,
+                "migration_state": migration_state,
+            }
+        )
+        return result
+    except Exception as exc:
+        result["error"] = str(exc)
+        result["failure_stage"] = "connect_target"
+
+    admin_url = target_url.set(database=settings.database.admin_database)
+    try:
+        engine = create_engine(admin_url.render_as_string(hide_password=False), future=True, pool_pre_ping=True)
+        with engine.connect() as conn:
+            databases = conn.execute(
+                text(
+                    """
+                    SELECT datname
+                    FROM pg_database
+                    ORDER BY datname
+                    """
+                )
+            ).scalars().all()
+        result["admin_connectivity"] = "ok"
+        result["database_exists"] = database_name in databases
+        result["peer_databases"] = databases
+        if not result["database_exists"]:
+            result["failure_stage"] = "database_missing"
+    except Exception as admin_exc:
+        result["admin_connectivity"] = "failed"
+        result["admin_error"] = str(admin_exc)
+        result["failure_stage"] = "connect_admin"
+    return result
+
+
 def _tcp_available(host: str, port: int) -> bool:
     probe_host = "127.0.0.1" if host in {"0.0.0.0", "::", "localhost", ""} else host
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -68,12 +173,7 @@ def _tcp_available(host: str, port: int) -> bool:
 
 
 def _database_status() -> dict[str, object]:
-    try:
-        with open_session() as session:
-            session.execute(text("SELECT 1"))
-        return {"status": "ok", "url": _safe_database_url()}
-    except Exception as exc:
-        return {"status": "failed", "url": _safe_database_url(), "error": str(exc)}
+    return fetch_database_diagnostics()
 
 
 def _heartbeat_payload() -> list[dict[str, object]]:

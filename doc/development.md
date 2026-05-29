@@ -21,7 +21,7 @@ npm install
 
 ```text
 localhost:5432
-database: strategy_studio
+database: etf_strategy
 admin user: postgres
 ```
 
@@ -44,6 +44,7 @@ admin user: postgres
 命令行方式：
 
 ```powershell
+py -3.13 main.py check-db
 py -3.13 main.py api --host 127.0.0.1 --port 8000 --replace-existing
 py -3.13 main.py worker --poll-interval 5
 py -3.13 main.py scheduler
@@ -79,7 +80,7 @@ npx next dev --hostname 127.0.0.1 --port 3000
 
 - 更新 SQLAlchemy 模型。
 - 新增 Alembic 迁移。
-- 更新 [数据流转](data-flow.md) 和相关服务测试。
+- 更新 [数据流转](data-flow.md)、[多数据源行情后台规划](multi-source-market-data-plan.md) 和相关服务测试。
 
 修改启动入口：
 

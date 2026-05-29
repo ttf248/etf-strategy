@@ -21,11 +21,12 @@ http://127.0.0.1:8000/docs
 ## Platform
 
 - `GET /api/platform/status`
+- `GET /api/platform/database-check`
 - `GET /api/platform/processes`
 - `GET /api/platform/logs`
 - `POST /api/platform/processes/{service_name}/restart`
 
-平台控制面接口用于前端总控页聚合 API、Frontend、数据库、Worker、Scheduler、任务队列、同步调度和最近日志。进程重启接口默认返回 `403`，只有设置 `STRATEGY_STUDIO_ENABLE_PROCESS_CONTROL=true` 后才允许进入受控流程；当前不会默认开放 Web 端杀进程能力。
+平台控制面接口用于前端总控页聚合 API、Frontend、数据库、Worker、Scheduler、任务队列、同步调度和最近日志。`GET /api/platform/database-check` 会额外返回目标数据库是否存在、当前 Alembic 版本、代码头版本和表概览，便于排查“实例可达但业务库不存在”或“数据库未迁移到最新版本”这类问题。进程重启接口默认返回 `403`，只有设置 `STRATEGY_STUDIO_ENABLE_PROCESS_CONTROL=true` 后才允许进入受控流程；当前不会默认开放 Web 端杀进程能力。
 
 ## Market Data
 

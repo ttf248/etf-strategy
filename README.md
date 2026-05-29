@@ -32,7 +32,7 @@ Worker   Scheduler
 Backtest  Yahoo Sync
 ```
 
-更多设计说明见 [架构设计](doc/architecture.md) 和 [数据流转](doc/data-flow.md)。
+更多设计说明见 [架构设计](doc/architecture.md) 、[数据流转](doc/data-flow.md) 和 [多数据源行情后台规划](doc/multi-source-market-data-plan.md)。
 
 ## 快速开始
 
@@ -56,12 +56,13 @@ npm install
 默认数据库连接为：
 
 ```text
-postgresql+psycopg://postgres:tian@localhost:5432/strategy_studio
+postgresql+psycopg://postgres:tian@localhost:5432/etf_strategy
 ```
 
 初始化数据库：
 
 ```powershell
+py -3.13 main.py check-db
 py -3.13 main.py init-db
 ```
 
@@ -147,6 +148,7 @@ tests/           unittest 测试
 - [开发指南](doc/development.md)
 - [API 接口说明](doc/api.md)
 - [策略引擎](doc/strategy-engine.md)
+- [多数据源行情后台规划](doc/multi-source-market-data-plan.md)
 - [开源准备度审计](doc/open-source-readiness.md)
 - [前端说明](frontend/README.md)
 - [前端体验审查](doc/frontend-ux-audit.md)

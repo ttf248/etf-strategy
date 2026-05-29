@@ -7,7 +7,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from strategy_studio.cli import build_parser
-from strategy_studio.platform_cli import handle_api
+from strategy_studio.platform_cli import handle_api, handle_check_db
 from strategy_studio.services.backtests import _estimate_eta_seconds, _normalize_artifacts, _resolve_effective_parallelism
 from strategy_studio.services.platform import record_platform_heartbeat
 from strategy_studio.services.templates import build_seed_templates, normalize_parameter_space, resolve_backtest_request_payload
@@ -23,11 +23,14 @@ class PlatformFeatureTests(unittest.TestCase):
         parser = build_parser()
 
         init_args = parser.parse_args(["init-db"])
+        check_db_args = parser.parse_args(["check-db", "--json"])
         api_args = parser.parse_args(["api", "--host", "127.0.0.1", "--port", "8000"])
         replace_args = parser.parse_args(["api", "--replace-existing"])
         worker_args = parser.parse_args(["worker", "--poll-interval", "3", "--max-concurrent-jobs", "2", "--max-optimization-workers", "4"])
 
         self.assertEqual(init_args.command, "init-db")
+        self.assertEqual(check_db_args.command, "check-db")
+        self.assertTrue(check_db_args.json)
         self.assertFalse(hasattr(init_args, "with_migration"))
         self.assertEqual(api_args.command, "api")
         self.assertEqual(api_args.host, "127.0.0.1")
@@ -81,13 +84,35 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(stats_response.status_code, 200)
         self.assertEqual(stats_response.json()["instrument_count"], 2)
 
+    def test_web_api_platform_database_check_route(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.fetch_database_diagnostics",
+            return_value={
+                "status": "ok",
+                "configured_database": "etf_strategy",
+                "database_exists": True,
+                "alembic_revision": "20260529_0006",
+                "alembic_head": "20260529_0006",
+                "migration_state": "head",
+            },
+        ) as mock_probe:
+            response = client.get("/api/platform/database-check")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["configured_database"], "etf_strategy")
+        self.assertEqual(response.json()["migration_state"], "head")
+        mock_probe.assert_called_once()
+
     def test_web_api_platform_control_routes(self) -> None:
         app = create_app()
         client = TestClient(app)
         status_payload = {
             "api": {"status": "ok", "host": "127.0.0.1", "port": 8000, "base_url": "http://127.0.0.1:8000"},
             "frontend": {"status": "ok", "host": "127.0.0.1", "port": 3000, "base_url": "http://127.0.0.1:3000"},
-            "database": {"status": "ok", "url": "postgresql+psycopg://postgres:***@localhost:5432/strategy_studio"},
+            "database": {"status": "ok", "url": "postgresql+psycopg://postgres:***@localhost:5432/etf_strategy"},
             "heartbeats": [],
             "queue": {"queued": 0, "running": 0, "succeeded": 1, "failed": 0},
             "process_control_enabled": False,
@@ -256,6 +281,34 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(len(run_calls), 1)
         self.assertEqual(run_calls[0]["host"], "127.0.0.1")
         self.assertEqual(run_calls[0]["port"], 8000)
+
+    def test_handle_check_db_returns_failure_when_database_not_ready(self) -> None:
+        args = SimpleNamespace(json=False)
+
+        def fake_import(module_name: str, command_name: str):
+            self.assertEqual(module_name, "strategy_studio.services.platform")
+            self.assertEqual(command_name, "check-db")
+            return SimpleNamespace(
+                fetch_database_diagnostics=lambda: {
+                    "status": "failed",
+                    "configured_database": "etf_strategy",
+                    "database_exists": False,
+                    "admin_database": "postgres",
+                    "alembic_head": "20260529_0006",
+                    "error": "database missing",
+                }
+            )
+
+        with (
+            patch("strategy_studio.platform_cli._import_platform_module", side_effect=fake_import),
+            patch("builtins.print") as mock_print,
+        ):
+            exit_code = handle_check_db(args)
+
+        self.assertEqual(exit_code, 1)
+        rendered = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
+        self.assertIn("数据库检查状态", rendered)
+        self.assertIn("database missing", rendered)
 
 
 class StrategyTemplateServiceTests(unittest.TestCase):

@@ -192,6 +192,8 @@ def _build_port_in_use_error(host: str, port: int) -> RuntimeError:
 
 def add_platform_subcommands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     init_db_parser = subparsers.add_parser("init-db", help="创建项目数据库并执行迁移")
+    check_db_parser = subparsers.add_parser("check-db", help="检查 PostgreSQL 连通性、建库状态和迁移版本")
+    check_db_parser.add_argument("--json", action="store_true", help="以 JSON 输出完整诊断结果")
 
     sync_parser = subparsers.add_parser("sync-now", help="立即同步 Yahoo 行情到数据库")
     sync_parser.add_argument("--symbol", default=None, help="指定单个标的；不传则同步数据库中已知全部标的")
@@ -218,6 +220,41 @@ def handle_init_db(_: argparse.Namespace) -> int:
     database_name = initialize_database()
     print(f"数据库初始化完成：{database_name}")
     return 0
+
+
+def handle_check_db(args: argparse.Namespace) -> int:
+    fetch_database_diagnostics = _import_platform_module("strategy_studio.services.platform", "check-db").fetch_database_diagnostics
+    payload = fetch_database_diagnostics()
+    if getattr(args, "json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(f"数据库检查状态：{payload.get('status')}")
+        print(f"目标连接：{payload.get('url')}")
+        print(f"目标数据库：{payload.get('configured_database')}")
+        print(f"管理员数据库：{payload.get('admin_database')}")
+        print(f"数据库是否存在：{payload.get('database_exists')}")
+        if payload.get("current_database"):
+            print(f"当前连接数据库：{payload.get('current_database')}")
+        if payload.get("alembic_revision") or payload.get("alembic_head"):
+            print(
+                "迁移状态："
+                f"{payload.get('migration_state', 'unknown')} "
+                f"(current={payload.get('alembic_revision') or '-'}, head={payload.get('alembic_head') or '-'})"
+            )
+        if payload.get("table_count") is not None:
+            print(f"公共表数量：{payload.get('table_count')}")
+        if payload.get("table_preview"):
+            print(f"表预览：{', '.join(str(item) for item in payload['table_preview'])}")
+        if payload.get("peer_databases"):
+            print(f"实例内数据库：{', '.join(str(item) for item in payload['peer_databases'])}")
+        if payload.get("error"):
+            print(f"错误：{payload['error']}")
+        if payload.get("admin_error"):
+            print(f"管理员连接错误：{payload['admin_error']}")
+    status = str(payload.get("status", "failed"))
+    migration_state = str(payload.get("migration_state", "unknown"))
+    database_exists = payload.get("database_exists")
+    return 0 if status == "ok" and database_exists is True and migration_state == "head" else 1
 
 
 def handle_sync_now(args: argparse.Namespace) -> int:

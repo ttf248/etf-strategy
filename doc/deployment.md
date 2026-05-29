@@ -33,7 +33,7 @@ npm run build
 PostgreSQL 默认连接：
 
 ```text
-postgresql+psycopg://postgres:tian@localhost:5432/strategy_studio
+postgresql+psycopg://postgres:tian@localhost:5432/etf_strategy
 ```
 
 生产环境建议通过环境变量覆盖默认值，不要依赖本地默认密码。
@@ -54,11 +54,12 @@ postgresql+psycopg://postgres:tian@localhost:5432/strategy_studio
 ## 初始化数据库
 
 ```powershell
+py -3.13 main.py check-db
 py -3.13 main.py init-db
 py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
 ```
 
-`init-db` 会创建项目数据库并执行 Alembic 迁移。当前标准流程建议直接使用 `sync-now` 从 Yahoo 同步首批行情到 PostgreSQL；CLI 与平台默认都以数据库作为唯一正式数据入口。
+`check-db` 会先验证 PostgreSQL 是否可达、目标业务库是否存在，以及 Alembic 是否已经迁移到代码头版本。`init-db` 会创建项目数据库并执行 Alembic 迁移。当前标准流程建议直接使用 `sync-now` 从 Yahoo 同步首批行情到 PostgreSQL；CLI 与平台默认都以数据库作为唯一正式数据入口。
 
 ## 启动后端
 

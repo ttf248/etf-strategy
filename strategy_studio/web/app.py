@@ -25,6 +25,7 @@ from strategy_studio.services.market_data import (
     fetch_sync_runs,
 )
 from strategy_studio.services.platform import (
+    fetch_database_diagnostics,
     fetch_platform_logs,
     fetch_platform_processes,
     fetch_platform_status,
@@ -63,6 +64,10 @@ def create_app() -> FastAPI:
     @app.get("/api/platform/status")
     def get_platform_status() -> dict[str, object]:
         return fetch_platform_status()
+
+    @app.get("/api/platform/database-check")
+    def get_platform_database_check() -> dict[str, object]:
+        return fetch_database_diagnostics()
 
     @app.get("/api/platform/processes")
     def get_platform_processes() -> list[dict[str, object]]:
