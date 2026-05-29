@@ -236,12 +236,73 @@ def _build_tdx_market_inventory(vipdoc_path: Path) -> dict[str, object]:
     return inventory
 
 
+def _normalize_proxy_candidate(raw_proxy: str) -> str:
+    """把系统代理文本归一化成可直接复制给 --proxy 的地址。"""
+    normalized = raw_proxy.strip()
+    if not normalized:
+        return ""
+    if ";" in normalized or "=" in normalized:
+        segments = [segment.strip() for segment in normalized.split(";") if segment.strip()]
+        proxy_pairs: dict[str, str] = {}
+        for segment in segments:
+            if "=" not in segment:
+                continue
+            scheme, value = segment.split("=", 1)
+            proxy_pairs[scheme.strip().lower()] = value.strip()
+        normalized = proxy_pairs.get("https") or proxy_pairs.get("http") or next(iter(proxy_pairs.values()), "")
+    if normalized and "://" not in normalized:
+        normalized = f"http://{normalized}"
+    return normalized
+
+
+def _detect_windows_system_proxy() -> dict[str, object]:
+    """读取 Windows Internet Settings 中的代理候选，供体检命令给出显式提示。"""
+    payload = {
+        "proxy_candidate": "",
+        "proxy_enabled": False,
+        "proxy_source": "none",
+    }
+    if os.name != "nt":
+        return payload
+    try:
+        import winreg
+    except ImportError:
+        return payload
+
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+        ) as key:
+            proxy_enabled, _ = winreg.QueryValueEx(key, "ProxyEnable")
+            proxy_server, _ = winreg.QueryValueEx(key, "ProxyServer")
+    except OSError:
+        return payload
+
+    proxy_candidate = _normalize_proxy_candidate(str(proxy_server or ""))
+    if not proxy_candidate:
+        return payload
+    return {
+        "proxy_candidate": proxy_candidate,
+        "proxy_enabled": bool(proxy_enabled),
+        "proxy_source": "windows_internet_settings",
+    }
+
+
 def _build_yahoo_runtime_payload() -> dict[str, object]:
     proxy = os.getenv("STRATEGY_STUDIO_PROXY", "").strip()
+    system_proxy = _detect_windows_system_proxy()
+    warning_message = ""
+    if not proxy and system_proxy.get("proxy_candidate"):
+        warning_message = "检测到系统代理候选，但当前项目不会自动使用；请通过 --proxy 或 STRATEGY_STUDIO_PROXY 显式传入。"
     return {
         "status": "ok",
         "proxy_configured": bool(proxy),
         "proxy_source": "env" if proxy else "none",
+        "system_proxy_candidate": str(system_proxy.get("proxy_candidate") or ""),
+        "system_proxy_enabled": bool(system_proxy.get("proxy_enabled")),
+        "system_proxy_source": str(system_proxy.get("proxy_source") or "none"),
+        "warning_message": warning_message,
         "default_symbol_set": "yahoo_global_active_100",
         "workflow_intervals": ["1d", "15m", "1m"],
     }

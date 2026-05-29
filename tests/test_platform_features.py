@@ -157,7 +157,16 @@ class PlatformFeatureTests(unittest.TestCase):
             ],
             "queue": {"queued": 1, "running": 2, "cancel_requested": 0, "cancelled": 0, "succeeded": 5, "failed": 1},
             "market_data_runtime": {
-                "yahoo": {"status": "ok", "default_symbol_set": "yahoo_global_active_100", "proxy_configured": False},
+                "yahoo": {
+                    "status": "ok",
+                    "default_symbol_set": "yahoo_global_active_100",
+                    "proxy_configured": False,
+                    "proxy_source": "none",
+                    "system_proxy_candidate": "http://127.0.0.1:7897",
+                    "system_proxy_enabled": False,
+                    "system_proxy_source": "windows_internet_settings",
+                    "warning_message": "检测到系统代理候选，但当前项目不会自动使用；请通过 --proxy 或 STRATEGY_STUDIO_PROXY 显式传入。",
+                },
                 "tdx": {
                     "status": "ok",
                     "vipdoc_exists": True,
@@ -184,6 +193,8 @@ class PlatformFeatureTests(unittest.TestCase):
         rendered = "\n".join(" ".join(str(part) for part in call.args) for call in mock_print.call_args_list)
         self.assertIn("平台运行态检查：", rendered)
         self.assertIn("数据库：ok", rendered)
+        self.assertIn("Yahoo 代理候选：http://127.0.0.1:7897", rendered)
+        self.assertIn("Yahoo 提示：检测到系统代理候选", rendered)
         self.assertIn("TDX 路径：G:\\new_tdx64\\vipdoc", rendered)
         self.assertIn("Tushare 配置：F:\\trade\\tdx\\config.local.yaml", rendered)
 
@@ -1028,6 +1039,40 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(payload["market_inventory"]["by_interval"], {"1d": 2, "1m": 2, "5m": 1})
         self.assertEqual(payload["market_inventory"]["by_market"]["sh"]["total_files"], 3)
         self.assertEqual(payload["market_inventory"]["by_market"]["ds"]["1d"], 1)
+
+    def test_build_yahoo_runtime_payload_prefers_env_proxy(self) -> None:
+        with (
+            patch.dict("os.environ", {"STRATEGY_STUDIO_PROXY": "http://127.0.0.1:7897"}, clear=False),
+            patch(
+                "strategy_studio.services.platform._detect_windows_system_proxy",
+                return_value={"proxy_candidate": "http://127.0.0.1:8888", "proxy_enabled": True, "proxy_source": "windows_internet_settings"},
+            ),
+        ):
+            payload = platform_service._build_yahoo_runtime_payload()
+
+        self.assertEqual(payload["status"], "ok")
+        self.assertTrue(payload["proxy_configured"])
+        self.assertEqual(payload["proxy_source"], "env")
+        self.assertEqual(payload["system_proxy_candidate"], "http://127.0.0.1:8888")
+        self.assertEqual(payload["warning_message"], "")
+
+    def test_build_yahoo_runtime_payload_reports_system_proxy_candidate(self) -> None:
+        with (
+            patch.dict("os.environ", {"STRATEGY_STUDIO_PROXY": ""}, clear=False),
+            patch(
+                "strategy_studio.services.platform._detect_windows_system_proxy",
+                return_value={"proxy_candidate": "http://127.0.0.1:7897", "proxy_enabled": False, "proxy_source": "windows_internet_settings"},
+            ),
+        ):
+            payload = platform_service._build_yahoo_runtime_payload()
+
+        self.assertEqual(payload["status"], "ok")
+        self.assertFalse(payload["proxy_configured"])
+        self.assertEqual(payload["proxy_source"], "none")
+        self.assertEqual(payload["system_proxy_candidate"], "http://127.0.0.1:7897")
+        self.assertFalse(payload["system_proxy_enabled"])
+        self.assertEqual(payload["system_proxy_source"], "windows_internet_settings")
+        self.assertIn("--proxy", payload["warning_message"])
 
     def test_heartbeat_missing_table_does_not_break_runtime_loop(self) -> None:
         missing_table_error = Exception("psycopg.errors.UndefinedTable: relation platform_heartbeats does not exist")

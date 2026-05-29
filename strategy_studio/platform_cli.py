@@ -368,7 +368,17 @@ def handle_check_runtime(args: argparse.Namespace) -> int:
         f"{yahoo.get('status', 'unknown')} "
         f"default_symbol_set={yahoo.get('default_symbol_set', '-')}"
         f" proxy_configured={yahoo.get('proxy_configured', False)}"
+        f" proxy_source={yahoo.get('proxy_source', 'none')}"
     )
+    if yahoo.get("system_proxy_candidate"):
+        print(
+            "Yahoo 代理候选："
+            f"{yahoo.get('system_proxy_candidate')} "
+            f"source={yahoo.get('system_proxy_source', 'none')} "
+            f"enabled={yahoo.get('system_proxy_enabled', False)}"
+        )
+    if yahoo.get("warning_message"):
+        print(f"Yahoo 提示：{yahoo.get('warning_message')}")
     print(
         "TDX："
         f"{tdx.get('status', 'unknown')} "
