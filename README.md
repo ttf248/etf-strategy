@@ -6,7 +6,7 @@ Strategy Studio 是一个中文优先的开源策略研究平台，用于从 Yah
 
 ## 功能概览
 
-- 行情数据：Yahoo 在线同步、通达信原始日线导入、Tushare 公司行动抓取、PostgreSQL 长期存储。
+- 行情数据：Yahoo 在线同步、通达信原始日线导入、Tushare 公司行动抓取、通达信前复权日线重算、PostgreSQL 长期存储。
 - 回测执行：API 入队，Worker 异步执行，报告结构化落库。
 - 参数模板：在数据库中管理策略、周期、执行口径和寻参空间。
 - 多策略研究：网格、定投、双均线趋势、MACD 趋势、唐奇安突破、放量突破、布林带均值回归、日线反弹、分钟反抽和指数回落网格共用同一套工作流。
@@ -72,6 +72,7 @@ py -3.13 main.py init-db
 py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
 py -3.13 main.py sync-now --provider tdx --interval 1d --limit 1
 py -3.13 main.py sync-now --provider tushare --symbol sh600000
+py -3.13 main.py sync-now --provider tdx_qfq --symbol sh600000 --interval 1d
 ```
 
 生产环境请通过 `STRATEGY_STUDIO_DATABASE_URL` 覆盖默认连接。仓库不再提交样例行情和历史报告；平台回测结果默认只写入数据库，日常使用应优先围绕数据库、API 和前端页面展开。
@@ -115,9 +116,10 @@ py -3.13 main.py sync-now --symbol 1810.HK --interval 15m --period 60d
 py -3.13 main.py sync-now --provider tdx --interval 1d --symbol sh600000
 py -3.13 main.py sync-now --provider tushare --symbol sh600000
 py -3.13 main.py sync-now --provider tushare --limit 10
+py -3.13 main.py sync-now --provider tdx_qfq --symbol sh600000 --interval 1d
 ```
 
-提交平台回测建议优先通过前端或 API 入队，Worker 会异步执行并把结果写回数据库；如需补齐行情覆盖或公司行动，可直接使用 `sync-now` 或前端数据覆盖页。当前 `provider=tdx` 已支持原始 `1d` 导入并写入统一主干表；`provider=tushare` 已支持按标的或小范围股票清单抓取 `dividend` 实施事件并写入 `corporate_action_events`。分钟线和前复权重算链路仍在继续接入。
+提交平台回测建议优先通过前端或 API 入队，Worker 会异步执行并把结果写回数据库；如需补齐行情覆盖或公司行动，可直接使用 `sync-now` 或前端数据覆盖页。当前 `provider=tdx` 已支持原始 `1d` 导入并写入统一主干表；`provider=tushare` 已支持按标的或小范围股票清单抓取 `dividend` 实施事件并写入 `corporate_action_events`；`provider=tdx_qfq` 已支持基于通达信原始日线和 Tushare 公司行动生成 `price_adjustment_segments` 与前复权 `1d` 序列。分钟线与更完整的前端任务面板仍在继续接入。
 
 批量研究：
 
@@ -188,6 +190,7 @@ tests/           unittest 测试
 后端：
 
 ```powershell
+py -3.13 -m unittest tests.test_qfq_data
 py -3.13 -m unittest tests.test_tushare_data
 py -3.13 -m unittest tests.test_platform_features tests.test_repo_contracts
 py -3.13 -m unittest tests.test_grid_strategy tests.test_yahoo_data

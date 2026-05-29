@@ -24,6 +24,7 @@ from strategy_studio.db.models import (
     MarketDataBar,
     MarketDataSeries,
     PriceBar,
+    PriceAdjustmentSegment,
     SourceFileManifest,
     utc_now,
 )
@@ -479,6 +480,67 @@ def replace_corporate_action_events_for_symbol(
                 rights_price=float(item.get("rights_price") or 0.0),
                 status=str(item.get("status") or "implemented"),
                 raw_payload_json=dict(item.get("raw_payload_json") or {}),
+            )
+        )
+    session.flush()
+    return inserted_count, updated_count, deleted_count
+
+
+def replace_price_adjustment_segments(
+    session: Session,
+    instrument: Instrument,
+    provider: DataProvider,
+    *,
+    action_provider: DataProvider | None,
+    adjustment_kind: str,
+    rows: list[dict[str, object]],
+) -> tuple[int, int, int]:
+    """按单个标的全量替换前复权公式区间。"""
+    existing_rows = session.scalars(
+        select(PriceAdjustmentSegment).where(
+            PriceAdjustmentSegment.instrument_id == instrument.id,
+            PriceAdjustmentSegment.provider_id == provider.id,
+            PriceAdjustmentSegment.adjustment_kind == adjustment_kind,
+        )
+    ).all()
+    existing_keys = {
+        (
+            row.start_date,
+            row.end_date,
+        )
+        for row in existing_rows
+    }
+    new_keys = {
+        (
+            item["start_date"],
+            item["end_date"],
+        )
+        for item in rows
+    }
+    updated_count = len(existing_keys & new_keys)
+    inserted_count = len(new_keys - existing_keys)
+    deleted_count = len(existing_keys - new_keys)
+
+    session.execute(
+        delete(PriceAdjustmentSegment).where(
+            PriceAdjustmentSegment.instrument_id == instrument.id,
+            PriceAdjustmentSegment.provider_id == provider.id,
+            PriceAdjustmentSegment.adjustment_kind == adjustment_kind,
+        )
+    )
+    for item in rows:
+        session.add(
+            PriceAdjustmentSegment(
+                instrument_id=instrument.id,
+                provider_id=provider.id,
+                action_provider_id=action_provider.id if action_provider is not None else None,
+                adjustment_kind=adjustment_kind,
+                start_date=item["start_date"],
+                end_date=item["end_date"],
+                adjust_a=item["adjust_a"],
+                adjust_b=item["adjust_b"],
+                status=str(item.get("status") or "ready"),
+                payload_json=dict(item.get("payload_json") or {}),
             )
         )
     session.flush()

@@ -9,6 +9,7 @@
 - Yahoo 同步：通过 `sync-now`、Scheduler 或前端同步按钮触发。
 - 通达信原始导入：通过 `sync-now --provider tdx` 或后续统一任务面板触发。
 - Tushare 公司行动抓取：通过 `sync-now --provider tushare` 或后续统一任务面板触发。
+- 通达信前复权重算：通过 `sync-now --provider tdx_qfq` 或后续统一任务面板触发。
 
 标准流程：
 
@@ -61,6 +62,25 @@ corporate_action_events + data_ingestion_jobs
 
 当前抓取按单个 `ts_code` 全量覆盖写入。这样即使源端修订了某次分红送转的日期或数值，也不会在库里留下陈旧事件。
 
+通达信前复权当前已接通的链路为：
+
+```text
+market_data_series(provider=tdx, adjustment_kind=raw, interval=1d)
+    +
+corporate_action_events(provider=tushare)
+    |
+    v
+price_adjustment_segments(provider=tdx_qfq, adjustment_kind=qfq)
+    |
+    v
+market_data_series(provider=tdx_qfq, adjustment_kind=qfq, interval=1d)
+    |
+    v
+market_data_bars + data_ingestion_jobs
+```
+
+当前前复权算法沿用外部 C++ 版本的核心思路：先把公司行动合并成日期级仿射事件，再反向预计算后缀 `A/B`，最后用连续区间映射整段日线，避免每条 K 线重复扫描全部事件。
+
 为后续接入通达信和 Tushare，数据库已预留多数据源基础结构：
 
 - `data_providers`：渠道注册。
@@ -71,7 +91,7 @@ corporate_action_events + data_ingestion_jobs
 - `source_file_manifests`：文件型来源的增量状态。
 - `data_ingestion_jobs` / `data_ingestion_job_items`：统一后台任务状态。
 
-这些表当前已接通 Yahoo 原始 K 线、通达信原始日线与 Tushare 公司行动三条子链路；前复权区间和统一前端任务面板仍会在后续子任务中继续接入。
+这些表当前已接通 Yahoo 原始 K 线、通达信原始日线、Tushare 公司行动和通达信前复权日线四条子链路；统一前端任务面板仍会在后续子任务中继续接入。
 
 ## 同步记录
 

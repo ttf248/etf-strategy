@@ -28,6 +28,7 @@ class PlatformFeatureTests(unittest.TestCase):
         check_db_args = parser.parse_args(["check-db", "--json"])
         sync_args = parser.parse_args(["sync-now", "--provider", "tdx", "--symbol", "sh600000", "--interval", "1d", "--force", "--limit", "3"])
         tushare_args = parser.parse_args(["sync-now", "--provider", "tushare", "--symbol", "600000.SH", "--limit", "2"])
+        qfq_args = parser.parse_args(["sync-now", "--provider", "tdx_qfq", "--symbol", "sh600000", "--interval", "1d", "--limit", "2"])
         api_args = parser.parse_args(["api", "--host", "127.0.0.1", "--port", "8000"])
         replace_args = parser.parse_args(["api", "--replace-existing"])
         worker_args = parser.parse_args(["worker", "--poll-interval", "3", "--max-concurrent-jobs", "2", "--max-optimization-workers", "4"])
@@ -43,6 +44,9 @@ class PlatformFeatureTests(unittest.TestCase):
         self.assertEqual(tushare_args.provider, "tushare")
         self.assertEqual(tushare_args.symbol, "600000.SH")
         self.assertEqual(tushare_args.limit, 2)
+        self.assertEqual(qfq_args.provider, "tdx_qfq")
+        self.assertEqual(qfq_args.symbol, "sh600000")
+        self.assertEqual(qfq_args.limit, 2)
         self.assertFalse(hasattr(init_args, "with_migration"))
         self.assertEqual(api_args.command, "api")
         self.assertEqual(api_args.host, "127.0.0.1")
@@ -155,6 +159,37 @@ class PlatformFeatureTests(unittest.TestCase):
             proxy=None,
             period=None,
             provider="tushare",
+            vipdoc_path=None,
+            force=False,
+            limit=1,
+        )
+
+    def test_web_api_market_data_sync_route_supports_tdx_qfq_provider(self) -> None:
+        app = create_app()
+        client = TestClient(app)
+
+        with patch(
+            "strategy_studio.web.app.sync_market_data",
+            return_value={"provider": "tdx_qfq", "ingestion_job_id": 12, "symbols_count": 1, "bars_inserted": 100, "bars_updated": 0, "status": "succeeded"},
+        ) as mock_sync:
+            response = client.post(
+                "/api/market-data/sync",
+                json={
+                    "provider": "tdx_qfq",
+                    "symbol": "sh600000",
+                    "interval": "1d",
+                    "limit": 1,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["provider"], "tdx_qfq")
+        mock_sync.assert_called_once_with(
+            symbol="sh600000",
+            interval="1d",
+            proxy=None,
+            period=None,
+            provider="tdx_qfq",
             vipdoc_path=None,
             force=False,
             limit=1,
@@ -517,6 +552,28 @@ class PlatformFeatureTests(unittest.TestCase):
         mock_tushare.assert_called_once_with(
             symbol="sh600000",
             limit=1,
+            force=True,
+        )
+
+    def test_sync_market_data_dispatches_tdx_qfq_provider(self) -> None:
+        with patch(
+            "strategy_studio.services.sync._rebuild_tdx_qfq_market_data",
+            return_value={"provider": "tdx_qfq", "ingestion_job_id": 18, "symbols_count": 1, "bars_inserted": 100, "bars_updated": 0, "status": "succeeded"},
+        ) as mock_qfq:
+            result = sync_market_data(
+                symbol="sh600000",
+                interval="1d",
+                proxy=None,
+                provider="tdx_qfq",
+                limit=2,
+                force=True,
+            )
+
+        self.assertEqual(result["provider"], "tdx_qfq")
+        mock_qfq.assert_called_once_with(
+            symbol="sh600000",
+            interval="1d",
+            limit=2,
             force=True,
         )
 

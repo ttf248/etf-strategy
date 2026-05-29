@@ -7,7 +7,9 @@ from pathlib import Path
 import re
 
 import pandas as pd
+from sqlalchemy import select
 
+from strategy_studio.data.qfq import apply_qfq_segment_frame, build_qfq_segment_frame
 from strategy_studio.data.tdx import (
     DAY_RECORD_SIZE,
     build_day_file_signature,
@@ -31,6 +33,7 @@ from strategy_studio.data.tushare import (
     TushareClient,
 )
 from strategy_studio.data.yahoo import download_price_bars, is_intraday_interval
+from strategy_studio.db.models import CorporateActionEvent, Instrument, InstrumentAlias, MarketDataBar, MarketDataSeries
 from strategy_studio.db.session import open_session
 from strategy_studio.db.settings import load_platform_settings
 from strategy_studio.repositories.market_data import (
@@ -44,6 +47,7 @@ from strategy_studio.repositories.market_data import (
     get_or_create_market_data_series,
     get_source_file_manifest,
     list_instruments,
+    replace_price_adjustment_segments,
     replace_corporate_action_events_for_symbol,
     upsert_market_data_frame,
     upsert_price_frame,
@@ -68,6 +72,7 @@ def sync_market_data(
     - `yahoo`：下载 Yahoo 行情，兼容旧 `price_bars` 并同步写入新主干表。
     - `tdx`：导入通达信原始 `.day` 日线，写入统一序列表与文件 manifest。
     - `tushare`：抓取 Tushare dividend 实施事件，写入 `corporate_action_events`。
+    - `tdx_qfq`：基于通达信原始日线和 Tushare 公司行动重建前复权日线。
     """
     normalized_provider = provider.strip().lower()
     if normalized_provider == "yahoo":
@@ -82,6 +87,8 @@ def sync_market_data(
         )
     if normalized_provider == "tushare":
         return _sync_tushare_corporate_actions(symbol=symbol, limit=limit, force=force)
+    if normalized_provider == "tdx_qfq":
+        return _rebuild_tdx_qfq_market_data(symbol=symbol, interval=interval, force=force, limit=limit)
     raise ValueError(f"不支持的数据渠道：{provider}")
 
 
@@ -696,6 +703,215 @@ def _sync_tushare_corporate_actions(
         }
 
 
+def _rebuild_tdx_qfq_market_data(
+    *,
+    symbol: str | None,
+    interval: str,
+    force: bool,
+    limit: int | None,
+) -> dict[str, object]:
+    if interval != "1d":
+        raise ValueError("当前前复权重算只支持 1d 日线。")
+
+    with open_session() as session:
+        raw_provider = ensure_data_provider(
+            session,
+            provider_key="tdx",
+            provider_name="通达信本地行情",
+            provider_type="market_data",
+            transport="filesystem",
+            timezone="Asia/Shanghai",
+            config_json={"supports_intervals": ["1d"]},
+            status="active",
+        )
+        action_provider = ensure_data_provider(
+            session,
+            provider_key="tushare",
+            provider_name="Tushare 公司行动",
+            provider_type="corporate_action",
+            transport="api",
+            timezone="Asia/Shanghai",
+            config_json={"supports_actions": ["dividend"]},
+            status="active",
+        )
+        provider = ensure_data_provider(
+            session,
+            provider_key="tdx_qfq",
+            provider_name="通达信前复权日线",
+            provider_type="derived_market_data",
+            transport="database",
+            timezone="Asia/Shanghai",
+            config_json={"depends_on": ["tdx", "tushare"], "supports_intervals": ["1d"], "adjustment_kind": "qfq"},
+            status="active",
+        )
+        targets = _resolve_tdx_qfq_targets(session, raw_provider=raw_provider, symbol=symbol, limit=limit)
+        if not targets:
+            raise ValueError("当前数据库中没有可重算前复权的通达信原始 1d 序列。")
+
+        ingestion_job = create_data_ingestion_job(
+            session,
+            provider=provider,
+            job_type="tdx_qfq_rebuild",
+            requested_via="manual",
+            target_scope_json={
+                "symbol": (symbol or "").strip().lower(),
+                "interval": interval,
+                "limit": limit or 0,
+            },
+            options_json={"force": force},
+        )
+        ingestion_job.targets_total = len(targets)
+        session.commit()
+
+        succeeded_symbols = 0
+        failed_symbols = 0
+        segment_rows_inserted = 0
+        segment_rows_updated = 0
+        segment_rows_deleted = 0
+        bar_rows_inserted = 0
+        bar_rows_updated = 0
+        action_rows_used = 0
+
+        for target in targets:
+            instrument = target["instrument"]
+            raw_series = target["series"]
+            raw_alias = target["alias"]
+            item = create_data_ingestion_job_item(
+                session,
+                ingestion_job,
+                item_key=f"{instrument.symbol}:{interval}:qfq",
+                source_symbol=instrument.symbol,
+                interval=interval,
+                provider=provider,
+            )
+            session.commit()
+            try:
+                raw_frame = _load_raw_market_data_frame(session, raw_series)
+                action_frame = _load_instrument_action_frame(session, instrument, action_provider)
+                segment_frame = build_qfq_segment_frame(raw_frame, action_frame)
+                segment_rows = segment_frame.to_dict(orient="records")
+                seg_inserted, seg_updated, seg_deleted = replace_price_adjustment_segments(
+                    session,
+                    instrument,
+                    provider,
+                    action_provider=action_provider,
+                    adjustment_kind="qfq",
+                    rows=segment_rows,
+                )
+                adjusted_frame = apply_qfq_segment_frame(raw_frame, segment_frame)
+                qfq_alias = get_or_create_instrument_alias(
+                    session,
+                    instrument=instrument,
+                    provider=provider,
+                    source_symbol=raw_alias.source_symbol,
+                    source_name=raw_alias.source_name or instrument.name,
+                    market=raw_alias.market or instrument.exchange,
+                    exchange=raw_alias.exchange or instrument.exchange,
+                    security_type=raw_alias.security_type,
+                    timezone=raw_alias.timezone,
+                )
+                qfq_series = get_or_create_market_data_series(
+                    session,
+                    instrument=instrument,
+                    provider=provider,
+                    alias=qfq_alias,
+                    interval=interval,
+                    market=raw_alias.market or instrument.exchange,
+                    exchange=raw_alias.exchange or instrument.exchange,
+                    adjustment_kind="qfq",
+                    session_type="regular",
+                    price_type="trade",
+                    bar_type="time",
+                    timezone=raw_alias.timezone or instrument.timezone,
+                )
+                bars_inserted, bars_updated = upsert_market_data_frame(session, qfq_series, adjusted_frame)
+                qfq_series.metadata_json = {
+                    **qfq_series.metadata_json,
+                    "raw_provider_key": raw_provider.provider_key,
+                    "raw_series_id": raw_series.id,
+                    "action_provider_key": action_provider.provider_key,
+                }
+                item.status = "succeeded"
+                item.stage = "completed"
+                item.instrument_id = instrument.id
+                item.series_id = qfq_series.id
+                item.rows_inserted = bars_inserted
+                item.rows_updated = bars_updated
+                item.details_json = {
+                    "provider_key": provider.provider_key,
+                    "raw_series_id": raw_series.id,
+                    "segment_rows": len(segment_rows),
+                    "segment_rows_inserted": seg_inserted,
+                    "segment_rows_updated": seg_updated,
+                    "segment_rows_deleted": seg_deleted,
+                    "action_rows_used": len(action_frame),
+                }
+                ingestion_job.targets_completed += 1
+                succeeded_symbols += 1
+                segment_rows_inserted += seg_inserted
+                segment_rows_updated += seg_updated
+                segment_rows_deleted += seg_deleted
+                bar_rows_inserted += bars_inserted
+                bar_rows_updated += bars_updated
+                action_rows_used += len(action_frame)
+                session.commit()
+            except Exception as exc:
+                session.rollback()
+                item = session.get(type(item), item.id)
+                ingestion_job = session.get(type(ingestion_job), ingestion_job.id)
+                if item is not None:
+                    item.status = "failed"
+                    item.stage = "failed"
+                    item.error_message = str(exc)
+                    item.details_json = {"provider_key": provider.provider_key, "raw_series_id": raw_series.id}
+                if ingestion_job is not None:
+                    ingestion_job.error_count += 1
+                failed_symbols += 1
+                session.commit()
+
+        ingestion_job = session.get(type(ingestion_job), ingestion_job.id)
+        if ingestion_job is None:
+            raise RuntimeError("统一导入任务记录丢失。")
+        ingestion_job.rows_inserted = bar_rows_inserted
+        ingestion_job.rows_updated = bar_rows_updated
+        ingestion_job.completed_at = datetime.now(UTC)
+        ingestion_job.summary_json = {
+            "provider_key": provider.provider_key,
+            "symbols_total": len(targets),
+            "symbols_succeeded": succeeded_symbols,
+            "symbols_failed": failed_symbols,
+            "segment_rows_inserted": segment_rows_inserted,
+            "segment_rows_updated": segment_rows_updated,
+            "segment_rows_deleted": segment_rows_deleted,
+            "bar_rows_inserted": bar_rows_inserted,
+            "bar_rows_updated": bar_rows_updated,
+            "action_rows_used": action_rows_used,
+        }
+        if failed_symbols == len(targets):
+            ingestion_job.status = "failed"
+            ingestion_job.error_message = "本次通达信前复权日线重算全部失败。"
+        elif failed_symbols:
+            ingestion_job.status = "partially_failed"
+            ingestion_job.error_message = f"本次通达信前复权日线重算有 {failed_symbols} 个标的失败。"
+        else:
+            ingestion_job.status = "succeeded"
+        session.commit()
+
+        return {
+            "provider": provider.provider_key,
+            "ingestion_job_id": ingestion_job.id,
+            "interval": interval,
+            "symbols_count": len(targets),
+            "bars_inserted": bar_rows_inserted,
+            "bars_updated": bar_rows_updated,
+            "segment_rows_inserted": segment_rows_inserted,
+            "segment_rows_updated": segment_rows_updated,
+            "segment_rows_deleted": segment_rows_deleted,
+            "action_rows_used": action_rows_used,
+            "status": ingestion_job.status,
+        }
+
+
 def _resolve_tdx_vipdoc_path(override_path: str | None) -> Path:
     settings = load_platform_settings()
     if override_path and override_path.strip():
@@ -752,3 +968,84 @@ def _resolve_tushare_targets(
     if not targets:
         raise ValueError("Tushare 股票清单为空，无法构造抓取目标。")
     return targets
+
+
+def _resolve_tdx_qfq_targets(
+    session,
+    *,
+    raw_provider,
+    symbol: str | None,
+    limit: int | None,
+) -> list[dict[str, object]]:
+    statement = (
+        select(MarketDataSeries, Instrument, InstrumentAlias)
+        .join(Instrument, Instrument.id == MarketDataSeries.instrument_id)
+        .join(InstrumentAlias, InstrumentAlias.id == MarketDataSeries.alias_id)
+        .where(
+            MarketDataSeries.provider_id == raw_provider.id,
+            MarketDataSeries.interval == "1d",
+            MarketDataSeries.adjustment_kind == "raw",
+        )
+        .order_by(Instrument.symbol)
+    )
+    if symbol and symbol.strip():
+        normalized_symbol = symbol.strip().upper()
+        statement = statement.where(
+            (Instrument.symbol == normalized_symbol) | (InstrumentAlias.source_symbol == normalized_symbol)
+        )
+    if limit is not None:
+        statement = statement.limit(limit)
+
+    return [
+        {"series": row[0], "instrument": row[1], "alias": row[2]}
+        for row in session.execute(statement).all()
+    ]
+
+
+def _load_raw_market_data_frame(session, series: MarketDataSeries) -> pd.DataFrame:
+    rows = session.scalars(
+        select(MarketDataBar)
+        .where(MarketDataBar.series_id == series.id)
+        .order_by(MarketDataBar.bar_time)
+    ).all()
+    if not rows:
+        raise ValueError(f"原始序列没有可用于前复权重算的日线数据：series_id={series.id}")
+    return pd.DataFrame(
+        [
+            {
+                "Date": row.bar_time,
+                "Open": row.open,
+                "High": row.high,
+                "Low": row.low,
+                "Close": row.close,
+                "Volume": row.volume,
+                "Amount": row.turnover_amount,
+            }
+            for row in rows
+        ]
+    )
+
+
+def _load_instrument_action_frame(session, instrument: Instrument, action_provider) -> pd.DataFrame:
+    rows = session.scalars(
+        select(CorporateActionEvent)
+        .where(
+            CorporateActionEvent.instrument_id == instrument.id,
+            CorporateActionEvent.provider_id == action_provider.id,
+        )
+        .order_by(CorporateActionEvent.ex_date, CorporateActionEvent.announce_date)
+    ).all()
+    return pd.DataFrame(
+        [
+            {
+                "ex_date": row.ex_date,
+                "cash_dividend": row.cash_dividend,
+                "stock_bonus_ratio": row.stock_bonus_ratio,
+                "stock_conversion_ratio": row.stock_conversion_ratio,
+                "rights_ratio": row.rights_ratio,
+                "rights_price": row.rights_price,
+                "status": row.status,
+            }
+            for row in rows
+        ]
+    )

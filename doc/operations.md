@@ -38,6 +38,7 @@ http://127.0.0.1:3000/platform
 py -3.13 main.py sync-now --symbol 1810.HK --interval 1d
 py -3.13 main.py sync-now --provider tdx --symbol sh600000 --interval 1d
 py -3.13 main.py sync-now --provider tushare --symbol sh600000
+py -3.13 main.py sync-now --provider tdx_qfq --symbol sh600000 --interval 1d
 ```
 
 同步所有已知标的：
@@ -52,6 +53,7 @@ py -3.13 main.py sync-now --interval 15m --period 60d
 py -3.13 main.py sync-now --provider tdx --interval 1d --limit 100
 py -3.13 main.py sync-now --provider tdx --interval 1d --force
 py -3.13 main.py sync-now --provider tushare --limit 20
+py -3.13 main.py sync-now --provider tdx_qfq --limit 20
 ```
 
 当前 `provider=tdx` 只支持原始 `1d` 日线，并依赖 `STRATEGY_STUDIO_TDX_VIPDOC` 或 `STRATEGY_STUDIO_TDX_CONFIG_PATH` 指向有效的 `vipdoc` 配置。
@@ -62,6 +64,13 @@ Tushare 公司行动抓取注意事项：
 - 当前只写入 `dividend` 中已有 `ex_date` 的实施事件，落库表为 `corporate_action_events`。
 - 当前未传 `--symbol` 时必须同时给 `--limit`，避免误触发全市场全量抓取。
 - 当前按单个 `ts_code` 全量覆盖写入；如果同一事件被源端修订，下一次抓取会直接替换旧记录。
+
+通达信前复权重算注意事项：
+
+- 当前只支持 `1d` 日线，并且要求数据库中已经存在同标的的 `provider=tdx` 原始 `1d` 序列。
+- 当前公司行动输入只读取 `provider=tushare` 下的已实施事件；没有公司行动时会生成恒等公式区间，输出价格等于原始价格。
+- 前复权任务会同时重建 `price_adjustment_segments` 和 `market_data_series(provider=tdx_qfq, adjustment_kind=qfq)` 对应的 `market_data_bars`。
+- 当前重复执行会全量重算目标标的，但由于 K 线与区间都按唯一键覆盖写入，不会生成重复行。
 
 Scheduler 默认在 Asia/Shanghai 时区运行：
 

@@ -41,18 +41,18 @@ http://127.0.0.1:8000/docs
 
 `POST /api/market-data/sync` 支持字段：
 
-- `symbol`：可选；`provider=yahoo` 为空时同步数据库中已知标的；`provider=tushare` 当前建议显式传单个标的。
-- `provider`：默认 `yahoo`；也可传 `tdx`、`tushare`。
+- `symbol`：可选；`provider=yahoo` 为空时同步数据库中已知标的；`provider=tushare` 和 `provider=tdx_qfq` 当前建议显式传单个标的。
+- `provider`：默认 `yahoo`；也可传 `tdx`、`tushare`、`tdx_qfq`。
 - `interval`：默认 `1d`。
 - `proxy`：可选代理。
 - `period`：分钟线窗口，例如 `60d` 或 `7d`。
 - `vipdoc_path`：通达信 `vipdoc` 根目录；仅 `provider=tdx` 时使用。
 - `force`：是否忽略文件 manifest 强制重建；仅 `provider=tdx` 时使用。
-- `limit`：`provider=tdx` 时限制文件数量；`provider=tushare` 时限制抓取股票数。当前 `provider=tushare` 未传 `symbol` 时必须提供 `limit`，避免误触发全市场全量抓取。
+- `limit`：`provider=tdx` 时限制文件数量；`provider=tushare` 或 `provider=tdx_qfq` 时限制抓取股票数。当前 `provider=tushare` 未传 `symbol` 时必须提供 `limit`，避免误触发全市场全量抓取。
 
-当前返回体除了旧版 `run_id / bars_inserted / bars_updated`，还会附带统一任务域的 `ingestion_job_id / series_bars_inserted / series_bars_updated`。其中 `provider=tushare` 会把“事件条数”复用到 `bars_inserted / bars_updated` 字段，并额外返回 `events_deleted / fetched_rows / implemented_rows`，便于前端后续切换到多数据源任务面板。
+当前返回体除了旧版 `run_id / bars_inserted / bars_updated`，还会附带统一任务域的 `ingestion_job_id / series_bars_inserted / series_bars_updated`。其中 `provider=tushare` 会把“事件条数”复用到 `bars_inserted / bars_updated` 字段，并额外返回 `events_deleted / fetched_rows / implemented_rows`；`provider=tdx_qfq` 会额外返回 `segment_rows_inserted / segment_rows_updated / segment_rows_deleted / action_rows_used`，便于前端后续切换到多数据源任务面板。
 
-当前 `provider=tdx` 只支持原始 `1d` 日线导入；`provider=tushare` 只支持 `dividend` 公司行动抓取，并且只把已有 `ex_date` 的实施事件写入 `corporate_action_events`。分钟线与前复权重算会继续沿同一任务域扩展。
+当前 `provider=tdx` 只支持原始 `1d` 日线导入；`provider=tushare` 只支持 `dividend` 公司行动抓取，并且只把已有 `ex_date` 的实施事件写入 `corporate_action_events`；`provider=tdx_qfq` 只支持基于数据库中现有的通达信原始 `1d` 日线和 Tushare 公司行动重算前复权 `1d` 日线。分钟线会继续沿同一任务域扩展。
 
 ## Backtests
 
