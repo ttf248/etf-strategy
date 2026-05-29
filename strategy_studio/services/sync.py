@@ -40,10 +40,11 @@ from strategy_studio.data.tushare import (
     TushareClient,
 )
 from strategy_studio.data.yahoo import download_price_bars, is_intraday_interval
-from strategy_studio.db.models import CorporateActionEvent, Instrument, InstrumentAlias, MarketDataBar, MarketDataSeries
+from strategy_studio.db.models import CorporateActionEvent, DataIngestionJob, Instrument, InstrumentAlias, MarketDataBar, MarketDataSeries
 from strategy_studio.db.session import open_session
 from strategy_studio.db.settings import load_platform_settings
 from strategy_studio.repositories.market_data import (
+    claim_next_queued_ingestion_job,
     create_data_ingestion_job,
     create_data_ingestion_job_item,
     create_sync_run,
@@ -64,6 +65,46 @@ from strategy_studio.symbols import SymbolSpec, get_symbol_set, resolve_symbol_s
 
 TDX_IMPORT_INTERVALS = ("1d", "1m", "5m")
 TDX_PIPELINE_INTERVALS = ("1d", "all")
+API_REQUESTED_VIA = "api"
+WORKER_CHILD_REQUESTED_VIA = "worker_child"
+
+_QUEUE_PROVIDER_DEFINITIONS: dict[str, dict[str, object]] = {
+    "yahoo": {
+        "provider_name": "Yahoo Finance",
+        "provider_type": "market_data",
+        "transport": "api",
+        "timezone": "UTC",
+        "config_json": {"supports_intervals": ["1d", "15m", "1m"]},
+    },
+    "tdx": {
+        "provider_name": "通达信本地行情",
+        "provider_type": "market_data",
+        "transport": "filesystem",
+        "timezone": "Asia/Shanghai",
+        "config_json": {"supports_intervals": ["1d", "1m", "5m", "all"]},
+    },
+    "tushare": {
+        "provider_name": "Tushare 公司行动",
+        "provider_type": "corporate_action",
+        "transport": "api",
+        "timezone": "Asia/Shanghai",
+        "config_json": {"supports_actions": ["dividend"]},
+    },
+    "tdx_qfq": {
+        "provider_name": "通达信前复权日线",
+        "provider_type": "derived_market_data",
+        "transport": "database",
+        "timezone": "Asia/Shanghai",
+        "config_json": {"supports_intervals": ["1d"], "adjustment_kind": "qfq"},
+    },
+    "tdx_pipeline": {
+        "provider_name": "A 股统一补数链路",
+        "provider_type": "workflow",
+        "transport": "orchestration",
+        "timezone": "Asia/Shanghai",
+        "config_json": {"supports_intervals": ["1d", "all"], "pipeline_steps": ["tdx", "tushare", "tdx_qfq"]},
+    },
+}
 
 
 def sync_market_data(
@@ -77,6 +118,7 @@ def sync_market_data(
     force: bool = False,
     limit: int | None = None,
     symbol_set: str | None = None,
+    requested_via: str | None = None,
 ) -> dict[str, object]:
     """按 provider 分发行情同步。
 
@@ -95,6 +137,7 @@ def sync_market_data(
             period=period,
             limit=limit,
             symbol_set=symbol_set,
+            requested_via=requested_via,
         )
     if normalized_provider == "tdx":
         return _sync_tdx_market_data(
@@ -103,11 +146,18 @@ def sync_market_data(
             vipdoc_path=vipdoc_path,
             force=force,
             limit=limit,
+            requested_via=requested_via,
         )
     if normalized_provider == "tushare":
-        return _sync_tushare_corporate_actions(symbol=symbol, limit=limit, force=force)
+        return _sync_tushare_corporate_actions(symbol=symbol, limit=limit, force=force, requested_via=requested_via)
     if normalized_provider == "tdx_qfq":
-        return _rebuild_tdx_qfq_market_data(symbol=symbol, interval=interval, force=force, limit=limit)
+        return _rebuild_tdx_qfq_market_data(
+            symbol=symbol,
+            interval=interval,
+            force=force,
+            limit=limit,
+            requested_via=requested_via,
+        )
     if normalized_provider == "tdx_pipeline":
         return _run_tdx_pipeline_workflow(
             symbol=symbol,
@@ -115,8 +165,186 @@ def sync_market_data(
             vipdoc_path=vipdoc_path,
             force=force,
             limit=limit,
+            requested_via=requested_via,
         )
     raise ValueError(f"不支持的数据渠道：{provider}")
+
+
+def enqueue_market_data_sync(
+    *,
+    symbol: str | None,
+    symbol_set: str | None,
+    interval: str,
+    proxy: str | None,
+    period: str | None,
+    provider: str = "yahoo",
+    vipdoc_path: str | None = None,
+    force: bool = False,
+    limit: int | None = None,
+) -> dict[str, object]:
+    normalized_provider = provider.strip().lower()
+    if normalized_provider not in _QUEUE_PROVIDER_DEFINITIONS:
+        raise ValueError(f"不支持的数据渠道：{provider}")
+
+    provider_definition = _QUEUE_PROVIDER_DEFINITIONS[normalized_provider]
+    requested_symbol = (symbol or "").strip()
+    normalized_interval = (interval or "1d").strip().lower() or "1d"
+    target_scope_json = {
+        "provider": normalized_provider,
+        "symbol": requested_symbol,
+        "symbol_set": (symbol_set or "").strip(),
+        "interval": normalized_interval,
+        "proxy": (proxy or "").strip(),
+        "period": (period or "").strip(),
+        "vipdoc_path": (vipdoc_path or "").strip(),
+    }
+    options_json = {
+        "force": force,
+        "limit": int(limit or 0),
+    }
+
+    with open_session() as session:
+        provider_row = ensure_data_provider(
+            session,
+            provider_key=normalized_provider,
+            provider_name=str(provider_definition["provider_name"]),
+            provider_type=str(provider_definition["provider_type"]),
+            transport=str(provider_definition["transport"]),
+            timezone=str(provider_definition["timezone"]),
+            config_json=dict(provider_definition.get("config_json") or {}),
+            status="active",
+        )
+        ingestion_job = create_data_ingestion_job(
+            session,
+            provider=provider_row,
+            job_type=f"{normalized_provider}_request",
+            requested_via=API_REQUESTED_VIA,
+            target_scope_json=target_scope_json,
+            options_json=options_json,
+            initial_status="queued",
+        )
+        ingestion_job.targets_total = 1
+        ingestion_job.summary_json = {
+            "queued_request": True,
+            "requested_provider": normalized_provider,
+            "requested_symbol": requested_symbol,
+            "requested_interval": normalized_interval,
+            "requested_symbol_set": target_scope_json["symbol_set"],
+        }
+        session.commit()
+        return {
+            "provider": normalized_provider,
+            "ingestion_job_id": ingestion_job.id,
+            "status": "queued",
+            "target_symbol": requested_symbol,
+            "interval": normalized_interval,
+            "requested_via": API_REQUESTED_VIA,
+        }
+
+
+def execute_next_market_data_job(worker_name: str | None = None) -> int | None:
+    with open_session() as session:
+        job = claim_next_queued_ingestion_job(session, requested_via=API_REQUESTED_VIA)
+        if job is None:
+            return None
+        job_id = job.id
+        target_scope_json = dict(job.target_scope_json or {})
+        options_json = dict(job.options_json or {})
+        job.summary_json = {
+            **dict(job.summary_json or {}),
+            "worker_name": worker_name or "",
+            "worker_stage": "running",
+        }
+        session.commit()
+
+    try:
+        result = sync_market_data(
+            symbol=str(target_scope_json.get("symbol") or "") or None,
+            symbol_set=str(target_scope_json.get("symbol_set") or "") or None,
+            interval=str(target_scope_json.get("interval") or "1d"),
+            proxy=str(target_scope_json.get("proxy") or "") or None,
+            period=str(target_scope_json.get("period") or "") or None,
+            provider=str(target_scope_json.get("provider") or "yahoo"),
+            vipdoc_path=str(target_scope_json.get("vipdoc_path") or "") or None,
+            force=bool(options_json.get("force")),
+            limit=int(options_json.get("limit") or 0) or None,
+            requested_via=WORKER_CHILD_REQUESTED_VIA,
+        )
+    except Exception as exc:
+        _finalize_enqueued_market_data_job_failure(job_id, str(exc), worker_name=worker_name)
+        return job_id
+
+    _finalize_enqueued_market_data_job_success(job_id, result, worker_name=worker_name)
+    return job_id
+
+
+def _normalize_summary_value(value: object) -> object:
+    if isinstance(value, dict):
+        return {str(key): _normalize_summary_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_normalize_summary_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_normalize_summary_value(item) for item in value]
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat(sep=" ")
+    if isinstance(value, datetime):
+        return value.isoformat(sep=" ")
+    if hasattr(value, "item"):
+        return value.item()
+    return value
+
+
+def _finalize_enqueued_market_data_job_success(
+    job_id: int,
+    result: dict[str, object],
+    *,
+    worker_name: str | None = None,
+) -> None:
+    child_ingestion_job_ids = _collect_child_ingestion_job_ids(result)
+    normalized_summary = _normalize_summary_value(result)
+    with open_session() as session:
+        job = session.get(DataIngestionJob, job_id)
+        if job is None:
+            return
+        normalized_status = str(result.get("status") or "completed")
+        job.status = normalized_status
+        job.targets_total = 1
+        job.targets_completed = 1
+        job.rows_inserted = int(result.get("series_bars_inserted") or result.get("bars_inserted") or 0)
+        job.rows_updated = int(result.get("series_bars_updated") or result.get("bars_updated") or 0)
+        job.error_count = 0 if normalized_status in {"succeeded", "completed", "skipped"} else max(1, int(job.error_count or 0))
+        job.error_message = str(result.get("error_message") or "")
+        job.completed_at = datetime.now(UTC)
+        job.summary_json = {
+            **dict(job.summary_json or {}),
+            **dict(normalized_summary if isinstance(normalized_summary, dict) else {}),
+            "child_ingestion_job_ids": child_ingestion_job_ids,
+            "ingestion_job_ids": child_ingestion_job_ids,
+            "worker_name": worker_name or "",
+            "worker_stage": "completed",
+        }
+        session.commit()
+
+
+def _finalize_enqueued_market_data_job_failure(job_id: int, error_message: str, *, worker_name: str | None = None) -> None:
+    with open_session() as session:
+        job = session.get(DataIngestionJob, job_id)
+        if job is None:
+            return
+        job.status = "failed"
+        job.targets_total = 1
+        job.targets_completed = 1
+        job.error_count = max(1, int(job.error_count or 0))
+        job.error_message = error_message
+        job.completed_at = datetime.now(UTC)
+        job.summary_json = {
+            **dict(job.summary_json or {}),
+            "worker_name": worker_name or "",
+            "worker_stage": "failed",
+        }
+        session.commit()
 
 
 def _run_tdx_pipeline_workflow(
@@ -126,6 +354,7 @@ def _run_tdx_pipeline_workflow(
     vipdoc_path: str | None,
     force: bool,
     limit: int | None,
+    requested_via: str | None = None,
 ) -> dict[str, object]:
     normalized_interval = interval.strip().lower()
     if normalized_interval not in TDX_PIPELINE_INTERVALS:
@@ -173,7 +402,7 @@ def _run_tdx_pipeline_workflow(
             session,
             provider=provider,
             job_type="tdx_pipeline_workflow",
-            requested_via="manual",
+            requested_via=requested_via or "manual",
             target_scope_json={
                 "symbol": normalized_symbol,
                 "interval": normalized_interval,
@@ -251,6 +480,7 @@ def _run_tdx_pipeline_workflow(
                         vipdoc_path=vipdoc_path,
                         force=force,
                         limit=limit,
+                        requested_via=requested_via,
                     )
                     if not normalized_symbol:
                         pipeline_target_symbols = _resolve_tdx_pipeline_batch_symbols(limit=limit)
@@ -260,6 +490,7 @@ def _run_tdx_pipeline_workflow(
                         limit=limit,
                         force=force,
                         target_symbols=pipeline_target_symbols,
+                        requested_via=requested_via,
                     )
                 else:
                     result = _rebuild_tdx_qfq_market_data(
@@ -268,6 +499,7 @@ def _run_tdx_pipeline_workflow(
                         force=force,
                         limit=limit,
                         target_symbols=pipeline_target_symbols,
+                        requested_via=requested_via,
                     )
 
                 child_ids = _collect_child_ingestion_job_ids(result)
@@ -437,6 +669,7 @@ def _sync_yahoo_market_data(
     period: str | None,
     limit: int | None,
     symbol_set: str | None,
+    requested_via: str | None = None,
 ) -> dict[str, object]:
     with open_session() as session:
         provider = ensure_data_provider(
@@ -461,7 +694,7 @@ def _sync_yahoo_market_data(
             session,
             provider=provider,
             job_type="yahoo_sync",
-            requested_via="manual" if is_manual_request else "scheduler",
+            requested_via=requested_via or ("manual" if is_manual_request else "scheduler"),
             target_scope_json={"symbols": symbols, "interval": interval, "symbol_set": symbol_set or ""},
             options_json={"proxy_configured": bool(proxy), "period": period or "", "limit": limit or 0},
         )
@@ -633,6 +866,7 @@ def _sync_tdx_market_data(
     vipdoc_path: str | None,
     force: bool,
     limit: int | None,
+    requested_via: str | None = None,
 ) -> dict[str, object]:
     normalized_interval = interval.strip().lower()
     if normalized_interval != "all":
@@ -643,6 +877,7 @@ def _sync_tdx_market_data(
             force=force,
             limit=limit,
             allow_empty=False,
+            requested_via=requested_via,
         )
 
     interval_results: list[dict[str, object]] = []
@@ -658,6 +893,7 @@ def _sync_tdx_market_data(
                 force=force,
                 limit=limit,
                 allow_empty=True,
+                requested_via=requested_via,
             )
         except Exception as exc:
             if not first_error_message:
@@ -754,6 +990,7 @@ def _sync_tdx_single_interval_market_data(
     force: bool,
     limit: int | None,
     allow_empty: bool,
+    requested_via: str | None = None,
 ) -> dict[str, object]:
     tdx_period = interval_to_period(interval)
     file_kind = file_kind_for_interval(interval)
@@ -800,7 +1037,7 @@ def _sync_tdx_single_interval_market_data(
             session,
             provider=provider,
             job_type="tdx_raw_import",
-            requested_via="manual",
+            requested_via=requested_via or "manual",
             target_scope_json={
                 "symbol": (symbol or "").strip().lower(),
                 "interval": interval,
@@ -1085,6 +1322,7 @@ def _sync_tushare_corporate_actions(
     limit: int | None,
     force: bool,
     target_symbols: list[str] | None = None,
+    requested_via: str | None = None,
 ) -> dict[str, object]:
     client = TushareClient(load_tushare_client_settings())
     targets = _resolve_tushare_targets(client, symbol=symbol, limit=limit, target_symbols=target_symbols)
@@ -1108,7 +1346,7 @@ def _sync_tushare_corporate_actions(
             session,
             provider=provider,
             job_type="tushare_corporate_actions",
-            requested_via="manual",
+            requested_via=requested_via or "manual",
             target_scope_json={
                 "symbol": (symbol or "").strip(),
                 "limit": limit or 0,
@@ -1266,6 +1504,7 @@ def _rebuild_tdx_qfq_market_data(
     force: bool,
     limit: int | None,
     target_symbols: list[str] | None = None,
+    requested_via: str | None = None,
 ) -> dict[str, object]:
     if interval != "1d":
         raise ValueError("当前前复权重算只支持 1d 日线。")
@@ -1315,7 +1554,7 @@ def _rebuild_tdx_qfq_market_data(
             session,
             provider=provider,
             job_type="tdx_qfq_rebuild",
-            requested_via="manual",
+            requested_via=requested_via or "manual",
             target_scope_json={
                 "symbol": (symbol or "").strip().lower(),
                 "interval": interval,

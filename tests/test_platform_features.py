@@ -287,8 +287,8 @@ class PlatformFeatureTests(unittest.TestCase):
         client = TestClient(app)
 
         with patch(
-            "strategy_studio.web.app.sync_market_data",
-            return_value={"provider": "tdx", "ingestion_job_id": 3, "symbols_count": 1, "bars_inserted": 200, "bars_updated": 10, "status": "succeeded"},
+            "strategy_studio.web.app.enqueue_market_data_sync",
+            return_value={"provider": "tdx", "ingestion_job_id": 3, "status": "queued"},
         ) as mock_sync:
             response = client.post(
                 "/api/market-data/sync",
@@ -321,8 +321,8 @@ class PlatformFeatureTests(unittest.TestCase):
         client = TestClient(app)
 
         with patch(
-            "strategy_studio.web.app.sync_market_data",
-            return_value={"provider": "tdx", "ingestion_job_id": 5, "symbols_count": 1, "bars_inserted": 480, "bars_updated": 12, "status": "succeeded"},
+            "strategy_studio.web.app.enqueue_market_data_sync",
+            return_value={"provider": "tdx", "ingestion_job_id": 5, "status": "queued"},
         ) as mock_sync:
             response = client.post(
                 "/api/market-data/sync",
@@ -354,8 +354,8 @@ class PlatformFeatureTests(unittest.TestCase):
         client = TestClient(app)
 
         with patch(
-            "strategy_studio.web.app.sync_market_data",
-            return_value={"provider": "tdx", "ingestion_job_ids": [31, 32, 33], "symbols_count": 3, "bars_inserted": 960, "bars_updated": 15, "status": "succeeded"},
+            "strategy_studio.web.app.enqueue_market_data_sync",
+            return_value={"provider": "tdx", "ingestion_job_id": 31, "status": "queued"},
         ) as mock_sync:
             response = client.post(
                 "/api/market-data/sync",
@@ -386,8 +386,8 @@ class PlatformFeatureTests(unittest.TestCase):
         client = TestClient(app)
 
         with patch(
-            "strategy_studio.web.app.sync_market_data",
-            return_value={"provider": "tushare", "ingestion_job_id": 7, "symbols_count": 1, "bars_inserted": 3, "bars_updated": 1, "status": "succeeded"},
+            "strategy_studio.web.app.enqueue_market_data_sync",
+            return_value={"provider": "tushare", "ingestion_job_id": 7, "status": "queued"},
         ) as mock_sync:
             response = client.post(
                 "/api/market-data/sync",
@@ -418,8 +418,8 @@ class PlatformFeatureTests(unittest.TestCase):
         client = TestClient(app)
 
         with patch(
-            "strategy_studio.web.app.sync_market_data",
-            return_value={"provider": "tdx_qfq", "ingestion_job_id": 12, "symbols_count": 1, "bars_inserted": 100, "bars_updated": 0, "status": "succeeded"},
+            "strategy_studio.web.app.enqueue_market_data_sync",
+            return_value={"provider": "tdx_qfq", "ingestion_job_id": 12, "status": "queued"},
         ) as mock_sync:
             response = client.post(
                 "/api/market-data/sync",
@@ -450,15 +450,11 @@ class PlatformFeatureTests(unittest.TestCase):
         client = TestClient(app)
 
         with patch(
-            "strategy_studio.web.app.sync_market_data",
+            "strategy_studio.web.app.enqueue_market_data_sync",
             return_value={
                 "provider": "tdx_pipeline",
                 "ingestion_job_id": 15,
-                "child_ingestion_job_ids": [21, 22, 23, 24, 25],
-                "symbols_count": 1,
-                "bars_inserted": 305,
-                "bars_updated": 2,
-                "status": "succeeded",
+                "status": "queued",
             },
         ) as mock_sync:
             response = client.post(
@@ -486,6 +482,78 @@ class PlatformFeatureTests(unittest.TestCase):
             force=True,
             limit=1,
         )
+
+    def test_execute_next_market_data_job_reuses_sync_pipeline_for_queued_api_job(self) -> None:
+        queued_job = SimpleNamespace(
+            id=51,
+            target_scope_json={
+                "provider": "tdx",
+                "symbol": "sh600000",
+                "symbol_set": "",
+                "interval": "1d",
+                "proxy": "",
+                "period": "",
+                "vipdoc_path": "G:/new_tdx64/vipdoc",
+            },
+            options_json={"force": True, "limit": 2},
+            summary_json={},
+            status="queued",
+            targets_total=0,
+            targets_completed=0,
+            rows_inserted=0,
+            rows_updated=0,
+            error_count=0,
+            error_message="",
+            completed_at=None,
+        )
+        first_session = SimpleNamespace(commit=lambda: None)
+        second_session = SimpleNamespace(commit=lambda: None, get=lambda model, job_id: queued_job if job_id == 51 else None)
+
+        class _SessionContext:
+            def __init__(self, session: SimpleNamespace) -> None:
+                self._session = session
+
+            def __enter__(self) -> SimpleNamespace:
+                return self._session
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+        with patch("strategy_studio.services.sync.open_session", side_effect=[_SessionContext(first_session), _SessionContext(second_session)]), patch(
+            "strategy_studio.services.sync.claim_next_queued_ingestion_job",
+            return_value=queued_job,
+        ), patch(
+            "strategy_studio.services.sync.sync_market_data",
+            return_value={
+                "provider": "tdx",
+                "ingestion_job_id": 91,
+                "ingestion_job_ids": [91],
+                "symbols_count": 2,
+                "bars_inserted": 200,
+                "bars_updated": 10,
+                "status": "succeeded",
+            },
+        ) as mock_sync:
+            result = sync_service.execute_next_market_data_job(worker_name="worker-1")
+
+        self.assertEqual(result, 51)
+        mock_sync.assert_called_once_with(
+            symbol="sh600000",
+            symbol_set=None,
+            interval="1d",
+            proxy=None,
+            period=None,
+            provider="tdx",
+            vipdoc_path="G:/new_tdx64/vipdoc",
+            force=True,
+            limit=2,
+            requested_via="worker_child",
+        )
+        self.assertEqual(queued_job.status, "succeeded")
+        self.assertEqual(queued_job.rows_inserted, 200)
+        self.assertEqual(queued_job.rows_updated, 10)
+        self.assertEqual(queued_job.summary_json["child_ingestion_job_ids"], [91])
+        self.assertEqual(queued_job.summary_json["worker_name"], "worker-1")
 
     def test_web_api_platform_database_check_route(self) -> None:
         app = create_app()
@@ -864,6 +932,7 @@ class PlatformFeatureTests(unittest.TestCase):
             proxy=None,
             period="60d",
             limit=100,
+            requested_via=None,
         )
 
     def test_sync_market_data_dispatches_tdx_provider(self) -> None:
@@ -888,6 +957,7 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=True,
             limit=5,
+            requested_via=None,
         )
 
     def test_sync_market_data_dispatches_tdx_minute_provider(self) -> None:
@@ -912,6 +982,7 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=False,
             limit=1,
+            requested_via=None,
         )
 
     def test_sync_market_data_dispatches_tdx_all_provider(self) -> None:
@@ -936,6 +1007,7 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=True,
             limit=2,
+            requested_via=None,
         )
 
     def test_tdx_all_interval_orchestrates_supported_intervals(self) -> None:
@@ -996,6 +1068,7 @@ class PlatformFeatureTests(unittest.TestCase):
             symbol="sh600000",
             limit=1,
             force=True,
+            requested_via=None,
         )
 
     def test_sync_market_data_dispatches_tdx_qfq_provider(self) -> None:
@@ -1018,6 +1091,7 @@ class PlatformFeatureTests(unittest.TestCase):
             interval="1d",
             limit=2,
             force=True,
+            requested_via=None,
         )
 
     def test_sync_market_data_dispatches_tdx_pipeline_provider(self) -> None:
@@ -1050,6 +1124,7 @@ class PlatformFeatureTests(unittest.TestCase):
             vipdoc_path="G:/new_tdx64/vipdoc",
             force=True,
             limit=2,
+            requested_via=None,
         )
 
     def test_tdx_pipeline_workflow_aggregates_child_provider_results(self) -> None:
@@ -1268,6 +1343,7 @@ class PlatformFeatureTests(unittest.TestCase):
             limit=2,
             force=True,
             target_symbols=["SH600000", "SZ000001"],
+            requested_via=None,
         )
         mock_qfq.assert_called_once_with(
             symbol=None,
@@ -1275,6 +1351,7 @@ class PlatformFeatureTests(unittest.TestCase):
             force=True,
             limit=2,
             target_symbols=["SH600000", "SZ000001"],
+            requested_via=None,
         )
         self.assertEqual(result["provider"], "tdx_pipeline")
         self.assertEqual(result["symbols_count"], 2)
@@ -1750,8 +1827,8 @@ if __name__ == "__main__":
         client = TestClient(app)
 
         with patch(
-            "strategy_studio.web.app.sync_market_data",
-            return_value={"provider": "yahoo", "ingestion_job_id": 5, "symbols_count": 100, "bars_inserted": 2000, "bars_updated": 0, "status": "succeeded"},
+            "strategy_studio.web.app.enqueue_market_data_sync",
+            return_value={"provider": "yahoo", "ingestion_job_id": 5, "status": "queued"},
         ) as mock_sync:
             response = client.post(
                 "/api/market-data/sync",

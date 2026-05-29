@@ -73,6 +73,15 @@ export type MarketDataIngestionJobDetail = MarketDataIngestionJob & {
   items: MarketDataIngestionJobItem[];
 };
 
+export type MarketDataSyncEnqueueResult = {
+  provider: string;
+  ingestion_job_id: number;
+  status: string;
+  target_symbol: string;
+  interval: string;
+  requested_via: string;
+};
+
 export type MarketDataSeriesRow = {
   series_id: number;
   provider_key: string;

@@ -37,7 +37,7 @@ from strategy_studio.services.platform import (
     fetch_platform_status,
     restart_platform_process,
 )
-from strategy_studio.services.sync import sync_market_data
+from strategy_studio.services.sync import enqueue_market_data_sync
 from strategy_studio.services.templates import (
     create_strategy_template_entry,
     get_strategy_template_detail,
@@ -146,17 +146,20 @@ def create_app() -> FastAPI:
 
     @app.post("/api/market-data/sync")
     def post_sync(request: SyncRequestModel) -> dict[str, object]:
-        return sync_market_data(
-            symbol=request.symbol,
-            symbol_set=request.symbol_set,
-            interval=request.interval,
-            proxy=request.proxy,
-            period=request.period,
-            provider=request.provider,
-            vipdoc_path=request.vipdoc_path,
-            force=request.force,
-            limit=request.limit,
-        )
+        try:
+            return enqueue_market_data_sync(
+                symbol=request.symbol,
+                symbol_set=request.symbol_set,
+                interval=request.interval,
+                proxy=request.proxy,
+                period=request.period,
+                provider=request.provider,
+                vipdoc_path=request.vipdoc_path,
+                force=request.force,
+                limit=request.limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/backtests")
     def post_backtest(request: BacktestRequestModel) -> dict[str, object]:

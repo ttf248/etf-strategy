@@ -14,6 +14,7 @@ import {
   type MarketDataIngestionJobItem,
   type MarketDataProviderSummary,
   type MarketDataSeriesRow,
+  type MarketDataSyncEnqueueResult,
   type MarketDataSourceFileManifestRow,
   type MarketDataSymbolDiagnostics,
   type MarketDataStats,
@@ -273,6 +274,10 @@ function extractWorkflowResults(job: MarketDataIngestionJob): WorkflowStepResult
 function extractChildIngestionJobIds(job: MarketDataIngestionJob): number[] {
   const summary = isRecord(job.summary_json) ? job.summary_json : {};
   return toNumberArray(summary.child_ingestion_job_ids ?? summary.ingestion_job_ids);
+}
+
+function ingestionJobIsPending(status: string): boolean {
+  return status === "queued" || status === "running";
 }
 
 function coverageStage(profile: CoverageProfile) {
@@ -685,6 +690,34 @@ export function MarketDataView() {
     });
   }, [messageApi]);
 
+  useEffect(() => {
+    if (!stats?.recent_ingestion_jobs.some((job) => ingestionJobIsPending(job.status))) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      void loadStatsData(false);
+      if (selectedJobId !== null) {
+        void (async () => {
+          const detail = await apiFetchSafe<MarketDataIngestionJobDetail>(`/api/market-data/ingestion-jobs/${selectedJobId}`);
+          if (detail.ok) {
+            setSelectedJobDetail(detail.data);
+          }
+        })();
+      }
+      if (diagnosticSymbol) {
+        void (async () => {
+          const result = await apiFetchSafe<MarketDataSymbolDiagnostics>(
+            `/api/market-data/symbol-diagnostics?symbol=${encodeURIComponent(diagnosticSymbol)}&limit=12`,
+          );
+          if (result.ok) {
+            setSymbolDiagnostics(result.data);
+          }
+        })();
+      }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [diagnosticSymbol, selectedJobId, stats]);
+
   function syncPeriodForInterval(targetInterval: string) {
     return targetInterval === "15m" ? "60d" : targetInterval === "1m" ? "7d" : undefined;
   }
@@ -712,18 +745,13 @@ export function MarketDataView() {
   async function syncAll() {
     setSyncing(true);
     try {
-      await apiFetch("/api/market-data/sync", {
+      const result = await apiFetch<MarketDataSyncEnqueueResult>("/api/market-data/sync", {
         method: "POST",
         body: JSON.stringify({ interval: syncInterval, period: syncPeriodForInterval(syncInterval) }),
       });
-      messageApi.success("同步已完成");
+      messageApi.success(`任务 #${result.ingestion_job_id} 已入队，等待 Worker 执行`);
       await loadStatsData(false);
-      await loadProviderSeriesData(seriesProviderFilter, false);
-      await loadQfqDiagnosticsData(qfqSymbolFilter, false);
-      await loadManifestData(manifestSymbolFilter, manifestIntervalFilter, false);
-      if (diagnosticSymbol) {
-        await loadSymbolDiagnosticsData(diagnosticSymbol, false);
-      }
+      await openJobDetail(result.ingestion_job_id, false);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
     } finally {
@@ -744,18 +772,13 @@ export function MarketDataView() {
     setSyncingSymbol(true);
     setSyncInterval(targetInterval);
     try {
-      await apiFetch("/api/market-data/sync", {
+      const result = await apiFetch<MarketDataSyncEnqueueResult>("/api/market-data/sync", {
         method: "POST",
         body: JSON.stringify({ symbol: targetSymbol, interval: targetInterval, period: syncPeriodForInterval(targetInterval) }),
       });
-      messageApi.success(`${targetSymbol} ${targetInterval} 同步完成`);
+      messageApi.success(`任务 #${result.ingestion_job_id} 已入队：${targetSymbol} ${targetInterval}`);
       await loadStatsData(false);
-      await loadProviderSeriesData(seriesProviderFilter, false);
-      await loadQfqDiagnosticsData(qfqSymbolFilter || targetSymbol, false);
-      await loadManifestData(manifestSymbolFilter || targetSymbol, manifestIntervalFilter, false);
-      if (diagnosticSymbol === targetSymbol) {
-        await loadSymbolDiagnosticsData(targetSymbol, false);
-      }
+      await openJobDetail(result.ingestion_job_id, false);
       setTableKeyword(targetSymbol);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
@@ -771,7 +794,7 @@ export function MarketDataView() {
       } else {
         setSyncingActionKey(`${providerKey}:${mode}`);
         try {
-          await apiFetch("/api/market-data/sync", {
+          const result = await apiFetch<MarketDataSyncEnqueueResult>("/api/market-data/sync", {
             method: "POST",
             body: JSON.stringify({
               provider: "yahoo",
@@ -781,14 +804,9 @@ export function MarketDataView() {
               limit: batchLimit,
             }),
           });
-          messageApi.success(`Yahoo 默认样本池 ${syncInterval} 同步完成`);
+          messageApi.success(`任务 #${result.ingestion_job_id} 已入队：Yahoo 默认样本池 ${syncInterval}`);
           await loadStatsData(false);
-          await loadProviderSeriesData(seriesProviderFilter, false);
-          await loadQfqDiagnosticsData(qfqSymbolFilter, false);
-          await loadManifestData(manifestSymbolFilter, manifestIntervalFilter, false);
-          if (diagnosticSymbol) {
-            await loadSymbolDiagnosticsData(diagnosticSymbol, false);
-          }
+          await openJobDetail(result.ingestion_job_id, false);
         } catch (error) {
           messageApi.error(error instanceof Error ? error.message : "同步失败");
         } finally {
@@ -817,22 +835,17 @@ export function MarketDataView() {
 
     setSyncingActionKey(actionKey);
     try {
-      await apiFetch("/api/market-data/sync", {
+      const result = await apiFetch<MarketDataSyncEnqueueResult>("/api/market-data/sync", {
         method: "POST",
         body: JSON.stringify(payload),
       });
       const actionLabel =
         mode === "current"
-          ? `${providerKey} ${providerIntervalDisplay(providerKey)} 当前标的任务已完成`
-          : `${providerKey} ${providerIntervalDisplay(providerKey)} 批量任务已完成`;
+          ? `${providerKey} ${providerIntervalDisplay(providerKey)} 当前标的任务已入队`
+          : `${providerKey} ${providerIntervalDisplay(providerKey)} 批量任务已入队`;
       messageApi.success(actionLabel);
       await loadStatsData(false);
-      await loadProviderSeriesData(seriesProviderFilter, false);
-      await loadQfqDiagnosticsData(qfqSymbolFilter || normalizedTarget || "", false);
-      await loadManifestData(manifestSymbolFilter || normalizedTarget || "", manifestIntervalFilter, false);
-      if (diagnosticSymbol && (!normalizedTarget || diagnosticSymbol === normalizedTarget)) {
-        await loadSymbolDiagnosticsData(diagnosticSymbol, false);
-      }
+      await openJobDetail(result.ingestion_job_id, false);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
     } finally {
@@ -840,15 +853,19 @@ export function MarketDataView() {
     }
   }
 
-  async function openJobDetail(jobId: number) {
+  async function openJobDetail(jobId: number, showLoading: boolean = true) {
     setSelectedJobId(jobId);
-    setJobDetailLoading(true);
+    if (showLoading) {
+      setJobDetailLoading(true);
+    }
     try {
       const detail = await apiFetch<MarketDataIngestionJobDetail>(`/api/market-data/ingestion-jobs/${jobId}`);
       setSelectedJobDetail(detail);
     } catch (error) {
       setSelectedJobDetail(null);
-      messageApi.error(error instanceof Error ? error.message : "读取任务详情失败");
+      if (showLoading) {
+        messageApi.error(error instanceof Error ? error.message : "读取任务详情失败");
+      }
     } finally {
       setJobDetailLoading(false);
     }
@@ -1119,6 +1136,10 @@ export function MarketDataView() {
     () => selectedJobItems.filter((item) => item.status === "failed" || item.error_message),
     [selectedJobItems],
   );
+  const selectedChildJobIds = useMemo(
+    () => (selectedJobDetail ? extractChildIngestionJobIds(selectedJobDetail) : []),
+    [selectedJobDetail],
+  );
 
   function applyCheckedSymbol(targetSymbol: string) {
     const normalizedSymbol = targetSymbol.trim().toUpperCase();
@@ -1340,6 +1361,7 @@ export function MarketDataView() {
                     <span>更新 {job.rows_updated.toLocaleString()}</span>
                   </div>
                   <small>申请时间：{job.requested_at || "-"}</small>
+                  {ingestionJobIsPending(job.status) ? <small>Worker 领取后会自动刷新当前列表与详情。</small> : null}
                   {extractChildIngestionJobIds(job).length > 0 ? <small>子任务 #{extractChildIngestionJobIds(job).join(", #")}</small> : null}
                   {job.error_message ? <Typography.Text type="danger">{job.error_message}</Typography.Text> : null}
                   <Button size="small" onClick={() => void openJobDetail(job.id)}>
@@ -1806,6 +1828,15 @@ export function MarketDataView() {
                   失败子项 {selectedJobFailedItems.length}
                 </Tag>
               </div>
+              {selectedChildJobIds.length > 0 ? (
+                <Space wrap>
+                  {selectedChildJobIds.map((jobId) => (
+                    <Button key={jobId} size="small" onClick={() => void openJobDetail(jobId)}>
+                      打开子任务 #{jobId}
+                    </Button>
+                  ))}
+                </Space>
+              ) : null}
               {selectedJobDetail.error_message ? <Typography.Text type="danger">{selectedJobDetail.error_message}</Typography.Text> : null}
               {renderWorkflowSummary(selectedJobDetail)}
             </Card>

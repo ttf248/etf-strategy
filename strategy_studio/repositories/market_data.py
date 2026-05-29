@@ -568,16 +568,18 @@ def create_data_ingestion_job(
     target_scope_json: dict[str, object] | None = None,
     options_json: dict[str, object] | None = None,
     requested_by: str = "system",
+    initial_status: str = "running",
 ) -> DataIngestionJob:
     job = DataIngestionJob(
         provider_id=provider.id if provider is not None else None,
         job_type=job_type,
         requested_by=requested_by,
         requested_via=requested_via,
-        status="running",
+        status=initial_status,
         target_scope_json=target_scope_json or {},
         options_json=options_json or {},
         summary_json={},
+        started_at=utc_now() if initial_status == "running" else None,
     )
     session.add(job)
     session.flush()
@@ -592,6 +594,7 @@ def create_data_ingestion_job_item(
     source_symbol: str,
     interval: str,
     provider: DataProvider | None = None,
+    initial_status: str = "running",
 ) -> DataIngestionJobItem:
     item = DataIngestionJobItem(
         job_id=job.id,
@@ -600,12 +603,30 @@ def create_data_ingestion_job_item(
         source_symbol=source_symbol,
         interval=interval,
         stage="download",
-        status="running",
+        status=initial_status,
         details_json={},
+        started_at=utc_now() if initial_status == "running" else None,
     )
     session.add(item)
     session.flush()
     return item
+
+
+def claim_next_queued_ingestion_job(session: Session, *, requested_via: str = "api") -> DataIngestionJob | None:
+    statement = (
+        select(DataIngestionJob)
+        .where(DataIngestionJob.status == "queued")
+        .where(DataIngestionJob.requested_via == requested_via)
+        .order_by(DataIngestionJob.priority.desc(), DataIngestionJob.requested_at, DataIngestionJob.id)
+        .with_for_update(skip_locked=True)
+    )
+    job = session.scalars(statement).first()
+    if job is None:
+        return None
+    job.status = "running"
+    job.started_at = utc_now()
+    session.flush()
+    return job
 
 
 def list_instrument_coverages(session: Session) -> list[dict[str, object]]:
@@ -663,6 +684,7 @@ def list_recent_ingestion_jobs(session: Session, limit: int = 10) -> list[dict[s
     rows = session.execute(
         select(DataIngestionJob, DataProvider.provider_key, DataProvider.provider_name)
         .outerjoin(DataProvider, DataProvider.id == DataIngestionJob.provider_id)
+        .where(DataIngestionJob.requested_via != "worker_child")
         .order_by(DataIngestionJob.requested_at.desc(), DataIngestionJob.id.desc())
         .limit(limit)
     )
@@ -872,6 +894,7 @@ def _list_recent_ingestion_jobs_for_symbol(
     rows = session.execute(
         select(DataIngestionJob, DataProvider.provider_key, DataProvider.provider_name)
         .outerjoin(DataProvider, DataProvider.id == DataIngestionJob.provider_id)
+        .where(DataIngestionJob.requested_via != "worker_child")
         .order_by(DataIngestionJob.requested_at.desc(), DataIngestionJob.id.desc())
         .limit(max(limit * 10, 50))
     )
@@ -1241,6 +1264,7 @@ def get_market_data_stats(session: Session) -> dict[str, object]:
             .label("rank_index"),
         )
         .where(DataIngestionJob.provider_id.is_not(None))
+        .where(DataIngestionJob.requested_via != "worker_child")
         .subquery()
     )
     latest_job_stats = (

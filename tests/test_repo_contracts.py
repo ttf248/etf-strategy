@@ -84,7 +84,7 @@ class RepoContractTests(unittest.TestCase):
         launch_payload = json.loads((REPO_ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))
         configurations = launch_payload.get("configurations", [])
         config_names = {config["name"] for config in configurations}
-        required_names = {"启动 API 服务", "启动回测 Worker", "启动行情 Scheduler", "启动前端 Dev Server", "执行 A 股统一补数链路"}
+        required_names = {"启动 API 服务", "启动后台任务 Worker", "启动行情 Scheduler", "启动前端 Dev Server", "执行 A 股统一补数链路"}
         self.assertTrue(required_names.issubset(config_names))
         python_configs = [config for config in configurations if config["type"] == "debugpy"]
         self.assertGreaterEqual(len(python_configs), 4)

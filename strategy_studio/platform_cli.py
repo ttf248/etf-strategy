@@ -225,7 +225,7 @@ def add_platform_subcommands(subparsers: argparse._SubParsersAction[argparse.Arg
     api_parser.add_argument("--port", type=int, default=None, help="监听端口")
     api_parser.add_argument("--replace-existing", action="store_true", help="如果旧 API 进程占用端口，则先结束旧进程再启动")
 
-    worker_parser = subparsers.add_parser("worker", help="启动回测任务 worker")
+    worker_parser = subparsers.add_parser("worker", help="启动后台任务 worker")
     worker_parser.add_argument("--poll-interval", type=int, default=5, help="任务轮询间隔秒数")
     worker_parser.add_argument("--max-concurrent-jobs", type=int, default=None, help="最多同时执行多少个回测任务")
     worker_parser.add_argument("--max-optimization-workers", type=int, default=None, help="单个任务最多占用多少个寻参 worker")

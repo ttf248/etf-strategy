@@ -67,7 +67,7 @@ Backtest  Yahoo Sync
 
 Windows 开发环境可以使用 `.vscode/launch.json` 或 `scripts/start_platform_windows.bat` 一键拉起。
 
-Worker 和 Scheduler 会写入 `platform_heartbeats` 心跳记录，前端平台总控页据此判断常驻进程是否可见。平台同时提供 `check-db` 命令和 `/api/platform/database-check`，用于确认业务库是否存在、迁移是否到头。Web 进程控制默认关闭；只有设置 `STRATEGY_STUDIO_ENABLE_PROCESS_CONTROL=true` 后，相关接口才允许进入后续受控操作。
+Worker 和 Scheduler 会写入 `platform_heartbeats` 心跳记录，前端平台总控页据此判断常驻进程是否可见。当前 `main.py worker` 同时负责两类后台任务：回测队列，以及通过 `/api/market-data/sync` / `/market-data` 页面提交的行情导入队列。平台同时提供 `check-db` 命令和 `/api/platform/database-check`，用于确认业务库是否存在、迁移是否到头。Web 进程控制默认关闭；只有设置 `STRATEGY_STUDIO_ENABLE_PROCESS_CONTROL=true` 后，相关接口才允许进入后续受控操作。
 
 ## 数据存储原则
 
